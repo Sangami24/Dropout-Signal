@@ -1,0 +1,24 @@
+# Ignore Markdown and PDF files
+*.md
+!README.md
+*.pdf
+
+# Ignore Floramind related files
+*floramind*
+*FloraMind*
+*FLORAMIND*
+
+# Python and Jupyter temporary/cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+.ipynb_checkpoints/
+
+# Temp and extraneous directories
+_temp_pages/
+*.html

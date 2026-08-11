@@ -1,0 +1,1753 @@
+    INFO: 2026-04-11 12:41:53,044:               log.py:   20: Logging to C:\Users\VERRIL\Desktop\FloraMind\mdpdf.log
+   DEBUG: 2026-04-11 12:41:53,044:               cli.py:  103: DROPOUT_SIGNAL_IDEA.md
+    INFO: 2026-04-11 12:41:53,057:         converter.py:   14: DROPOUT_SIGNAL_IDEA.md
+   DEBUG: 2026-04-11 12:41:53,121:      pdf_renderer.py:  470: printSegment: THE DROPOUT SIGNAL
+   DEBUG: 2026-04-11 12:41:53,143:      pdf_renderer.py:  470: printSegment: An AI-Powered Early Warning System for Student Retention
+   DEBUG: 2026-04-11 12:41:53,153:      pdf_renderer.py:  470: printSegment: HackBricks 2026 — Problem Statement 1
+   DEBUG: 2026-04-11 12:41:53,192:      pdf_renderer.py:  470: printSegment: PART 1: THE PROBLEM
+   DEBUG: 2026-04-11 12:41:53,194:      pdf_renderer.py:  470: printSegment: Why This Matters
+   DEBUG: 2026-04-11 12:41:53,196:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:53,203:      pdf_renderer.py:  470: printSegment: 7 million students
+   DEBUG: 2026-04-11 12:41:53,216:      pdf_renderer.py:  470: printSegment:  drop out of Indian higher education every year (AISHE 2023)
+   DEBUG: 2026-04-11 12:41:53,222:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:53,225:      pdf_renderer.py:  470: printSegment: India
+   DEBUG: 2026-04-11 12:41:53,226:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:53,228:      pdf_renderer.py:  470: printSegment: s gross enrollment ratio is 
+   DEBUG: 2026-04-11 12:41:53,231:      pdf_renderer.py:  470: printSegment: 28.4%
+   DEBUG: 2026-04-11 12:41:53,232:      pdf_renderer.py:  470: printSegment:  — already low. Dropouts make it worse.
+   DEBUG: 2026-04-11 12:41:53,255:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:53,258:      pdf_renderer.py:  470: printSegment: NEP 2020
+   DEBUG: 2026-04-11 12:41:53,260:      pdf_renderer.py:  470: printSegment:  explicitly mandates universities to reduce dropout rates
+   DEBUG: 2026-04-11 12:41:53,261:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:53,264:      pdf_renderer.py:  470: printSegment: NAAC accreditation tracks dropout rates — universities are measured on this
+   DEBUG: 2026-04-11 12:41:53,265:      pdf_renderer.py:  470: printSegment: The Hidden Truth
+   DEBUG: 2026-04-11 12:41:53,268:      pdf_renderer.py:  470: printSegment: Dropout is never sudden. The warning signs appear 
+   DEBUG: 2026-04-11 12:41:53,270:      pdf_renderer.py:  470: printSegment: months before
+   DEBUG: 2026-04-11 12:41:53,271:      pdf_renderer.py:  470: printSegment: :
+   DEBUG: 2026-04-11 12:41:53,273:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:53,277:      pdf_renderer.py:  470: printSegment: Semester 1 grade: 14.2 → Semester 2 grade: 9.8 (declining trajectory)
+   DEBUG: 2026-04-11 12:41:53,303:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:53,306:      pdf_renderer.py:  470: printSegment: Tuition fee: UNPAID for 2 months (financial stress)
+   DEBUG: 2026-04-11 12:41:53,308:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:53,313:      pdf_renderer.py:  470: printSegment: Age at enrollment: 34 (mature student, likely working, higher drop risk)
+   DEBUG: 2026-04-11 12:41:53,315:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:53,317:      pdf_renderer.py:  470: printSegment: Parent occupation: unskilled labor (first-generation college student)
+   DEBUG: 2026-04-11 12:41:53,319:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:53,322:      pdf_renderer.py:  470: printSegment: GDP dropped 2.3% (macroeconomic pressure on family income)
+   DEBUG: 2026-04-11 12:41:53,325:      pdf_renderer.py:  470: printSegment: The data exists in every university
+   DEBUG: 2026-04-11 12:41:53,326:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:53,328:      pdf_renderer.py:  470: printSegment: s Student Information System (SIS). But 
+   DEBUG: 2026-04-11 12:41:53,332:      pdf_renderer.py:  470: printSegment: nobody connects the dots
+   DEBUG: 2026-04-11 12:41:53,344:      pdf_renderer.py:  470: printSegment: . Registrars
+   DEBUG: 2026-04-11 12:41:53,350:      pdf_renderer.py:  470: printSegment: see grades. Finance sees fees. Counselors see who walks in. Nobody sees the full picture.
+   DEBUG: 2026-04-11 12:41:53,354:      pdf_renderer.py:  470: printSegment: The Challenge Beyond Prediction
+   DEBUG: 2026-04-11 12:41:53,359:      pdf_renderer.py:  470: printSegment: A model that predicts dropout is easy. A model that is 
+   DEBUG: 2026-04-11 12:41:53,362:      pdf_renderer.py:  470: printSegment: FAIR
+   DEBUG: 2026-04-11 12:41:53,363:      pdf_renderer.py:  470: printSegment:  is hard.
+   DEBUG: 2026-04-11 12:41:53,365:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:53,378:      pdf_renderer.py:  470: printSegment: A model that disproportionately flags students from lower-income backgrounds or specific
+   DEBUG: 2026-04-11 12:41:53,382:      pdf_renderer.py:  470: printSegment: demographics is a liability, not a tool.
+   DEBUG: 2026-04-11 12:41:53,385:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:53,388:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:53,391:      pdf_renderer.py:  470: printSegment: — HackBricks Problem Statement
+   DEBUG: 2026-04-11 12:41:53,433:      pdf_renderer.py:  470: printSegment: Historical data encodes historical bias. If low-income students dropped out more in the past, a naive model will flag
+   DEBUG: 2026-04-11 12:41:53,437:      pdf_renderer.py:  470: printSegment: them at higher rates — even when their current performance is identical to wealthier peers. The model becomes a 
+   DEBUG: 2026-04-11 12:41:53,440:      pdf_renderer.py:  470: printSegment: self-fulfilling prophecy of inequality
+   DEBUG: 2026-04-11 12:41:53,442:      pdf_renderer.py:  470: printSegment: .
+   DEBUG: 2026-04-11 12:41:53,444:      pdf_renderer.py:  470: printSegment: Our pipeline must:
+   DEBUG: 2026-04-11 12:41:53,448:      pdf_renderer.py:  470: printSegment:  1 
+   DEBUG: 2026-04-11 12:41:53,450:      pdf_renderer.py:  470: printSegment: Predict risk early
+   DEBUG: 2026-04-11 12:41:53,453:      pdf_renderer.py:  470: printSegment:  2 
+   DEBUG: 2026-04-11 12:41:53,456:      pdf_renderer.py:  470: printSegment: Explain WHY (not just a number)
+   DEBUG: 2026-04-11 12:41:53,457:      pdf_renderer.py:  470: printSegment:  3 
+   DEBUG: 2026-04-11 12:41:53,460:      pdf_renderer.py:  470: printSegment: Prove
+   DEBUG: 2026-04-11 12:41:53,463:      pdf_renderer.py:  470: printSegment:  it is not biased against any group
+   DEBUG: 2026-04-11 12:41:53,465:      pdf_renderer.py:  470: printSegment:  4 
+   DEBUG: 2026-04-11 12:41:53,467:      pdf_renderer.py:  470: printSegment: Validate
+   DEBUG: 2026-04-11 12:41:53,469:      pdf_renderer.py:  470: printSegment:  predictions through direct, unbiased student conversations
+   DEBUG: 2026-04-11 12:41:53,470:      pdf_renderer.py:  470: printSegment:  5 
+   DEBUG: 2026-04-11 12:41:53,473:      pdf_renderer.py:  470: printSegment: Connect
+   DEBUG: 2026-04-11 12:41:53,475:      pdf_renderer.py:  470: printSegment:  at-risk students to the RIGHT resources based on WHY they
+   DEBUG: 2026-04-11 12:41:53,477:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:53,478:      pdf_renderer.py:  470: printSegment: re leaving
+   DEBUG: 2026-04-11 12:41:53,482:      pdf_renderer.py:  470: printSegment: THE COLLEGE DATA PIPELINE — HOW DATA ACTUALLY FLOWS
+   DEBUG: 2026-04-11 12:41:53,485:      pdf_renderer.py:  470: printSegment: How Colleges Work Today (The Gap We Fill)
+   DEBUG: 2026-04-11 12:41:53,487:      pdf_renderer.py:  470: printSegment: Every university in India has these departments that 
+   DEBUG: 2026-04-11 12:41:53,489:      pdf_renderer.py:  470: printSegment: never talk to each other
+   DEBUG: 2026-04-11 12:41:53,491:      pdf_renderer.py:  470: printSegment: :
+   DEBUG: 2026-04-11 12:41:53,496:      pdf_renderer.py:  470: printSegment: ┌──────────────────────────────────────────────────────────────────┐
+   DEBUG: 2026-04-11 12:41:53,538:      pdf_renderer.py:  470: printSegment: │  CURRENT STATE IN MOST INDIAN UNIVERSITIES                       │
+   DEBUG: 2026-04-11 12:41:53,542:      pdf_renderer.py:  470: printSegment: │                                                                  │
+   DEBUG: 2026-04-11 12:41:53,545:      pdf_renderer.py:  470: printSegment: │  ┌─────────────┐  ┌──────────────┐  ┌───────────────┐           │
+   DEBUG: 2026-04-11 12:41:53,547:      pdf_renderer.py:  470: printSegment: │  │ Admission    │  │ Examination  │  │ Finance /     │           │
+   DEBUG: 2026-04-11 12:41:53,549:      pdf_renderer.py:  470: printSegment: │  │ Office       │  │ Cell         │  │ Accounts      │           │
+   DEBUG: 2026-04-11 12:41:53,551:      pdf_renderer.py:  470: printSegment: │  │ (SIS / ERP)  │  │              │  │               │           │
+   DEBUG: 2026-04-11 12:41:53,553:      pdf_renderer.py:  470: printSegment: │  │              │  │              │  │               │           │
+   DEBUG: 2026-04-11 12:41:53,555:      pdf_renderer.py:  470: printSegment: │  │ Demographics │  │ Grades per   │  │ Fee payment   │           │
+   DEBUG: 2026-04-11 12:41:53,558:      pdf_renderer.py:  470: printSegment: │  │ Age, Gender, │  │ semester,    │  │ status,       │           │
+   DEBUG: 2026-04-11 12:41:53,561:      pdf_renderer.py:  470: printSegment: │  │ Parent info, │  │ Backlogs,    │  │ Scholarship,  │           │
+   DEBUG: 2026-04-11 12:41:53,563:      pdf_renderer.py:  470: printSegment: │  │ Address,     │  │ Credits      │  │ Loan status   │           │
+   DEBUG: 2026-04-11 12:41:53,565:      pdf_renderer.py:  470: printSegment: │  │ Scholarship  │  │ approved     │  │               │           │
+   DEBUG: 2026-04-11 12:41:53,568:      pdf_renderer.py:  470: printSegment: │  └──────┬───────┘  └──────┬───────┘  └───────┬───────┘           │
+   DEBUG: 2026-04-11 12:41:53,596:      pdf_renderer.py:  470: printSegment: │         │                 │                   │                   │
+   DEBUG: 2026-04-11 12:41:53,599:      pdf_renderer.py:  470: printSegment: │         ▼                 ▼                   ▼                   │
+   DEBUG: 2026-04-11 12:41:53,628:      pdf_renderer.py:  470: printSegment: │     [SILOED]          [SILOED]            [SILOED]               │
+   DEBUG: 2026-04-11 12:41:53,632:      pdf_renderer.py:  470: printSegment: │                                                                  │
+   DEBUG: 2026-04-11 12:41:53,634:      pdf_renderer.py:  470: printSegment: │  ❌ Nobody connects grades + fees + demographics                 │
+   DEBUG: 2026-04-11 12:41:53,677:      pdf_renderer.py:  470: printSegment: │  ❌ Counselors only see students who walk in voluntarily          │
+   DEBUG: 2026-04-11 12:41:53,679:      pdf_renderer.py:  470: printSegment: │  ❌ Dropouts are noticed AFTER they leave, not BEFORE             │
+   DEBUG: 2026-04-11 12:41:53,682:      pdf_renderer.py:  470: printSegment: └──────────────────────────────────────────────────────────────────┘
+   DEBUG: 2026-04-11 12:41:53,684:      pdf_renderer.py:  470: printSegment: Common SIS platforms in Indian universities:
+   DEBUG: 2026-04-11 12:41:53,686:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:53,687:      pdf_renderer.py:  470: printSegment: Oracle PeopleSoft
+   DEBUG: 2026-04-11 12:41:53,688:      pdf_renderer.py:  470: printSegment: , 
+   DEBUG: 2026-04-11 12:41:53,690:      pdf_renderer.py:  470: printSegment: SAP Student Lifecycle Management
+   DEBUG: 2026-04-11 12:41:53,692:      pdf_renderer.py:  470: printSegment:  (large private universities)
+   DEBUG: 2026-04-11 12:41:53,694:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:53,696:      pdf_renderer.py:  470: printSegment: Tally / custom ERP
+   DEBUG: 2026-04-11 12:41:53,698:      pdf_renderer.py:  470: printSegment:  (most mid-size institutions)
+   DEBUG: 2026-04-11 12:41:53,699:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:53,701:      pdf_renderer.py:  470: printSegment: Manual Excel registers
+   DEBUG: 2026-04-11 12:41:53,702:      pdf_renderer.py:  470: printSegment:  (government colleges)
+   DEBUG: 2026-04-11 12:41:53,709:      pdf_renderer.py:  470: printSegment: Regardless of the system, the same 37 data points exist: demographics at admission, semester grades, fee payment
+   DEBUG: 2026-04-11 12:41:53,711:      pdf_renderer.py:  470: printSegment: records, scholarship status.
+   DEBUG: 2026-04-11 12:41:53,714:      pdf_renderer.py:  470: printSegment: Our Integration Point — Bridging the Silos
+   DEBUG: 2026-04-11 12:41:53,716:      pdf_renderer.py:  470: printSegment: ┌──────────────────────────────────────────────────────────────────┐
+   DEBUG: 2026-04-11 12:41:53,719:      pdf_renderer.py:  470: printSegment: │  WITH THE DROPOUT SIGNAL                                         │
+   DEBUG: 2026-04-11 12:41:53,721:      pdf_renderer.py:  470: printSegment: │                                                                  │
+   DEBUG: 2026-04-11 12:41:53,723:      pdf_renderer.py:  470: printSegment: │  Admission Office + Exam Cell + Finance Department               │
+   DEBUG: 2026-04-11 12:41:53,726:      pdf_renderer.py:  470: printSegment: │         │              │              │                           │
+   DEBUG: 2026-04-11 12:41:53,729:      pdf_renderer.py:  470: printSegment: │         └──────┬───────┘──────────────┘                          │
+   DEBUG: 2026-04-11 12:41:53,732:      pdf_renderer.py:  470: printSegment: │                │                                                  │
+   DEBUG: 2026-04-11 12:41:53,735:      pdf_renderer.py:  470: printSegment: │                ▼                                                  │
+   DEBUG: 2026-04-11 12:41:53,738:      pdf_renderer.py:  470: printSegment: │    ┌──────────────────────┐    HOW:                               │
+   DEBUG: 2026-04-11 12:41:53,740:      pdf_renderer.py:  470: printSegment: │    │  Unified CSV Export   │    • End-of-month automated export   │
+   DEBUG: 2026-04-11 12:41:53,742:      pdf_renderer.py:  470: printSegment: │    │  (37 columns per      │    • OR: one-time semester bulk      │
+   DEBUG: 2026-04-11 12:41:53,746:      pdf_renderer.py:  470: printSegment: │    │   student)            │    • OR: SIS API connector (v2)      │
+   DEBUG: 2026-04-11 12:41:53,748:      pdf_renderer.py:  470: printSegment: │    └──────────┬────────────┘                                      │
+   DEBUG: 2026-04-11 12:41:53,752:      pdf_renderer.py:  470: printSegment: │               │                                                   │
+   DEBUG: 2026-04-11 12:41:53,755:      pdf_renderer.py:  470: printSegment: │               ▼                                                   │
+   DEBUG: 2026-04-11 12:41:53,757:      pdf_renderer.py:  470: printSegment: │    ┌──────────────────────┐                                       │
+   DEBUG: 2026-04-11 12:41:53,761:      pdf_renderer.py:  470: printSegment: │    │  Databricks Volume    │    Upload to Unity Catalog Volume     │
+   DEBUG: 2026-04-11 12:41:53,765:      pdf_renderer.py:  470: printSegment: │    │  (Cloud Storage)      │    /Volumes/hackbricks/raw/           │
+   DEBUG: 2026-04-11 12:41:53,766:      pdf_renderer.py:  470: printSegment: │    │                       │    Manual / SFTP / API trigger         │
+   DEBUG: 2026-04-11 12:41:53,768:      pdf_renderer.py:  470: printSegment: │    └──────────┬────────────┘                                      │
+   DEBUG: 2026-04-11 12:41:53,771:      pdf_renderer.py:  470: printSegment: │               │                                                   │
+   DEBUG: 2026-04-11 12:41:53,773:      pdf_renderer.py:  470: printSegment: │               ▼                                                   │
+   DEBUG: 2026-04-11 12:41:53,777:      pdf_renderer.py:  470: printSegment: │    Bronze → Silver → ML → Fairness → Gold                        │
+   DEBUG: 2026-04-11 12:41:53,779:      pdf_renderer.py:  470: printSegment: │                                        │                          │
+   DEBUG: 2026-04-11 12:41:53,782:      pdf_renderer.py:  470: printSegment: │                                        ▼                          │
+   DEBUG: 2026-04-11 12:41:53,783:      pdf_renderer.py:  470: printSegment: │                              AI Voice Call (Layer 2)              │
+   DEBUG: 2026-04-11 12:41:53,786:      pdf_renderer.py:  470: printSegment: │                                        │                          │
+   DEBUG: 2026-04-11 12:41:53,788:      pdf_renderer.py:  470: printSegment: │                                        ▼                          │
+   DEBUG: 2026-04-11 12:41:53,790:      pdf_renderer.py:  470: printSegment: │                              Final Gold + Interventions           │
+   DEBUG: 2026-04-11 12:41:53,795:      pdf_renderer.py:  470: printSegment: │                                                                  │
+   DEBUG: 2026-04-11 12:41:53,797:      pdf_renderer.py:  470: printSegment: │  ✅ All data points connected in ONE pipeline                    │
+   DEBUG: 2026-04-11 12:41:53,801:      pdf_renderer.py:  470: printSegment: │  ✅ Runs bi-weekly or on-demand                                  │
+   DEBUG: 2026-04-11 12:41:53,804:      pdf_renderer.py:  470: printSegment: │  ✅ AI validates predictions — no false alarms                   │
+   DEBUG: 2026-04-11 12:41:53,806:      pdf_renderer.py:  470: printSegment: │  ✅ Counselors get actionable output within hours                │
+   DEBUG: 2026-04-11 12:41:53,809:      pdf_renderer.py:  470: printSegment: └──────────────────────────────────────────────────────────────────┘
+   DEBUG: 2026-04-11 12:41:53,813:      pdf_renderer.py:  470: printSegment: Practical Deployment Timeline
+   DEBUG: 2026-04-11 12:41:53,817:      pdf_renderer.py:  470: printSegment: | Phase | Timeline | What Happens |
+   DEBUG: 2026-04-11 12:41:53,820:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:53,822:      pdf_renderer.py:  470: printSegment: |-------|----------|-------------|
+   DEBUG: 2026-04-11 12:41:53,824:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:53,825:      pdf_renderer.py:  470: printSegment: | 
+   DEBUG: 2026-04-11 12:41:53,827:      pdf_renderer.py:  470: printSegment: Phase 1: Pilot
+   DEBUG: 2026-04-11 12:41:53,838:      pdf_renderer.py:  470: printSegment:  | Month 1 | College IT exports CSV
+   DEBUG: 2026-04-11 12:41:53,841:      pdf_renderer.py:  470: printSegment: manually. We ingest, run pipeline, demonstrate value. |
+   DEBUG: 2026-04-11 12:41:53,843:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:53,846:      pdf_renderer.py:  470: printSegment: | 
+   DEBUG: 2026-04-11 12:41:53,848:      pdf_renderer.py:  470: printSegment: Phase 2: Automated
+   DEBUG: 2026-04-11 12:41:53,856:      pdf_renderer.py:  470: printSegment:  | Month 2-3 | SFTP/API connector
+   DEBUG: 2026-04-11 12:41:53,859:      pdf_renderer.py:  470: printSegment: from SIS → Databricks Volume. Scheduled bi-weekly runs. |
+   DEBUG: 2026-04-11 12:41:53,861:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:53,862:      pdf_renderer.py:  470: printSegment: | 
+   DEBUG: 2026-04-11 12:41:53,864:      pdf_renderer.py:  470: printSegment: Phase 3: Full Deploy
+   DEBUG: 2026-04-11 12:41:53,872:      pdf_renderer.py:  470: printSegment:  | Month 4+ | Direct database
+   DEBUG: 2026-04-11 12:41:53,875:      pdf_renderer.py:  470: printSegment: connector. AI voice calls triggered automatically. Counselor dashboard live. |
+   DEBUG: 2026-04-11 12:41:53,878:      pdf_renderer.py:  470: printSegment: PART 2: OUR SOLUTION
+   DEBUG: 2026-04-11 12:41:53,880:      pdf_renderer.py:  470: printSegment: One-Line Pitch
+   DEBUG: 2026-04-11 12:41:53,884:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:54,076:      pdf_renderer.py:  470: printSegment: We built a TWO-LAYER early warning system on Databricks. Layer 1: ML predicts which students
+   DEBUG: 2026-04-11 12:41:54,184:      pdf_renderer.py:  470: printSegment: will drop out and proves the model is fair. Layer 2: Our AI voice agent calls flagged students with
+   DEBUG: 2026-04-11 12:41:54,238:      pdf_renderer.py:  470: printSegment: non-leading questions, validates the prediction, identifies the ROOT CAUSE, and connects them to
+   DEBUG: 2026-04-11 12:41:54,258:      pdf_renderer.py:  470: printSegment: the exact resource they need — an NGO for financial aid, a loan scheme, a counselor, a career mentor.
+   DEBUG: 2026-04-11 12:41:54,283:      pdf_renderer.py:  470: printSegment: No false alarms. No bias. Just the right help at the right time.
+   DEBUG: 2026-04-11 12:41:54,286:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:54,288:      pdf_renderer.py:  470: printSegment: System Architecture
+   DEBUG: 2026-04-11 12:41:54,291:      pdf_renderer.py:  470: printSegment:                     THE DROPOUT SIGNAL — END-TO-END PIPELINE
+   DEBUG: 2026-04-11 12:41:54,293:      pdf_renderer.py:  470: printSegment:     ═══════════════════════════════════════════════════════════
+   DEBUG: 2026-04-11 12:41:54,294:      pdf_renderer.py:  470: printSegment:     ┌─────────────────────────────────────────────────────────┐
+   DEBUG: 2026-04-11 12:41:54,298:      pdf_renderer.py:  470: printSegment:     │  DATA SOURCE                                            │
+   DEBUG: 2026-04-11 12:41:54,301:      pdf_renderer.py:  470: printSegment:     │  UCI Dropout Dataset — 4,400 students, 37 features      │
+   DEBUG: 2026-04-11 12:41:54,303:      pdf_renderer.py:  470: printSegment:     │  Demographics + Grades + Financials + Macroeconomics    │
+   DEBUG: 2026-04-11 12:41:54,307:      pdf_renderer.py:  470: printSegment:     │  Path: /Volumes/hackbricks/raw/uci_dropout.csv          │
+   DEBUG: 2026-04-11 12:41:54,309:      pdf_renderer.py:  470: printSegment:     └──────────────────────┬──────────────────────────────────┘
+   DEBUG: 2026-04-11 12:41:54,311:      pdf_renderer.py:  470: printSegment:                            │
+   DEBUG: 2026-04-11 12:41:54,313:      pdf_renderer.py:  470: printSegment:                            ▼
+   DEBUG: 2026-04-11 12:41:54,315:      pdf_renderer.py:  470: printSegment:     ┌─────────────────────────────────────────────────────────┐
+   DEBUG: 2026-04-11 12:41:54,319:      pdf_renderer.py:  470: printSegment:     │  1. BRONZE LAYER — Raw Ingestion                        │
+   DEBUG: 2026-04-11 12:41:54,321:      pdf_renderer.py:  470: printSegment:     │     • Read CSV → Delta table (workspace.default)        │
+   DEBUG: 2026-04-11 12:41:54,323:      pdf_renderer.py:  470: printSegment:     │     • Preserve ALL 37 original columns                  │
+   DEBUG: 2026-04-11 12:41:54,325:      pdf_renderer.py:  470: printSegment:     │     • Add ingestion_timestamp, source_file metadata     │
+   DEBUG: 2026-04-11 12:41:54,327:      pdf_renderer.py:  470: printSegment:     │     • Schema documentation                              │
+   DEBUG: 2026-04-11 12:41:54,328:      pdf_renderer.py:  470: printSegment:     └──────────────────────┬──────────────────────────────────┘
+   DEBUG: 2026-04-11 12:41:54,330:      pdf_renderer.py:  470: printSegment:                            │
+   DEBUG: 2026-04-11 12:41:54,331:      pdf_renderer.py:  470: printSegment:                            ▼
+   DEBUG: 2026-04-11 12:41:54,333:      pdf_renderer.py:  470: printSegment:     ┌─────────────────────────────────────────────────────────┐
+   DEBUG: 2026-04-11 12:41:54,335:      pdf_renderer.py:  470: printSegment:     │  2. SILVER LAYER — Clean + Feature Engineering          │
+   DEBUG: 2026-04-11 12:41:54,337:      pdf_renderer.py:  470: printSegment:     │     • Target: Dropout=1, Enrolled/Graduate=0 (binary)   │
+   DEBUG: 2026-04-11 12:41:54,341:      pdf_renderer.py:  470: printSegment:     │     • Clean nulls, cast types, validate ranges          │
+   DEBUG: 2026-04-11 12:41:54,345:      pdf_renderer.py:  470: printSegment:     │     • ENGINEERED FEATURES (our creativity):             │
+   DEBUG: 2026-04-11 12:41:54,349:      pdf_renderer.py:  470: printSegment:     │       ─ grade_trajectory: slope of Sem1→Sem2 grades     │
+   DEBUG: 2026-04-11 12:41:54,355:      pdf_renderer.py:  470: printSegment:     │       ─ financial_stress_index: tuition + debtor +      │
+   DEBUG: 2026-04-11 12:41:54,358:      pdf_renderer.py:  470: printSegment:     │         scholarship + GDP + inflation (composite)       │
+   DEBUG: 2026-04-11 12:41:54,362:      pdf_renderer.py:  470: printSegment:     │       ─ semester_grade_delta: Sem2 - Sem1 per subject   │
+   DEBUG: 2026-04-11 12:41:54,366:      pdf_renderer.py:  470: printSegment:     │       ─ curricular_engagement: approved/enrolled ratio  │
+   DEBUG: 2026-04-11 12:41:54,370:      pdf_renderer.py:  470: printSegment:     │       ─ age_risk_flag: mature student indicator         │
+   DEBUG: 2026-04-11 12:41:54,372:      pdf_renderer.py:  470: printSegment:     │       ─ economic_pressure: unemployment + inflation     │
+   DEBUG: 2026-04-11 12:41:54,373:      pdf_renderer.py:  470: printSegment:     └──────────────────────┬──────────────────────────────────┘
+   DEBUG: 2026-04-11 12:41:54,375:      pdf_renderer.py:  470: printSegment:                            │
+   DEBUG: 2026-04-11 12:41:54,378:      pdf_renderer.py:  470: printSegment:                            ▼
+   DEBUG: 2026-04-11 12:41:54,379:      pdf_renderer.py:  470: printSegment:     ┌─────────────────────────────────────────────────────────┐
+   DEBUG: 2026-04-11 12:41:54,382:      pdf_renderer.py:  470: printSegment:     │  3. ML MODELS — Two Required by Problem Statement       │
+   DEBUG: 2026-04-11 12:41:54,384:      pdf_renderer.py:  470: printSegment:     │                                                         │
+   DEBUG: 2026-04-11 12:41:54,387:      pdf_renderer.py:  470: printSegment:     │  Model A: Logistic Regression (BASELINE)                │
+   DEBUG: 2026-04-11 12:41:54,389:      pdf_renderer.py:  470: printSegment:     │     • Interpretable, fast, regularized                  │
+   DEBUG: 2026-04-11 12:41:54,391:      pdf_renderer.py:  470: printSegment:     │     • Log: accuracy, precision, recall, F1, AUC-ROC     │
+   DEBUG: 2026-04-11 12:41:54,393:      pdf_renderer.py:  470: printSegment:     │     • Logged in MLflow Experiment                        │
+   DEBUG: 2026-04-11 12:41:54,397:      pdf_renderer.py:  470: printSegment:     │                                                         │
+   DEBUG: 2026-04-11 12:41:54,399:      pdf_renderer.py:  470: printSegment:     │  Model B: XGBoost (TREE MODEL)                          │
+   DEBUG: 2026-04-11 12:41:54,402:      pdf_renderer.py:  470: printSegment:     │     • Gradient boosted trees, handles non-linearity     │
+   DEBUG: 2026-04-11 12:41:54,404:      pdf_renderer.py:  470: printSegment:     │     • Hyperparameter tuning logged                      │
+   DEBUG: 2026-04-11 12:41:54,406:      pdf_renderer.py:  470: printSegment:     │     • Logged in MLflow Experiment                        │
+   DEBUG: 2026-04-11 12:41:54,409:      pdf_renderer.py:  470: printSegment:     │                                                         │
+   DEBUG: 2026-04-11 12:41:54,413:      pdf_renderer.py:  470: printSegment:     │  COMPARE → Register BEST model in Model Registry        │
+   DEBUG: 2026-04-11 12:41:54,415:      pdf_renderer.py:  470: printSegment:     │  (Champion model served for inference)                   │
+   DEBUG: 2026-04-11 12:41:54,417:      pdf_renderer.py:  470: printSegment:     └──────────────────────┬──────────────────────────────────┘
+   DEBUG: 2026-04-11 12:41:54,419:      pdf_renderer.py:  470: printSegment:                            │
+   DEBUG: 2026-04-11 12:41:54,421:      pdf_renderer.py:  470: printSegment:                            ▼
+   DEBUG: 2026-04-11 12:41:54,423:      pdf_renderer.py:  470: printSegment:     ┌─────────────────────────────────────────────────────────┐
+   DEBUG: 2026-04-11 12:41:54,426:      pdf_renderer.py:  470: printSegment:     │  4. FAIRNESS AUDIT — 25% of Evaluation Score!           │
+   DEBUG: 2026-04-11 12:41:54,429:      pdf_renderer.py:  470: printSegment:     │                                                         │
+   DEBUG: 2026-04-11 12:41:54,431:      pdf_renderer.py:  470: printSegment:     │  Compute across Gender AND Socioeconomic groups:        │
+   DEBUG: 2026-04-11 12:41:54,433:      pdf_renderer.py:  470: printSegment:     │                                                         │
+   DEBUG: 2026-04-11 12:41:54,438:      pdf_renderer.py:  470: printSegment:     │  • Demographic Parity Ratio                             │
+   DEBUG: 2026-04-11 12:41:54,440:      pdf_renderer.py:  470: printSegment:     │    "Does the model flag men and women at similar rates?" │
+   DEBUG: 2026-04-11 12:41:54,444:      pdf_renderer.py:  470: printSegment:     │    Formula: P(flagged | Group A) / P(flagged | Group B) │
+   DEBUG: 2026-04-11 12:41:54,447:      pdf_renderer.py:  470: printSegment:     │    Target: ratio between 0.8 and 1.25 = FAIR            │
+   DEBUG: 2026-04-11 12:41:54,450:      pdf_renderer.py:  470: printSegment:     │                                                         │
+   DEBUG: 2026-04-11 12:41:54,455:      pdf_renderer.py:  470: printSegment:     │  • Equal Opportunity Ratio                              │
+   DEBUG: 2026-04-11 12:41:54,460:      pdf_renderer.py:  470: printSegment:     │    "Among actual dropouts, does the model catch them    │
+   DEBUG: 2026-04-11 12:41:54,464:      pdf_renderer.py:  470: printSegment:     │     equally across groups?"                             │
+   DEBUG: 2026-04-11 12:41:54,467:      pdf_renderer.py:  470: printSegment:     │    Formula: TPR(Group A) / TPR(Group B)                 │
+   DEBUG: 2026-04-11 12:41:54,469:      pdf_renderer.py:  470: printSegment:     │    Target: ratio between 0.8 and 1.25 = FAIR            │
+   DEBUG: 2026-04-11 12:41:54,471:      pdf_renderer.py:  470: printSegment:     │                                                         │
+   DEBUG: 2026-04-11 12:41:54,474:      pdf_renderer.py:  470: printSegment:     │  • Log ALL metrics to fairness_audit Delta table        │
+   DEBUG: 2026-04-11 12:41:54,476:      pdf_renderer.py:  470: printSegment:     │  • If biased → DOCUMENT IT (do not hide)                │
+   DEBUG: 2026-04-11 12:41:54,478:      pdf_renderer.py:  470: printSegment:     │  • Propose mitigation: threshold tuning, reweighting    │
+   DEBUG: 2026-04-11 12:41:54,480:      pdf_renderer.py:  470: printSegment:     └──────────────────────┬──────────────────────────────────┘
+   DEBUG: 2026-04-11 12:41:54,481:      pdf_renderer.py:  470: printSegment:                            │
+   DEBUG: 2026-04-11 12:41:54,483:      pdf_renderer.py:  470: printSegment:                            ▼
+   DEBUG: 2026-04-11 12:41:54,485:      pdf_renderer.py:  470: printSegment:     ┌─────────────────────────────────────────────────────────┐
+   DEBUG: 2026-04-11 12:41:54,486:      pdf_renderer.py:  470: printSegment:     │  5. SHAP EXPLAINABILITY — 15% of Evaluation Score       │
+   DEBUG: 2026-04-11 12:41:54,490:      pdf_renderer.py:  470: printSegment:     │                                                         │
+   DEBUG: 2026-04-11 12:41:54,492:      pdf_renderer.py:  470: printSegment:     │  For EVERY flagged student, surface:                    │
+   DEBUG: 2026-04-11 12:41:54,494:      pdf_renderer.py:  470: printSegment:     │  • Top 3 risk factors driving their prediction          │
+   DEBUG: 2026-04-11 12:41:54,497:      pdf_renderer.py:  470: printSegment:     │  • SHAP waterfall plot (visual)                         │
+   DEBUG: 2026-04-11 12:41:54,499:      pdf_renderer.py:  470: printSegment:     │  • SHAP summary plot (global feature importance)        │
+   DEBUG: 2026-04-11 12:41:54,502:      pdf_renderer.py:  470: printSegment:     │                                                         │
+   DEBUG: 2026-04-11 12:41:54,504:      pdf_renderer.py:  470: printSegment:     │  Example:                                               │
+   DEBUG: 2026-04-11 12:41:54,507:      pdf_renderer.py:  470: printSegment:     │  Student #2847 — Risk Score: 0.87 (HIGH)                │
+   DEBUG: 2026-04-11 12:41:54,508:      pdf_renderer.py:  470: printSegment:     │    #1: Sem2 grade dropped 40% from Sem1 (+0.23)         │
+   DEBUG: 2026-04-11 12:41:54,511:      pdf_renderer.py:  470: printSegment:     │    #2: Tuition fees unpaid, debtor=1 (+0.19)            │
+   DEBUG: 2026-04-11 12:41:54,513:      pdf_renderer.py:  470: printSegment:     │    #3: Age 34, mature student (+0.11)                   │
+   DEBUG: 2026-04-11 12:41:54,515:      pdf_renderer.py:  470: printSegment:     │                                                         │
+   DEBUG: 2026-04-11 12:41:54,517:      pdf_renderer.py:  470: printSegment:     │  This makes predictions ACTIONABLE for counselors.      │
+   DEBUG: 2026-04-11 12:41:54,520:      pdf_renderer.py:  470: printSegment:     └──────────────────────┬──────────────────────────────────┘
+   DEBUG: 2026-04-11 12:41:54,522:      pdf_renderer.py:  470: printSegment:                            │
+   DEBUG: 2026-04-11 12:41:54,523:      pdf_renderer.py:  470: printSegment:                            ▼
+   DEBUG: 2026-04-11 12:41:54,525:      pdf_renderer.py:  470: printSegment:     ┌─────────────────────────────────────────────────────────┐
+   DEBUG: 2026-04-11 12:41:54,526:      pdf_renderer.py:  470: printSegment:     │  6. GOLD TABLE — The Final Deliverable                  │
+   DEBUG: 2026-04-11 12:41:54,529:      pdf_renderer.py:  470: printSegment:     │                                                         │
+   DEBUG: 2026-04-11 12:41:54,531:      pdf_renderer.py:  470: printSegment:     │  student_id │ risk_score │ tier │ top_3_factors │ action│
+   DEBUG: 2026-04-11 12:41:54,533:      pdf_renderer.py:  470: printSegment:     │  ───────────┼────────────┼──────┼───────────────┼───────│
+   DEBUG: 2026-04-11 12:41:54,536:      pdf_renderer.py:  470: printSegment:     │  2847       │ 0.87       │ HIGH │ grade_drop,   │ Call  │
+   DEBUG: 2026-04-11 12:41:54,538:      pdf_renderer.py:  470: printSegment:     │             │            │      │ tuition,age   │ now   │
+   DEBUG: 2026-04-11 12:41:54,541:      pdf_renderer.py:  470: printSegment:     │  1203       │ 0.62       │ MED  │ fees,gpa,     │ Email │
+   DEBUG: 2026-04-11 12:41:54,543:      pdf_renderer.py:  470: printSegment:     │             │            │      │ attendance    │ alert │
+   DEBUG: 2026-04-11 12:41:54,546:      pdf_renderer.py:  470: printSegment:     │  4401       │ 0.23       │ LOW  │ —             │ Watch │
+   DEBUG: 2026-04-11 12:41:54,548:      pdf_renderer.py:  470: printSegment:     │                                                         │
+   DEBUG: 2026-04-11 12:41:54,551:      pdf_renderer.py:  470: printSegment:     │  Intervention Tiers:                                    │
+   DEBUG: 2026-04-11 12:41:54,555:      pdf_renderer.py:  470: printSegment:     │  • HIGH (>0.7): Immediate 1-on-1 counseling session     │
+   DEBUG: 2026-04-11 12:41:54,560:      pdf_renderer.py:  470: printSegment:     │  • MEDIUM (0.4-0.7): Email alert + advisor check-in    │
+   DEBUG: 2026-04-11 12:41:54,564:      pdf_renderer.py:  470: printSegment:     │  • LOW (<0.4): Monitor, no immediate action             │
+   DEBUG: 2026-04-11 12:41:54,568:      pdf_renderer.py:  470: printSegment:     └─────────────────────────────────────────────────────────┘
+   DEBUG: 2026-04-11 12:41:54,571:      pdf_renderer.py:  470: printSegment: PART 3: WHO USES THIS?
+   DEBUG: 2026-04-11 12:41:54,573:      pdf_renderer.py:  470: printSegment: Three User Personas
+   DEBUG: 2026-04-11 12:41:54,576:      pdf_renderer.py:  470: printSegment: 1. University Admin (Dean / Registrar)
+   DEBUG: 2026-04-11 12:41:54,579:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:54,581:      pdf_renderer.py:  470: printSegment: Opens:
+   DEBUG: 2026-04-11 12:41:54,583:      pdf_renderer.py:  470: printSegment:  Gold table dashboard every Monday morning
+   DEBUG: 2026-04-11 12:41:54,585:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:54,586:      pdf_renderer.py:  470: printSegment: Sees:
+   DEBUG: 2026-04-11 12:41:54,589:      pdf_renderer.py:  470: printSegment:  47 students flagged HIGH risk this semester, distributed across 6 departments
+   DEBUG: 2026-04-11 12:41:54,590:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:54,591:      pdf_renderer.py:  470: printSegment: Action:
+   DEBUG: 2026-04-11 12:41:54,594:      pdf_renderer.py:  470: printSegment:  Allocates counseling resources to departments with highest risk concentration
+   DEBUG: 2026-04-11 12:41:54,596:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:54,598:      pdf_renderer.py:  470: printSegment: Impact:
+   DEBUG: 2026-04-11 12:41:54,601:      pdf_renderer.py:  470: printSegment:  Budget decisions backed by DATA, not gut feeling
+   DEBUG: 2026-04-11 12:41:54,602:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:54,603:      pdf_renderer.py:  470: printSegment: Quote:
+   DEBUG: 2026-04-11 12:41:54,605:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:54,606:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:54,609:      pdf_renderer.py:  470: printSegment: Engineering department has 18 HIGH-risk students, allocate 2 additional counselors there
+   DEBUG: 2026-04-11 12:41:54,612:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:54,615:      pdf_renderer.py:  470: printSegment: 2. Academic Counselor / Faculty Advisor
+   DEBUG: 2026-04-11 12:41:54,618:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:54,619:      pdf_renderer.py:  470: printSegment: Opens:
+   DEBUG: 2026-04-11 12:41:54,621:      pdf_renderer.py:  470: printSegment:  Filtered view of their department
+   DEBUG: 2026-04-11 12:41:54,622:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:54,624:      pdf_renderer.py:  470: printSegment: s at-risk students
+   DEBUG: 2026-04-11 12:41:54,625:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:54,627:      pdf_renderer.py:  470: printSegment: Sees:
+   DEBUG: 2026-04-11 12:41:54,631:      pdf_renderer.py:  470: printSegment:  Per-student risk score + TOP 3 REASONS (from SHAP)
+   DEBUG: 2026-04-11 12:41:54,632:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:54,634:      pdf_renderer.py:  470: printSegment: Action:
+   DEBUG: 2026-04-11 12:41:54,636:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:54,637:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:54,639:      pdf_renderer.py:  470: printSegment: Rahul
+   DEBUG: 2026-04-11 12:41:54,640:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:54,643:      pdf_renderer.py:  470: printSegment: s grades dropped 40% + tuition unpaid
+   DEBUG: 2026-04-11 12:41:54,647:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:54,649:      pdf_renderer.py:  470: printSegment:  → Schedule 1-on-1, connect to financial
+   DEBUG: 2026-04-11 12:41:54,650:      pdf_renderer.py:  470: printSegment: aid
+   DEBUG: 2026-04-11 12:41:54,652:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:54,653:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:54,654:      pdf_renderer.py:  470: printSegment: Priya
+   DEBUG: 2026-04-11 12:41:54,655:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:54,659:      pdf_renderer.py:  470: printSegment: s engagement ratio is 0.3
+   DEBUG: 2026-04-11 12:41:54,663:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:54,665:      pdf_renderer.py:  470: printSegment:  → She
+   DEBUG: 2026-04-11 12:41:54,666:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:54,668:      pdf_renderer.py:  470: printSegment: s not attending → call her
+   DEBUG: 2026-04-11 12:41:54,670:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:54,673:      pdf_renderer.py:  470: printSegment: Impact:
+   DEBUG: 2026-04-11 12:41:54,675:      pdf_renderer.py:  470: printSegment:  Targeted interventions, not mass emails that get ignored
+   DEBUG: 2026-04-11 12:41:54,676:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:54,678:      pdf_renderer.py:  470: printSegment: Quote:
+   DEBUG: 2026-04-11 12:41:54,679:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:54,681:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:54,683:      pdf_renderer.py:  470: printSegment: I know exactly WHO to call and WHAT to say
+   DEBUG: 2026-04-11 12:41:54,684:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:54,686:      pdf_renderer.py:  470: printSegment: 3. The Student (Indirect Beneficiary)
+   DEBUG: 2026-04-11 12:41:54,689:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:54,691:      pdf_renderer.py:  470: printSegment: Never sees
+   DEBUG: 2026-04-11 12:41:54,692:      pdf_renderer.py:  470: printSegment:  the model or dashboard
+   DEBUG: 2026-04-11 12:41:54,694:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:54,696:      pdf_renderer.py:  470: printSegment: Never knows
+   DEBUG: 2026-04-11 12:41:54,698:      pdf_renderer.py:  470: printSegment:  they were flagged by ML
+   DEBUG: 2026-04-11 12:41:54,700:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:54,701:      pdf_renderer.py:  470: printSegment: Layer 2 experience:
+   DEBUG: 2026-04-11 12:41:54,703:      pdf_renderer.py:  470: printSegment:  Gets a friendly 
+   DEBUG: 2026-04-11 12:41:54,705:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:54,706:      pdf_renderer.py:  470: printSegment: semester check-in
+   DEBUG: 2026-04-11 12:41:54,707:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:54,711:      pdf_renderer.py:  470: printSegment:  call from the AI. Feels heard. Feels like
+   DEBUG: 2026-04-11 12:41:54,713:      pdf_renderer.py:  470: printSegment: someone cares.
+   DEBUG: 2026-04-11 12:41:54,715:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:54,716:      pdf_renderer.py:  470: printSegment: If confirmed at-risk:
+   DEBUG: 2026-04-11 12:41:54,718:      pdf_renderer.py:  470: printSegment:  Gets a call from their advisor within 48 hours: 
+   DEBUG: 2026-04-11 12:41:54,720:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:54,725:      pdf_renderer.py:  470: printSegment: Hey, I heard you might be
+   DEBUG: 2026-04-11 12:41:54,727:      pdf_renderer.py:  470: printSegment: facing financial challenges. I
+   DEBUG: 2026-04-11 12:41:54,728:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:54,730:      pdf_renderer.py:  470: printSegment: ve already looked into scholarship options for you.
+   DEBUG: 2026-04-11 12:41:54,732:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:54,734:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:54,738:      pdf_renderer.py:  470: printSegment: Key difference:
+   DEBUG: 2026-04-11 12:41:54,740:      pdf_renderer.py:  470: printSegment:  The counselor doesn
+   DEBUG: 2026-04-11 12:41:54,742:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:54,744:      pdf_renderer.py:  470: printSegment: t say 
+   DEBUG: 2026-04-11 12:41:54,746:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:54,748:      pdf_renderer.py:  470: printSegment: our model flagged you.
+   DEBUG: 2026-04-11 12:41:54,750:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:54,752:      pdf_renderer.py:  470: printSegment:  They say 
+   DEBUG: 2026-04-11 12:41:54,755:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:54,761:      pdf_renderer.py:  470: printSegment: I found some
+   DEBUG: 2026-04-11 12:41:54,765:      pdf_renderer.py:  470: printSegment: resources that might help.
+   DEBUG: 2026-04-11 12:41:54,768:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:54,771:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:54,773:      pdf_renderer.py:  470: printSegment: Impact:
+   DEBUG: 2026-04-11 12:41:54,779:      pdf_renderer.py:  470: printSegment:  Someone asked. Someone listened. Someone connected them to SPECIFIC help. They
+   DEBUG: 2026-04-11 12:41:54,783:      pdf_renderer.py:  470: printSegment: stay.
+   DEBUG: 2026-04-11 12:41:54,786:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:54,788:      pdf_renderer.py:  470: printSegment: Quote:
+   DEBUG: 2026-04-11 12:41:54,790:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:54,791:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:54,794:      pdf_renderer.py:  470: printSegment: The college called and asked how I was doing. Then my advisor found me a scholarship I
+   DEBUG: 2026-04-11 12:41:54,797:      pdf_renderer.py:  470: printSegment: didn
+   DEBUG: 2026-04-11 12:41:54,799:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:54,800:      pdf_renderer.py:  470: printSegment: t know existed. I almost quit — but now I
+   DEBUG: 2026-04-11 12:41:54,802:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:54,805:      pdf_renderer.py:  470: printSegment: m staying.
+   DEBUG: 2026-04-11 12:41:54,806:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:54,810:      pdf_renderer.py:  470: printSegment: PART 4: FEATURE ENGINEERING — Our Creativity Edge
+   DEBUG: 2026-04-11 12:41:54,814:      pdf_renderer.py:  470: printSegment: Original Features in Dataset (37 columns)
+   DEBUG: 2026-04-11 12:41:54,818:      pdf_renderer.py:  470: printSegment: Demographics, academic grades (Semester 1 
+   DEBUG: 2026-04-11 12:41:54,819:      pdf_renderer.py:  470: printSegment: &
+   DEBUG: 2026-04-11 12:41:54,826:      pdf_renderer.py:  470: printSegment:  2 across subjects), financial flags (tuition, debtor, scholarship),
+   DEBUG: 2026-04-11 12:41:54,829:      pdf_renderer.py:  470: printSegment: macroeconomic context (GDP, unemployment, inflation).
+   DEBUG: 2026-04-11 12:41:54,832:      pdf_renderer.py:  470: printSegment: Our Engineered Features (the 20% creativity score)
+   DEBUG: 2026-04-11 12:41:54,835:      pdf_renderer.py:  470: printSegment: 1. Grade Trajectory Slope
+   DEBUG: 2026-04-11 12:41:54,837:      pdf_renderer.py:  470: printSegment: Not just "what is their grade?" but "are they improving or
+   DEBUG: 2026-04-11 12:41:54,840:      pdf_renderer.py:  470: printSegment: declining?"
+   DEBUG: 2026-04-11 12:41:54,842:      pdf_renderer.py:  470: printSegment: Student A: Sem1 = 14, Sem2 = 14  →  slope = 0.0  (stable)
+   DEBUG: 2026-04-11 12:41:54,848:      pdf_renderer.py:  470: printSegment: Student B: Sem1 = 14, Sem2 = 9   →  slope = -5.0 (declining — HIGH
+   DEBUG: 2026-04-11 12:41:54,850:      pdf_renderer.py:  470: printSegment: RISK)
+   DEBUG: 2026-04-11 12:41:54,853:      pdf_renderer.py:  470: printSegment: Student C: Sem1 = 9,  Sem2 = 13  →  slope = +4.0 (improving — LOW RISK)
+   DEBUG: 2026-04-11 12:41:54,854:      pdf_renderer.py:  470: printSegment: Formula: mean(Sem2 grades) - mean(Sem1 grades)
+   DEBUG: 2026-04-11 12:41:54,857:      pdf_renderer.py:  470: printSegment: WHY: A declining student with a 12 average is MORE at risk than 
+   DEBUG: 2026-04-11 12:41:54,859:      pdf_renderer.py:  470: printSegment:      a stable student with a 10 average. Trajectory > snapshot.
+   DEBUG: 2026-04-11 12:41:54,862:      pdf_renderer.py:  470: printSegment: 2. Financial Stress Index
+   DEBUG: 2026-04-11 12:41:54,866:      pdf_renderer.py:  470: printSegment: Combines 4+ signals into one composite score:
+   DEBUG: 2026-04-11 12:41:54,869:      pdf_renderer.py:  470: printSegment: financial_stress = (
+   DEBUG: 2026-04-11 12:41:54,873:      pdf_renderer.py:  470: printSegment:     tuition_not_paid × 0.35     # 35% weight — strongest signal
+   DEBUG: 2026-04-11 12:41:54,875:      pdf_renderer.py:  470: printSegment:     + debtor_flag × 0.25        # 25% weight — existing debt
+   DEBUG: 2026-04-11 12:41:54,879:      pdf_renderer.py:  470: printSegment:     + (1 - scholarship) × 0.20  # 20% weight — no scholarship = more
+   DEBUG: 2026-04-11 12:41:54,881:      pdf_renderer.py:  470: printSegment: stress
+   DEBUG: 2026-04-11 12:41:54,883:      pdf_renderer.py:  470: printSegment:     + inflation_rate × 0.10     # 10% weight — macro pressure
+   DEBUG: 2026-04-11 12:41:54,885:      pdf_renderer.py:  470: printSegment:     + (1/GDP_growth) × 0.10     # 10% weight — economic downturn
+   DEBUG: 2026-04-11 12:41:54,887:      pdf_renderer.py:  470: printSegment: )
+   DEBUG: 2026-04-11 12:41:54,889:      pdf_renderer.py:  470: printSegment: WHY: A student with unpaid tuition in a recession year with no 
+   DEBUG: 2026-04-11 12:41:54,891:      pdf_renderer.py:  470: printSegment:      scholarship is under EXTREME financial pressure. No single 
+   DEBUG: 2026-04-11 12:41:54,893:      pdf_renderer.py:  470: printSegment:      feature captures this — the composite does.
+   DEBUG: 2026-04-11 12:41:54,894:      pdf_renderer.py:  470: printSegment: 3. Curricular Engagement Ratio
+   DEBUG: 2026-04-11 12:41:54,897:      pdf_renderer.py:  470: printSegment: engagement_ratio = units_approved / units_enrolled
+   DEBUG: 2026-04-11 12:41:54,900:      pdf_renderer.py:  470: printSegment: Student A: enrolled in 6 courses, approved 6  →  ratio = 1.0
+   DEBUG: 2026-04-11 12:41:54,901:      pdf_renderer.py:  470: printSegment: (engaged)
+   DEBUG: 2026-04-11 12:41:54,903:      pdf_renderer.py:  470: printSegment: Student B: enrolled in 6 courses, approved 2  →  ratio = 0.33
+   DEBUG: 2026-04-11 12:41:54,905:      pdf_renderer.py:  470: printSegment: (disengaged)
+   DEBUG: 2026-04-11 12:41:54,910:      pdf_renderer.py:  470: printSegment: WHY: Low approval rate = student is not keeping up. Strong
+   DEBUG: 2026-04-11 12:41:54,911:      pdf_renderer.py:  470: printSegment: predictor 
+   DEBUG: 2026-04-11 12:41:54,915:      pdf_renderer.py:  470: printSegment:      of withdrawal — they're already mentally checked out.
+   DEBUG: 2026-04-11 12:41:54,917:      pdf_renderer.py:  470: printSegment: 4. Semester-over-Semester Grade Delta
+   DEBUG: 2026-04-11 12:41:54,919:      pdf_renderer.py:  470: printSegment: For each subject area, compute: Sem2_grade - Sem1_grade
+   DEBUG: 2026-04-11 12:41:54,921:      pdf_renderer.py:  470: printSegment: Curricular Unit 1: Sem1 = 15, Sem2 = 12  →  delta = -3
+   DEBUG: 2026-04-11 12:41:54,923:      pdf_renderer.py:  470: printSegment: Curricular Unit 2: Sem1 = 13, Sem2 = 8   →  delta = -5
+   DEBUG: 2026-04-11 12:41:54,926:      pdf_renderer.py:  470: printSegment: avg_grade_delta = mean(all deltas) = -4.0
+   DEBUG: 2026-04-11 12:41:54,930:      pdf_renderer.py:  470: printSegment: WHY: Consistent decline across ALL subjects is a stronger signal 
+   DEBUG: 2026-04-11 12:41:54,933:      pdf_renderer.py:  470: printSegment:      than decline in one subject (which could be a hard course).
+   DEBUG: 2026-04-11 12:41:54,935:      pdf_renderer.py:  470: printSegment: 5. Economic Pressure Index
+   DEBUG: 2026-04-11 12:41:54,937:      pdf_renderer.py:  470: printSegment: economic_pressure = unemployment_rate × inflation_rate / GDP_growth
+   DEBUG: 2026-04-11 12:41:54,941:      pdf_renderer.py:  470: printSegment: High unemployment + high inflation + low GDP = MAXIMUM pressure
+   DEBUG: 2026-04-11 12:41:54,946:      pdf_renderer.py:  470: printSegment: WHY: A student whose family is under economic stress is more likely
+   DEBUG: 2026-04-11 12:41:54,949:      pdf_renderer.py:  470: printSegment: 
+   DEBUG: 2026-04-11 12:41:54,952:      pdf_renderer.py:  470: printSegment:      to drop out to work, even if their grades are acceptable.
+   DEBUG: 2026-04-11 12:41:54,955:      pdf_renderer.py:  470: printSegment: 6. Age Risk Indicator
+   DEBUG: 2026-04-11 12:41:54,958:      pdf_renderer.py:  470: printSegment: age_risk = 1 if age_at_enrollment > 25 else 0
+   DEBUG: 2026-04-11 12:41:54,963:      pdf_renderer.py:  470: printSegment: WHY: Mature students (working adults, parents) have competing 
+   DEBUG: 2026-04-11 12:41:54,968:      pdf_renderer.py:  470: printSegment:      responsibilities. Research shows 25+ age is a consistent 
+   DEBUG: 2026-04-11 12:41:54,970:      pdf_renderer.py:  470: printSegment:      dropout risk factor.
+   DEBUG: 2026-04-11 12:41:54,973:      pdf_renderer.py:  470: printSegment: PART 5: FAIRNESS AUDIT — The Winning Differentiator
+   DEBUG: 2026-04-11 12:41:54,975:      pdf_renderer.py:  470: printSegment: Why This Is 25% of the Score
+   DEBUG: 2026-04-11 12:41:54,978:      pdf_renderer.py:  470: printSegment: Most hackathon teams train a model and show accuracy. 
+   DEBUG: 2026-04-11 12:41:54,979:      pdf_renderer.py:  470: printSegment: We prove ours is fair.
+   DEBUG: 2026-04-11 12:41:54,982:      pdf_renderer.py:  470: printSegment: The problem statement explicitly warns:
+   DEBUG: 2026-04-11 12:41:54,983:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:54,993:      pdf_renderer.py:  470: printSegment: A model that disproportionately flags students from lower-income backgrounds or specific
+   DEBUG: 2026-04-11 12:41:54,994:      pdf_renderer.py:  470: printSegment: demographics is a liability, not a tool.
+   DEBUG: 2026-04-11 12:41:54,997:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:54,998:      pdf_renderer.py:  470: printSegment: What We Audit
+   DEBUG: 2026-04-11 12:41:55,000:      pdf_renderer.py:  470: printSegment: Protected Attributes:
+   DEBUG: 2026-04-11 12:41:55,003:      pdf_renderer.py:  470: printSegment:  1 
+   DEBUG: 2026-04-11 12:41:55,005:      pdf_renderer.py:  470: printSegment: Gender
+   DEBUG: 2026-04-11 12:41:55,007:      pdf_renderer.py:  470: printSegment:  (Male / Female)
+   DEBUG: 2026-04-11 12:41:55,009:      pdf_renderer.py:  470: printSegment:  2 
+   DEBUG: 2026-04-11 12:41:55,011:      pdf_renderer.py:  470: printSegment: Socioeconomic group
+   DEBUG: 2026-04-11 12:41:55,014:      pdf_renderer.py:  470: printSegment:  — derived from: scholarship holder + parent occupation + tuition payment status
+   DEBUG: 2026-04-11 12:41:55,017:      pdf_renderer.py:  470: printSegment: Metrics We Compute:
+   DEBUG: 2026-04-11 12:41:55,021:      pdf_renderer.py:  470: printSegment: A. Demographic Parity Ratio
+   DEBUG: 2026-04-11 12:41:55,023:      pdf_renderer.py:  470: printSegment: Question: "Does the model flag men and women at similar rates?"
+   DEBUG: 2026-04-11 12:41:55,027:      pdf_renderer.py:  470: printSegment:            P(flagged as at-risk | Female)
+   DEBUG: 2026-04-11 12:41:55,029:      pdf_renderer.py:  470: printSegment:   DPR  =  ─────────────────────────────────
+   DEBUG: 2026-04-11 12:41:55,031:      pdf_renderer.py:  470: printSegment:            P(flagged as at-risk | Male)
+   DEBUG: 2026-04-11 12:41:55,034:      pdf_renderer.py:  470: printSegment:   FAIR if: 0.8 ≤ DPR ≤ 1.25
+   DEBUG: 2026-04-11 12:41:55,036:      pdf_renderer.py:  470: printSegment:   UNFAIR if: DPR < 0.8 or DPR > 1.25
+   DEBUG: 2026-04-11 12:41:55,038:      pdf_renderer.py:  470: printSegment: Example:
+   DEBUG: 2026-04-11 12:41:55,043:      pdf_renderer.py:  470: printSegment:   Model flags 22% of females, 25% of males  →  DPR = 0.88  ✅ FAIR
+   DEBUG: 2026-04-11 12:41:55,047:      pdf_renderer.py:  470: printSegment:   Model flags 35% of females, 15% of males  →  DPR = 2.33  ❌ UNFAIR
+   DEBUG: 2026-04-11 12:41:55,050:      pdf_renderer.py:  470: printSegment: B. Equal Opportunity Ratio
+   DEBUG: 2026-04-11 12:41:55,053:      pdf_renderer.py:  470: printSegment: Question: "Among students who ACTUALLY dropped out, does the 
+   DEBUG: 2026-04-11 12:41:55,055:      pdf_renderer.py:  470: printSegment:            model catch them equally across groups?"
+   DEBUG: 2026-04-11 12:41:55,057:      pdf_renderer.py:  470: printSegment:            TPR(Female)    True Positive Rate for females
+   DEBUG: 2026-04-11 12:41:55,061:      pdf_renderer.py:  470: printSegment:   EOR  =  ───────────  = ──────────────────────────────
+   DEBUG: 2026-04-11 12:41:55,064:      pdf_renderer.py:  470: printSegment:            TPR(Male)      True Positive Rate for males
+   DEBUG: 2026-04-11 12:41:55,066:      pdf_renderer.py:  470: printSegment:   FAIR if: 0.8 ≤ EOR ≤ 1.25
+   DEBUG: 2026-04-11 12:41:55,068:      pdf_renderer.py:  470: printSegment:   UNFAIR if: EOR < 0.8 or EOR > 1.25
+   DEBUG: 2026-04-11 12:41:55,070:      pdf_renderer.py:  470: printSegment: Example:
+   DEBUG: 2026-04-11 12:41:55,072:      pdf_renderer.py:  470: printSegment:   Model catches 85% of female dropouts, 82% of male dropouts
+   DEBUG: 2026-04-11 12:41:55,075:      pdf_renderer.py:  470: printSegment:   →  EOR = 1.04  ✅ FAIR (catches both groups equally)
+   DEBUG: 2026-04-11 12:41:55,077:      pdf_renderer.py:  470: printSegment: C. Predictive Parity
+   DEBUG: 2026-04-11 12:41:55,081:      pdf_renderer.py:  470: printSegment: Question: "When the model says HIGH risk, is it equally accurate 
+   DEBUG: 2026-04-11 12:41:55,083:      pdf_renderer.py:  470: printSegment:            for all groups?"
+   DEBUG: 2026-04-11 12:41:55,084:      pdf_renderer.py:  470: printSegment:            Precision(Group A)
+   DEBUG: 2026-04-11 12:41:55,086:      pdf_renderer.py:  470: printSegment:   PPR  =  ──────────────────
+   DEBUG: 2026-04-11 12:41:55,087:      pdf_renderer.py:  470: printSegment:            Precision(Group B)
+   DEBUG: 2026-04-11 12:41:55,089:      pdf_renderer.py:  470: printSegment:   If model says "HIGH risk" for females but is wrong 40% of the
+   DEBUG: 2026-04-11 12:41:55,090:      pdf_renderer.py:  470: printSegment: time,
+   DEBUG: 2026-04-11 12:41:55,092:      pdf_renderer.py:  470: printSegment:   while being wrong only 10% for males → model is unfairly alarming 
+   DEBUG: 2026-04-11 12:41:55,094:      pdf_renderer.py:  470: printSegment:   female students. 
+   DEBUG: 2026-04-11 12:41:55,096:      pdf_renderer.py:  470: printSegment: How We Report It
+   DEBUG: 2026-04-11 12:41:55,097:      pdf_renderer.py:  470: printSegment: All metrics are saved to a 
+   DEBUG: 2026-04-11 12:41:55,099:      pdf_renderer.py:  470: printSegment: fairness
+   DEBUG: 2026-04-11 12:41:55,101:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:55,102:      pdf_renderer.py:  470: printSegment: audit
+   DEBUG: 2026-04-11 12:41:55,104:      pdf_renderer.py:  470: printSegment:  Delta table:
+   DEBUG: 2026-04-11 12:41:55,105:      pdf_renderer.py:  470: printSegment: | model
+   DEBUG: 2026-04-11 12:41:55,106:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:55,108:      pdf_renderer.py:  470: printSegment: name | attribute | group
+   DEBUG: 2026-04-11 12:41:55,109:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:55,110:      pdf_renderer.py:  470: printSegment: a | group
+   DEBUG: 2026-04-11 12:41:55,111:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:55,113:      pdf_renderer.py:  470: printSegment: b | metric | value | is
+   DEBUG: 2026-04-11 12:41:55,114:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:55,115:      pdf_renderer.py:  470: printSegment: fair |
+   DEBUG: 2026-04-11 12:41:55,117:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:55,119:      pdf_renderer.py:  470: printSegment: |-----------|-----------|---------|---------|--------|-------|---------|
+   DEBUG: 2026-04-11 12:41:55,120:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:55,122:      pdf_renderer.py:  470: printSegment: | xgboost
+   DEBUG: 2026-04-11 12:41:55,123:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:55,124:      pdf_renderer.py:  470: printSegment: v1 | gender | Female | Male | demographic
+   DEBUG: 2026-04-11 12:41:55,125:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:55,129:      pdf_renderer.py:  470: printSegment: parity | 0.88 | YES |
+   DEBUG: 2026-04-11 12:41:55,130:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:55,132:      pdf_renderer.py:  470: printSegment: | xgboost
+   DEBUG: 2026-04-11 12:41:55,133:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:55,135:      pdf_renderer.py:  470: printSegment: v1 | gender | Female | Male | equal
+   DEBUG: 2026-04-11 12:41:55,136:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:55,138:      pdf_renderer.py:  470: printSegment: opportunity | 1.04 | YES |
+   DEBUG: 2026-04-11 12:41:55,139:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:55,141:      pdf_renderer.py:  470: printSegment: | xgboost
+   DEBUG: 2026-04-11 12:41:55,142:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:55,144:      pdf_renderer.py:  470: printSegment: v1 |
+   DEBUG: 2026-04-11 12:41:55,146:      pdf_renderer.py:  470: printSegment: socioeconomic | low
+   DEBUG: 2026-04-11 12:41:55,147:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:55,149:      pdf_renderer.py:  470: printSegment: income | high
+   DEBUG: 2026-04-11 12:41:55,150:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:55,151:      pdf_renderer.py:  470: printSegment: income | demographic
+   DEBUG: 2026-04-11 12:41:55,153:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:55,154:      pdf_renderer.py:  470: printSegment: parity | 1.42 | NO |
+   DEBUG: 2026-04-11 12:41:55,155:      pdf_renderer.py:  470: printSegment: If We Find Bias (We Probably Will)
+   DEBUG: 2026-04-11 12:41:55,157:      pdf_renderer.py:  470: printSegment: We don
+   DEBUG: 2026-04-11 12:41:55,159:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:55,161:      pdf_renderer.py:  470: printSegment: t hide it.
+   DEBUG: 2026-04-11 12:41:55,163:      pdf_renderer.py:  470: printSegment:  The PDF says 
+   DEBUG: 2026-04-11 12:41:55,164:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,167:      pdf_renderer.py:  470: printSegment: document any disparity found.
+   DEBUG: 2026-04-11 12:41:55,167:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,169:      pdf_renderer.py:  470: printSegment: If the model over-flags low-income students:
+   DEBUG: 2026-04-11 12:41:55,171:      pdf_renderer.py:  470: printSegment:  1 
+   DEBUG: 2026-04-11 12:41:55,173:      pdf_renderer.py:  470: printSegment: Document it
+   DEBUG: 2026-04-11 12:41:55,175:      pdf_renderer.py:  470: printSegment:  — 
+   DEBUG: 2026-04-11 12:41:55,176:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,179:      pdf_renderer.py:  470: printSegment: Model flags 38% of low-income vs 18% of high-income (DPR = 2.11)
+   DEBUG: 2026-04-11 12:41:55,180:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,182:      pdf_renderer.py:  470: printSegment:  2 
+   DEBUG: 2026-04-11 12:41:55,184:      pdf_renderer.py:  470: printSegment: Explain why
+   DEBUG: 2026-04-11 12:41:55,185:      pdf_renderer.py:  470: printSegment:  — 
+   DEBUG: 2026-04-11 12:41:55,187:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,190:      pdf_renderer.py:  470: printSegment: Historical data shows low-income students dropped out more; model learned this
+   DEBUG: 2026-04-11 12:41:55,192:      pdf_renderer.py:  470: printSegment: bias
+   DEBUG: 2026-04-11 12:41:55,194:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,196:      pdf_renderer.py:  470: printSegment:  3 
+   DEBUG: 2026-04-11 12:41:55,198:      pdf_renderer.py:  470: printSegment: Propose mitigation:
+   DEBUG: 2026-04-11 12:41:55,199:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:55,201:      pdf_renderer.py:  470: printSegment: Threshold adjustment: use different risk thresholds per group
+   DEBUG: 2026-04-11 12:41:55,203:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:55,207:      pdf_renderer.py:  470: printSegment: Sample reweighting: upweight underrepresented groups in training
+   DEBUG: 2026-04-11 12:41:55,208:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:55,211:      pdf_renderer.py:  470: printSegment: Feature removal: drop direct socioeconomic features, keep only academic signals
+   DEBUG: 2026-04-11 12:41:55,214:      pdf_renderer.py:  470: printSegment:  4 
+   DEBUG: 2026-04-11 12:41:55,216:      pdf_renderer.py:  470: printSegment: Show the trade-off
+   DEBUG: 2026-04-11 12:41:55,218:      pdf_renderer.py:  470: printSegment:  — 
+   DEBUG: 2026-04-11 12:41:55,219:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,223:      pdf_renderer.py:  470: printSegment: Removing scholarship feature reduces bias (DPR: 2.11 → 1.15) but accuracy
+   DEBUG: 2026-04-11 12:41:55,225:      pdf_renderer.py:  470: printSegment: drops 2%
+   DEBUG: 2026-04-11 12:41:55,226:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,230:      pdf_renderer.py:  470: printSegment: This honest analysis IS the point. Judges reward intellectual honesty over perfect numbers.
+   DEBUG: 2026-04-11 12:41:55,233:      pdf_renderer.py:  470: printSegment: PART 6: SHAP EXPLAINABILITY
+   DEBUG: 2026-04-11 12:41:55,236:      pdf_renderer.py:  470: printSegment: What It Does
+   DEBUG: 2026-04-11 12:41:55,239:      pdf_renderer.py:  470: printSegment: SHAP (SHapley Additive exPlanations) tells you 
+   DEBUG: 2026-04-11 12:41:55,241:      pdf_renderer.py:  470: printSegment: which features pushed each student
+   DEBUG: 2026-04-11 12:41:55,243:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:55,245:      pdf_renderer.py:  470: printSegment: s prediction
+   DEBUG: 2026-04-11 12:41:55,247:      pdf_renderer.py:  470: printSegment:  higher or
+   DEBUG: 2026-04-11 12:41:55,249:      pdf_renderer.py:  470: printSegment: lower.
+   DEBUG: 2026-04-11 12:41:55,251:      pdf_renderer.py:  470: printSegment: Global Feature Importance (for all students)
+   DEBUG: 2026-04-11 12:41:55,253:      pdf_renderer.py:  470: printSegment: Top 10 Risk Factors Across All Students:
+   DEBUG: 2026-04-11 12:41:55,255:      pdf_renderer.py:  470: printSegment: ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   DEBUG: 2026-04-11 12:41:55,258:      pdf_renderer.py:  470: printSegment:  #1  ████████████████████████  grade_trajectory (-5.2 avg among dropouts)
+   DEBUG: 2026-04-11 12:41:55,261:      pdf_renderer.py:  470: printSegment:  #2  ██████████████████████    tuition_fees_not_paid (0.73 correlation)
+   DEBUG: 2026-04-11 12:41:55,265:      pdf_renderer.py:  470: printSegment:  #3  ████████████████████      financial_stress_index (composite)
+   DEBUG: 2026-04-11 12:41:55,267:      pdf_renderer.py:  470: printSegment:  #4  ██████████████████        curricular_engagement_ratio (0.33 avg)
+   DEBUG: 2026-04-11 12:41:55,269:      pdf_renderer.py:  470: printSegment:  #5  ████████████████          semester_grade_delta (-3.8 avg)
+   DEBUG: 2026-04-11 12:41:55,271:      pdf_renderer.py:  470: printSegment:  #6  ██████████████            age_at_enrollment (>25 = higher risk)
+   DEBUG: 2026-04-11 12:41:55,272:      pdf_renderer.py:  470: printSegment:  #7  ████████████              debtor_flag
+   DEBUG: 2026-04-11 12:41:55,275:      pdf_renderer.py:  470: printSegment:  #8  ██████████                scholarship_holder (0 = no support)
+   DEBUG: 2026-04-11 12:41:55,276:      pdf_renderer.py:  470: printSegment:  #9  ████████                  unemployment_rate (macro factor)
+   DEBUG: 2026-04-11 12:41:55,279:      pdf_renderer.py:  470: printSegment:  #10 ██████                    parent_occupation (unskilled)
+   DEBUG: 2026-04-11 12:41:55,280:      pdf_renderer.py:  470: printSegment: Per-Student Explanation (the 
+   DEBUG: 2026-04-11 12:41:55,282:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,283:      pdf_renderer.py:  470: printSegment: wow
+   DEBUG: 2026-04-11 12:41:55,284:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,286:      pdf_renderer.py:  470: printSegment:  factor)
+   DEBUG: 2026-04-11 12:41:55,287:      pdf_renderer.py:  470: printSegment: ╔═══════════════════════════════════════════════════════════╗
+   DEBUG: 2026-04-11 12:41:55,289:      pdf_renderer.py:  470: printSegment: ║  STUDENT #2847 — Risk Score: 0.87 (HIGH)                 ║
+   DEBUG: 2026-04-11 12:41:55,291:      pdf_renderer.py:  470: printSegment: ╠═══════════════════════════════════════════════════════════╣
+   DEBUG: 2026-04-11 12:41:55,293:      pdf_renderer.py:  470: printSegment: ║                                                           ║
+   DEBUG: 2026-04-11 12:41:55,294:      pdf_renderer.py:  470: printSegment: ║  WHY this student is at risk:                            ║
+   DEBUG: 2026-04-11 12:41:55,297:      pdf_renderer.py:  470: printSegment: ║                                                           ║
+   DEBUG: 2026-04-11 12:41:55,299:      pdf_renderer.py:  470: printSegment: ║  Factor #1: Grade Trajectory = -5.2           (+0.23)    ║
+   DEBUG: 2026-04-11 12:41:55,302:      pdf_renderer.py:  470: printSegment: ║     Semester 2 grades dropped 40% from Semester 1        ║
+   DEBUG: 2026-04-11 12:41:55,303:      pdf_renderer.py:  470: printSegment: ║     ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░  → pushes toward risk  ║
+   DEBUG: 2026-04-11 12:41:55,305:      pdf_renderer.py:  470: printSegment: ║                                                           ║
+   DEBUG: 2026-04-11 12:41:55,308:      pdf_renderer.py:  470: printSegment: ║  Factor #2: Tuition Fees Unpaid = YES         (+0.19)    ║
+   DEBUG: 2026-04-11 12:41:55,310:      pdf_renderer.py:  470: printSegment: ║     Financial stress signal                              ║
+   DEBUG: 2026-04-11 12:41:55,311:      pdf_renderer.py:  470: printSegment: ║     ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░  → pushes toward risk  ║
+   DEBUG: 2026-04-11 12:41:55,314:      pdf_renderer.py:  470: printSegment: ║                                                           ║
+   DEBUG: 2026-04-11 12:41:55,316:      pdf_renderer.py:  470: printSegment: ║  Factor #3: Age at Enrollment = 34            (+0.11)    ║
+   DEBUG: 2026-04-11 12:41:55,318:      pdf_renderer.py:  470: printSegment: ║     Mature student — competing responsibilities          ║
+   DEBUG: 2026-04-11 12:41:55,320:      pdf_renderer.py:  470: printSegment: ║     ▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░░░░  → pushes toward risk  ║
+   DEBUG: 2026-04-11 12:41:55,322:      pdf_renderer.py:  470: printSegment: ║                                                           ║
+   DEBUG: 2026-04-11 12:41:55,325:      pdf_renderer.py:  470: printSegment: ║  RECOMMENDED ACTION: Immediate counselor meeting.        ║
+   DEBUG: 2026-04-11 12:41:55,327:      pdf_renderer.py:  470: printSegment: ║  Connect to financial aid office. Check work schedule.   ║
+   DEBUG: 2026-04-11 12:41:55,329:      pdf_renderer.py:  470: printSegment: ╚═══════════════════════════════════════════════════════════╝
+   DEBUG: 2026-04-11 12:41:55,331:      pdf_renderer.py:  470: printSegment: This is what makes the system USABLE.
+   DEBUG: 2026-04-11 12:41:55,333:      pdf_renderer.py:  470: printSegment:  A counselor can
+   DEBUG: 2026-04-11 12:41:55,336:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:55,337:      pdf_renderer.py:  470: printSegment: t act on 
+   DEBUG: 2026-04-11 12:41:55,338:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,339:      pdf_renderer.py:  470: printSegment: risk score 0.87.
+   DEBUG: 2026-04-11 12:41:55,341:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,342:      pdf_renderer.py:  470: printSegment:  But they CAN act on 
+   DEBUG: 2026-04-11 12:41:55,344:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,348:      pdf_renderer.py:  470: printSegment: grades
+   DEBUG: 2026-04-11 12:41:55,350:      pdf_renderer.py:  470: printSegment: dropped 40%, fees unpaid, mature student.
+   DEBUG: 2026-04-11 12:41:55,353:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,356:      pdf_renderer.py:  470: printSegment: PART 7: GOLD TABLE — The Final Output
+   DEBUG: 2026-04-11 12:41:55,357:      pdf_renderer.py:  470: printSegment: What the University Gets
+   DEBUG: 2026-04-11 12:41:55,359:      pdf_renderer.py:  470: printSegment: The Gold table is the 
+   DEBUG: 2026-04-11 12:41:55,362:      pdf_renderer.py:  470: printSegment: single source of truth
+   DEBUG: 2026-04-11 12:41:55,365:      pdf_renderer.py:  470: printSegment:  for student retention:
+   DEBUG: 2026-04-11 12:41:55,366:      pdf_renderer.py:  470: printSegment: | student
+   DEBUG: 2026-04-11 12:41:55,369:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:55,371:      pdf_renderer.py:  470: printSegment: id | risk
+   DEBUG: 2026-04-11 12:41:55,373:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:55,375:      pdf_renderer.py:  470: printSegment: score | risk
+   DEBUG: 2026-04-11 12:41:55,377:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:55,379:      pdf_renderer.py:  470: printSegment: tier | top
+   DEBUG: 2026-04-11 12:41:55,380:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:55,382:      pdf_renderer.py:  470: printSegment: factor
+   DEBUG: 2026-04-11 12:41:55,383:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:55,385:      pdf_renderer.py:  470: printSegment: 1 | top
+   DEBUG: 2026-04-11 12:41:55,387:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:55,388:      pdf_renderer.py:  470: printSegment: factor
+   DEBUG: 2026-04-11 12:41:55,390:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:55,391:      pdf_renderer.py:  470: printSegment: 2 | top
+   DEBUG: 2026-04-11 12:41:55,394:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:55,396:      pdf_renderer.py:  470: printSegment: factor
+   DEBUG: 2026-04-11 12:41:55,397:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:55,399:      pdf_renderer.py:  470: printSegment: 3 | recommended
+   DEBUG: 2026-04-11 12:41:55,400:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:55,402:      pdf_renderer.py:  470: printSegment: action |
+   DEBUG: 2026-04-11 12:41:55,404:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:55,406:      pdf_renderer.py:  470: printSegment: |-----------|-----------|----------|-------------|-------------|-------------|-------------------|
+   DEBUG: 2026-04-11 12:41:55,412:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:55,416:      pdf_renderer.py:  470: printSegment: | 2847 | 0.87 | HIGH | grade
+   DEBUG: 2026-04-11 12:41:55,418:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:55,419:      pdf_renderer.py:  470: printSegment: drop
+   DEBUG: 2026-04-11 12:41:55,421:      pdf_renderer.py:  470: printSegment: -40% | tuition
+   DEBUG: 2026-04-11 12:41:55,422:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:55,423:      pdf_renderer.py:  470: printSegment: unpaid | age
+   DEBUG: 2026-04-11 12:41:55,426:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:55,428:      pdf_renderer.py:  470: printSegment: 34 | Immediate 1-on-1 |
+   DEBUG: 2026-04-11 12:41:55,430:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:55,432:      pdf_renderer.py:  470: printSegment: | 1203 | 0.62 | MEDIUM | fees
+   DEBUG: 2026-04-11 12:41:55,434:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:55,436:      pdf_renderer.py:  470: printSegment: overdue | low
+   DEBUG: 2026-04-11 12:41:55,437:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:55,439:      pdf_renderer.py:  470: printSegment: engagement | econ
+   DEBUG: 2026-04-11 12:41:55,441:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:55,443:      pdf_renderer.py:  470: printSegment: pressure | Email + check-in |
+   DEBUG: 2026-04-11 12:41:55,444:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:55,447:      pdf_renderer.py:  470: printSegment: | 3891 | 0.71 | HIGH | failing
+   DEBUG: 2026-04-11 12:41:55,448:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:55,451:      pdf_renderer.py:  470: printSegment: 3
+   DEBUG: 2026-04-11 12:41:55,452:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:55,453:      pdf_renderer.py:  470: printSegment: subjects | debtor | no
+   DEBUG: 2026-04-11 12:41:55,455:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:55,458:      pdf_renderer.py:  470: printSegment: scholarship | Financial aid
+   DEBUG: 2026-04-11 12:41:55,460:      pdf_renderer.py:  470: printSegment: referral |
+   DEBUG: 2026-04-11 12:41:55,463:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:55,465:      pdf_renderer.py:  470: printSegment: | 4401 | 0.23 | LOW | slight
+   DEBUG: 2026-04-11 12:41:55,467:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:55,468:      pdf_renderer.py:  470: printSegment: grade
+   DEBUG: 2026-04-11 12:41:55,471:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:55,475:      pdf_renderer.py:  470: printSegment: dip | — | — | Monitor only |
+   DEBUG: 2026-04-11 12:41:55,476:      pdf_renderer.py:  470: printSegment: Intervention Tiers
+   DEBUG: 2026-04-11 12:41:55,480:      pdf_renderer.py:  470: printSegment: | Tier | Risk Score | Count (est.) | Action | Timeline |
+   DEBUG: 2026-04-11 12:41:55,483:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:55,484:      pdf_renderer.py:  470: printSegment: |------|-----------|-------------|--------|----------|
+   DEBUG: 2026-04-11 12:41:55,486:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:55,495:      pdf_renderer.py:  470: printSegment: | HIGH | > 0.7 |
+   DEBUG: 2026-04-11 12:41:55,498:      pdf_renderer.py:  470: printSegment: ~200 students | Personal counselor call + financial aid review | Within 48 hours |
+   DEBUG: 2026-04-11 12:41:55,501:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:55,510:      pdf_renderer.py:  470: printSegment: | MEDIUM | 0.4 – 0.7 | ~500 students
+   DEBUG: 2026-04-11 12:41:55,514:      pdf_renderer.py:  470: printSegment: | Automated email alert + advisor dashboard flag | Within 1 week |
+   DEBUG: 2026-04-11 12:41:55,516:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:55,516:      pdf_renderer.py:  470: printSegment: | LOW | 
+   DEBUG: 2026-04-11 12:41:55,519:      pdf_renderer.py:  470: printSegment: <
+   DEBUG: 2026-04-11 12:41:55,524:      pdf_renderer.py:  470: printSegment:  0.4 | ~3,700 students | No action.
+   DEBUG: 2026-04-11 12:41:55,525:      pdf_renderer.py:  470: printSegment: Monitor in next cycle. | Next semester |
+   DEBUG: 2026-04-11 12:41:55,530:      pdf_renderer.py:  470: printSegment: LAYER 2: AI VOICE VERIFICATION — THE INNOVATION THAT
+   DEBUG: 2026-04-11 12:41:55,532:      pdf_renderer.py:  470: printSegment: CHANGES EVERYTHING
+   DEBUG: 2026-04-11 12:41:55,533:      pdf_renderer.py:  470: printSegment: The Problem With Layer 1 Alone
+   DEBUG: 2026-04-11 12:41:55,539:      pdf_renderer.py:  470: printSegment: Every ML model has false positives. A student might show declining grades because:
+   DEBUG: 2026-04-11 12:41:55,542:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:55,544:      pdf_renderer.py:  470: printSegment: They switched majors (not dropout risk — just a transition)
+   DEBUG: 2026-04-11 12:41:55,547:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:55,549:      pdf_renderer.py:  470: printSegment: They had a medical emergency (temporary, will recover)
+   DEBUG: 2026-04-11 12:41:55,552:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:55,554:      pdf_renderer.py:  470: printSegment: The semester was genuinely harder (course difficulty, not student failure)
+   DEBUG: 2026-04-11 12:41:55,558:      pdf_renderer.py:  470: printSegment: If a counselor calls 200 students based on ML alone, 
+   DEBUG: 2026-04-11 12:41:55,560:      pdf_renderer.py:  470: printSegment: 30-40% may be false alarms
+   DEBUG: 2026-04-11 12:41:55,569:      pdf_renderer.py:  470: printSegment: . After a few wrong calls,
+   DEBUG: 2026-04-11 12:41:55,571:      pdf_renderer.py:  470: printSegment: counselors lose trust in the system. Game over.
+   DEBUG: 2026-04-11 12:41:55,573:      pdf_renderer.py:  470: printSegment: Layer 2: AI-Powered Student Conversation
+   DEBUG: 2026-04-11 12:41:55,577:      pdf_renderer.py:  470: printSegment: After Layer 1 flags a student as HIGH risk (score > 0.7), our AI voice agent calls them.
+   DEBUG: 2026-04-11 12:41:55,581:      pdf_renderer.py:  470: printSegment: ┌─────────────────────────────────────────────────────────────────┐
+   DEBUG: 2026-04-11 12:41:55,584:      pdf_renderer.py:  470: printSegment: │                                                                 │
+   DEBUG: 2026-04-11 12:41:55,587:      pdf_renderer.py:  470: printSegment: │   LAYER 1 (ML)                    LAYER 2 (AI VOICE)           │
+   DEBUG: 2026-04-11 12:41:55,589:      pdf_renderer.py:  470: printSegment: │                                                                 │
+   DEBUG: 2026-04-11 12:41:55,591:      pdf_renderer.py:  470: printSegment: │   Gold Table                      AI Voice Agent                │
+   DEBUG: 2026-04-11 12:41:55,594:      pdf_renderer.py:  470: printSegment: │   ┌───────────────┐               ┌──────────────────┐         │
+   DEBUG: 2026-04-11 12:41:55,596:      pdf_renderer.py:  470: printSegment: │   │ Student #2847  │──── HIGH ────▶│ Twilio + LLM     │         │
+   DEBUG: 2026-04-11 12:41:55,598:      pdf_renderer.py:  470: printSegment: │   │ Risk: 0.87     │   RISK?       │ (GPT / Gemini)   │         │
+   DEBUG: 2026-04-11 12:41:55,600:      pdf_renderer.py:  470: printSegment: │   │ Factors:       │               │                  │         │
+   DEBUG: 2026-04-11 12:41:55,602:      pdf_renderer.py:  470: printSegment: │   │  grade_drop    │               │ Makes a call     │         │
+   DEBUG: 2026-04-11 12:41:55,605:      pdf_renderer.py:  470: printSegment: │   │  tuition       │               │ Asks 5 questions │         │
+   DEBUG: 2026-04-11 12:41:55,608:      pdf_renderer.py:  470: printSegment: │   │  age           │               │ Records answers  │         │
+   DEBUG: 2026-04-11 12:41:55,610:      pdf_renderer.py:  470: printSegment: │   └───────────────┘               │ Analyzes intent  │         │
+   DEBUG: 2026-04-11 12:41:55,613:      pdf_renderer.py:  470: printSegment: │                                    └────────┬─────────┘         │
+   DEBUG: 2026-04-11 12:41:55,616:      pdf_renderer.py:  470: printSegment: │                                             │                   │
+   DEBUG: 2026-04-11 12:41:55,619:      pdf_renderer.py:  470: printSegment: │                                             ▼                   │
+   DEBUG: 2026-04-11 12:41:55,621:      pdf_renderer.py:  470: printSegment: │                                    ┌──────────────────┐         │
+   DEBUG: 2026-04-11 12:41:55,623:      pdf_renderer.py:  470: printSegment: │                                    │ Voice Feedback    │         │
+   DEBUG: 2026-04-11 12:41:55,625:      pdf_renderer.py:  470: printSegment: │                                    │ Table (Delta)     │         │
+   DEBUG: 2026-04-11 12:41:55,629:      pdf_renderer.py:  470: printSegment: │                                    │                   │         │
+   DEBUG: 2026-04-11 12:41:55,632:      pdf_renderer.py:  470: printSegment: │                                    │ sentiment: neg    │         │
+   DEBUG: 2026-04-11 12:41:55,634:      pdf_renderer.py:  470: printSegment: │                                    │ intent: HIGH      │         │
+   DEBUG: 2026-04-11 12:41:55,637:      pdf_renderer.py:  470: printSegment: │                                    │ root_cause:       │         │
+   DEBUG: 2026-04-11 12:41:55,640:      pdf_renderer.py:  470: printSegment: │                                    │   FINANCIAL       │         │
+   DEBUG: 2026-04-11 12:41:55,642:      pdf_renderer.py:  470: printSegment: │                                    │ confidence: 0.91  │         │
+   DEBUG: 2026-04-11 12:41:55,646:      pdf_renderer.py:  470: printSegment: │                                    └────────┬─────────┘         │
+   DEBUG: 2026-04-11 12:41:55,648:      pdf_renderer.py:  470: printSegment: │                                             │                   │
+   DEBUG: 2026-04-11 12:41:55,651:      pdf_renderer.py:  470: printSegment: │                                             ▼                   │
+   DEBUG: 2026-04-11 12:41:55,654:      pdf_renderer.py:  470: printSegment: │                                    ┌──────────────────┐         │
+   DEBUG: 2026-04-11 12:41:55,656:      pdf_renderer.py:  470: printSegment: │                                    │ FUSION SCORE      │         │
+   DEBUG: 2026-04-11 12:41:55,660:      pdf_renderer.py:  470: printSegment: │                                    │                   │         │
+   DEBUG: 2026-04-11 12:41:55,663:      pdf_renderer.py:  470: printSegment: │                                    │ ML risk: 0.87     │         │
+   DEBUG: 2026-04-11 12:41:55,665:      pdf_renderer.py:  470: printSegment: │                                    │ Voice conf: 0.91  │         │
+   DEBUG: 2026-04-11 12:41:55,668:      pdf_renderer.py:  470: printSegment: │                                    │ Combined: 0.89    │         │
+   DEBUG: 2026-04-11 12:41:55,670:      pdf_renderer.py:  470: printSegment: │                                    │                   │         │
+   DEBUG: 2026-04-11 12:41:55,672:      pdf_renderer.py:  470: printSegment: │                                    │ VERDICT: CONFIRMED│         │
+   DEBUG: 2026-04-11 12:41:55,677:      pdf_renderer.py:  470: printSegment: │                                    │ CAUSE: FINANCIAL  │         │
+   DEBUG: 2026-04-11 12:41:55,680:      pdf_renderer.py:  470: printSegment: │                                    │ ACTION: Connect   │         │
+   DEBUG: 2026-04-11 12:41:55,682:      pdf_renderer.py:  470: printSegment: │                                    │   to NSP + NGO    │         │
+   DEBUG: 2026-04-11 12:41:55,683:      pdf_renderer.py:  470: printSegment: │                                    └──────────────────┘         │
+   DEBUG: 2026-04-11 12:41:55,686:      pdf_renderer.py:  470: printSegment: │                                                                 │
+   DEBUG: 2026-04-11 12:41:55,687:      pdf_renderer.py:  470: printSegment: └─────────────────────────────────────────────────────────────────┘
+   DEBUG: 2026-04-11 12:41:55,689:      pdf_renderer.py:  470: printSegment: The Call — Designed to be Completely Unbiased
+   DEBUG: 2026-04-11 12:41:55,691:      pdf_renderer.py:  470: printSegment: The AI does NOT say 
+   DEBUG: 2026-04-11 12:41:55,694:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,696:      pdf_renderer.py:  470: printSegment: Our model flagged you as a dropout risk.
+   DEBUG: 2026-04-11 12:41:55,697:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,699:      pdf_renderer.py:  470: printSegment: Instead, it poses as a 
+   DEBUG: 2026-04-11 12:41:55,701:      pdf_renderer.py:  470: printSegment: routine semester check-in
+   DEBUG: 2026-04-11 12:41:55,703:      pdf_renderer.py:  470: printSegment:  that ALL students could receive:
+   DEBUG: 2026-04-11 12:41:55,704:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,706:      pdf_renderer.py:  470: printSegment: Hi 
+   DEBUG: 2026-04-11 12:41:55,707:      pdf_renderer.py:  470: printSegment: [
+   DEBUG: 2026-04-11 12:41:55,708:      pdf_renderer.py:  470: printSegment: Name
+   DEBUG: 2026-04-11 12:41:55,710:      pdf_renderer.py:  470: printSegment: ]
+   DEBUG: 2026-04-11 12:41:55,712:      pdf_renderer.py:  470: printSegment: , this is 
+   DEBUG: 2026-04-11 12:41:55,714:      pdf_renderer.py:  470: printSegment: [
+   DEBUG: 2026-04-11 12:41:55,715:      pdf_renderer.py:  470: printSegment: University
+   DEBUG: 2026-04-11 12:41:55,717:      pdf_renderer.py:  470: printSegment: ]
+   DEBUG: 2026-04-11 12:41:55,718:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:55,720:      pdf_renderer.py:  470: printSegment: s Student Wellness team. We
+   DEBUG: 2026-04-11 12:41:55,721:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:55,728:      pdf_renderer.py:  470: printSegment: re doing a quick 3-minute check-in
+   DEBUG: 2026-04-11 12:41:55,731:      pdf_renderer.py:  470: printSegment: with students this semester. Do you have a moment?
+   DEBUG: 2026-04-11 12:41:55,732:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,735:      pdf_renderer.py:  470: printSegment: The 5 Questions (Carefully Designed, Non-Leading)
+   DEBUG: 2026-04-11 12:41:55,739:      pdf_renderer.py:  470: printSegment: | # | Question | What It Measures | Why It
+   DEBUG: 2026-04-11 12:41:55,740:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:55,742:      pdf_renderer.py:  470: printSegment: s Unbiased |
+   DEBUG: 2026-04-11 12:41:55,744:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:55,746:      pdf_renderer.py:  470: printSegment: |---|----------|-----------------|------------------|
+   DEBUG: 2026-04-11 12:41:55,747:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:55,749:      pdf_renderer.py:  470: printSegment: | 1 | 
+   DEBUG: 2026-04-11 12:41:55,750:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,754:      pdf_renderer.py:  470: printSegment: How has this
+   DEBUG: 2026-04-11 12:41:55,757:      pdf_renderer.py:  470: printSegment: semester been going for you so far?
+   DEBUG: 2026-04-11 12:41:55,757:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,762:      pdf_renderer.py:  470: printSegment:  | General sentiment, academic satisfaction | Open-ended, no suggestion of
+   DEBUG: 2026-04-11 12:41:55,764:      pdf_renderer.py:  470: printSegment: problems |
+   DEBUG: 2026-04-11 12:41:55,766:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:55,767:      pdf_renderer.py:  470: printSegment: | 2 | 
+   DEBUG: 2026-04-11 12:41:55,769:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,770:      pdf_renderer.py:  470: printSegment: What
+   DEBUG: 2026-04-11 12:41:55,772:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:55,773:      pdf_renderer.py:  470: printSegment: s been the most challenging part of college life recently?
+   DEBUG: 2026-04-11 12:41:55,776:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,780:      pdf_renderer.py:  470: printSegment:  | Primary stressor identification |
+   DEBUG: 2026-04-11 12:41:55,784:      pdf_renderer.py:  470: printSegment: Assumes everyone has challenges (normalizes) |
+   DEBUG: 2026-04-11 12:41:55,786:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:55,788:      pdf_renderer.py:  470: printSegment: | 3 | 
+   DEBUG: 2026-04-11 12:41:55,789:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,792:      pdf_renderer.py:  470: printSegment: On a scale of 1 to 5, how confident are you about completing
+   DEBUG: 2026-04-11 12:41:55,795:      pdf_renderer.py:  470: printSegment: your degree?
+   DEBUG: 2026-04-11 12:41:55,796:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,800:      pdf_renderer.py:  470: printSegment:  | Direct dropout intent signal | Quantitative, future-oriented, no judgment |
+   DEBUG: 2026-04-11 12:41:55,801:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:55,803:      pdf_renderer.py:  470: printSegment: | 4 | 
+   DEBUG: 2026-04-11 12:41:55,804:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,811:      pdf_renderer.py:  470: printSegment: If you could change
+   DEBUG: 2026-04-11 12:41:55,814:      pdf_renderer.py:  470: printSegment: one thing about your college experience, what would it be?
+   DEBUG: 2026-04-11 12:41:55,816:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,821:      pdf_renderer.py:  470: printSegment:  | Root cause identification | Frames as improvement
+   DEBUG: 2026-04-11 12:41:55,823:      pdf_renderer.py:  470: printSegment: suggestion, not complaint |
+   DEBUG: 2026-04-11 12:41:55,825:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:55,827:      pdf_renderer.py:  470: printSegment: | 5 | 
+   DEBUG: 2026-04-11 12:41:55,829:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,831:      pdf_renderer.py:  470: printSegment: What are you most looking forward to next semester?
+   DEBUG: 2026-04-11 12:41:55,833:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,836:      pdf_renderer.py:  470: printSegment:  | Future orientation — KEY
+   DEBUG: 2026-04-11 12:41:55,839:      pdf_renderer.py:  470: printSegment: signal | If they can
+   DEBUG: 2026-04-11 12:41:55,841:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:55,843:      pdf_renderer.py:  470: printSegment: t answer or hesitate → RED FLAG |
+   DEBUG: 2026-04-11 12:41:55,846:      pdf_renderer.py:  470: printSegment: Why These Questions Work
+   DEBUG: 2026-04-11 12:41:55,847:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:55,850:      pdf_renderer.py:  470: printSegment: No question mentions dropout, risk, or failure
+   DEBUG: 2026-04-11 12:41:55,852:      pdf_renderer.py:  470: printSegment:  — student doesn
+   DEBUG: 2026-04-11 12:41:55,853:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:55,854:      pdf_renderer.py:  470: printSegment: t know they
+   DEBUG: 2026-04-11 12:41:55,855:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:55,858:      pdf_renderer.py:  470: printSegment: re flagged
+   DEBUG: 2026-04-11 12:41:55,860:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:55,863:      pdf_renderer.py:  470: printSegment: Questions work for ANYONE
+   DEBUG: 2026-04-11 12:41:55,866:      pdf_renderer.py:  470: printSegment:  — a happy student would answer these comfortably too
+   DEBUG: 2026-04-11 12:41:55,867:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:55,869:      pdf_renderer.py:  470: printSegment: Open-ended
+   DEBUG: 2026-04-11 12:41:55,872:      pdf_renderer.py:  470: printSegment:  — the AI captures free-form responses, not just yes/no
+   DEBUG: 2026-04-11 12:41:55,873:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:55,876:      pdf_renderer.py:  470: printSegment: The order matters
+   DEBUG: 2026-04-11 12:41:55,879:      pdf_renderer.py:  470: printSegment: : starts soft (Q1), probes deeper (Q2-Q4), closes with future orientation (Q5)
+   DEBUG: 2026-04-11 12:41:55,882:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:55,885:      pdf_renderer.py:  470: printSegment: Q5 is the sleeper weapon
+   DEBUG: 2026-04-11 12:41:55,886:      pdf_renderer.py:  470: printSegment: : a student who says 
+   DEBUG: 2026-04-11 12:41:55,888:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,890:      pdf_renderer.py:  470: printSegment: I
+   DEBUG: 2026-04-11 12:41:55,892:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:55,894:      pdf_renderer.py:  470: printSegment: m looking forward to the tech fest
+   DEBUG: 2026-04-11 12:41:55,896:      pdf_renderer.py:  470: printSegment: !
+   DEBUG: 2026-04-11 12:41:55,898:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,901:      pdf_renderer.py:  470: printSegment:  is NOT
+   DEBUG: 2026-04-11 12:41:55,903:      pdf_renderer.py:  470: printSegment: dropping out. A student who says 
+   DEBUG: 2026-04-11 12:41:55,906:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,908:      pdf_renderer.py:  470: printSegment: I... don
+   DEBUG: 2026-04-11 12:41:55,911:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:55,913:      pdf_renderer.py:  470: printSegment: t know, honestly
+   DEBUG: 2026-04-11 12:41:55,915:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,917:      pdf_renderer.py:  470: printSegment:  almost certainly is.
+   DEBUG: 2026-04-11 12:41:55,919:      pdf_renderer.py:  470: printSegment: AI Analysis of Responses
+   DEBUG: 2026-04-11 12:41:55,922:      pdf_renderer.py:  470: printSegment: The LLM analyzes each response for:
+   DEBUG: 2026-04-11 12:41:55,925:      pdf_renderer.py:  470: printSegment: | Signal | How Detected | Example |
+   DEBUG: 2026-04-11 12:41:55,927:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:55,929:      pdf_renderer.py:  470: printSegment: |--------|-------------|--------|
+   DEBUG: 2026-04-11 12:41:55,930:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:55,933:      pdf_renderer.py:  470: printSegment: | 
+   DEBUG: 2026-04-11 12:41:55,934:      pdf_renderer.py:  470: printSegment: Sentiment
+   DEBUG: 2026-04-11 12:41:55,938:      pdf_renderer.py:  470: printSegment:  | Positive / Negative / Neutral per
+   DEBUG: 2026-04-11 12:41:55,940:      pdf_renderer.py:  470: printSegment: response | 
+   DEBUG: 2026-04-11 12:41:55,942:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,944:      pdf_renderer.py:  470: printSegment: It
+   DEBUG: 2026-04-11 12:41:55,946:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:55,947:      pdf_renderer.py:  470: printSegment: s been tough
+   DEBUG: 2026-04-11 12:41:55,949:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,951:      pdf_renderer.py:  470: printSegment:  → Negative |
+   DEBUG: 2026-04-11 12:41:55,954:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:55,955:      pdf_renderer.py:  470: printSegment: | 
+   DEBUG: 2026-04-11 12:41:55,958:      pdf_renderer.py:  470: printSegment: Dropout Keywords
+   DEBUG: 2026-04-11 12:41:55,961:      pdf_renderer.py:  470: printSegment:  | Mentions of leaving, quitting, working, 
+   DEBUG: 2026-04-11 12:41:55,963:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,965:      pdf_renderer.py:  470: printSegment: not sure
+   DEBUG: 2026-04-11 12:41:55,968:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,970:      pdf_renderer.py:  470: printSegment:  | 
+   DEBUG: 2026-04-11 12:41:55,972:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,975:      pdf_renderer.py:  470: printSegment: thinking about taking a break
+   DEBUG: 2026-04-11 12:41:55,977:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,979:      pdf_renderer.py:  470: printSegment:  → HIGH |
+   DEBUG: 2026-04-11 12:41:55,981:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:55,983:      pdf_renderer.py:  470: printSegment: | 
+   DEBUG: 2026-04-11 12:41:55,986:      pdf_renderer.py:  470: printSegment: Root Cause
+   DEBUG: 2026-04-11 12:41:55,989:      pdf_renderer.py:  470: printSegment:  | Financial / Academic / Social / Family / Career | 
+   DEBUG: 2026-04-11 12:41:55,990:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,992:      pdf_renderer.py:  470: printSegment: fees are a
+   DEBUG: 2026-04-11 12:41:55,994:      pdf_renderer.py:  470: printSegment: burden
+   DEBUG: 2026-04-11 12:41:55,996:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:55,998:      pdf_renderer.py:  470: printSegment:  → Financial |
+   DEBUG: 2026-04-11 12:41:55,999:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:56,002:      pdf_renderer.py:  470: printSegment: | 
+   DEBUG: 2026-04-11 12:41:56,006:      pdf_renderer.py:  470: printSegment: Confidence Score
+   DEBUG: 2026-04-11 12:41:56,015:      pdf_renderer.py:  470: printSegment:  | Self-reported (Q3) + AI-assessed consistency | Said 4/5 confidence but Q5
+   DEBUG: 2026-04-11 12:41:56,017:      pdf_renderer.py:  470: printSegment: was hesitant → adjusted to 2/5 |
+   DEBUG: 2026-04-11 12:41:56,019:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:56,022:      pdf_renderer.py:  470: printSegment: | 
+   DEBUG: 2026-04-11 12:41:56,024:      pdf_renderer.py:  470: printSegment: Engagement Level
+   DEBUG: 2026-04-11 12:41:56,029:      pdf_renderer.py:  470: printSegment:  | Enthusiasm in voice, length of responses | Short, monotone
+   DEBUG: 2026-04-11 12:41:56,033:      pdf_renderer.py:  470: printSegment: answers → disengaged |
+   DEBUG: 2026-04-11 12:41:56,037:      pdf_renderer.py:  470: printSegment: Output: Voice Feedback Table
+   DEBUG: 2026-04-11 12:41:56,038:      pdf_renderer.py:  470: printSegment: Delta Table: hackbricks.default.dropout_voice_feedback
+   DEBUG: 2026-04-11 12:41:56,042:      pdf_renderer.py:  470: printSegment: | student_id | call_date  | q1_sentiment | q2_stressor |
+   DEBUG: 2026-04-11 12:41:56,044:      pdf_renderer.py:  470: printSegment: q3_confidence |
+   DEBUG: 2026-04-11 12:41:56,046:      pdf_renderer.py:  470: printSegment: |-----------|------------|-------------|-------------|---------------|
+   DEBUG: 2026-04-11 12:41:56,050:      pdf_renderer.py:  470: printSegment: | 2847      | 2026-03-15 | negative    | financial   | 2           
+   DEBUG: 2026-04-11 12:41:56,051:      pdf_renderer.py:  470: printSegment:  |
+   DEBUG: 2026-04-11 12:41:56,053:      pdf_renderer.py:  470: printSegment: | 3891      | 2026-03-15 | negative    | academic    | 1           
+   DEBUG: 2026-04-11 12:41:56,055:      pdf_renderer.py:  470: printSegment:  |
+   DEBUG: 2026-04-11 12:41:56,058:      pdf_renderer.py:  470: printSegment: | 1556      | 2026-03-15 | positive    | social      | 4           
+   DEBUG: 2026-04-11 12:41:56,059:      pdf_renderer.py:  470: printSegment:  |
+   DEBUG: 2026-04-11 12:41:56,063:      pdf_renderer.py:  470: printSegment: | student_id | q4_root_cause  | q5_future_orient | dropout_intent |
+   DEBUG: 2026-04-11 12:41:56,066:      pdf_renderer.py:  470: printSegment: ai_confidence |
+   DEBUG: 2026-04-11 12:41:56,067:      pdf_renderer.py:  470: printSegment: |-----------|---------------|-----------------|---------------|---------------|
+   DEBUG: 2026-04-11 12:41:56,077:      pdf_renderer.py:  470: printSegment: | 2847      | financial_aid  | hesitant         | HIGH           |
+   DEBUG: 2026-04-11 12:41:56,078:      pdf_renderer.py:  470: printSegment: 0.91          |
+   DEBUG: 2026-04-11 12:41:56,088:      pdf_renderer.py:  470: printSegment: | 3891      | failing_exams  | no_answer        | HIGH           |
+   DEBUG: 2026-04-11 12:41:56,091:      pdf_renderer.py:  470: printSegment: 0.88          |
+   DEBUG: 2026-04-11 12:41:56,100:      pdf_renderer.py:  470: printSegment: | 1556      | more_events    | excited          | LOW            |
+   DEBUG: 2026-04-11 12:41:56,102:      pdf_renderer.py:  470: printSegment: 0.12          |
+   DEBUG: 2026-04-11 12:41:56,104:      pdf_renderer.py:  470: printSegment: Layer 2 Fusion: ML Score + Voice Validation
+   DEBUG: 2026-04-11 12:41:56,106:      pdf_renderer.py:  470: printSegment: Final Score = 0.6 × ML_risk_score + 0.4 × Voice_dropout_intent_score
+   DEBUG: 2026-04-11 12:41:56,108:      pdf_renderer.py:  470: printSegment: Why 60-40?
+   DEBUG: 2026-04-11 12:41:56,110:      pdf_renderer.py:  470: printSegment:   • ML has access to 37 quantitative features across semesters → 60%
+   DEBUG: 2026-04-11 12:41:56,113:      pdf_renderer.py:  470: printSegment:   • Voice captures CURRENT intent and emotional state → 40%
+   DEBUG: 2026-04-11 12:41:56,115:      pdf_renderer.py:  470: printSegment:   • Together: historical pattern + present reality = maximum accuracy
+   DEBUG: 2026-04-11 12:41:56,116:      pdf_renderer.py:  470: printSegment: Scenarios:
+   DEBUG: 2026-04-11 12:41:56,117:      pdf_renderer.py:  470: printSegment:   Student A: ML says 0.87 (HIGH) + Voice says 0.91 (HIGH)
+   DEBUG: 2026-04-11 12:41:56,120:      pdf_renderer.py:  470: printSegment:     → Final: 0.89 → CONFIRMED RISK. Immediate intervention.
+   DEBUG: 2026-04-11 12:41:56,122:      pdf_renderer.py:  470: printSegment:   Student B: ML says 0.82 (HIGH) + Voice says 0.15 (LOW)
+   DEBUG: 2026-04-11 12:41:56,125:      pdf_renderer.py:  470: printSegment:     → Final: 0.55 → DOWNGRADED to MEDIUM. Just monitoring.
+   DEBUG: 2026-04-11 12:41:56,128:      pdf_renderer.py:  470: printSegment:     (ML was a false positive — student switched majors, temporary
+   DEBUG: 2026-04-11 12:41:56,129:      pdf_renderer.py:  470: printSegment: dip)
+   DEBUG: 2026-04-11 12:41:56,131:      pdf_renderer.py:  470: printSegment:   Student C: ML says 0.45 (MEDIUM) + Voice says 0.88 (HIGH)
+   DEBUG: 2026-04-11 12:41:56,133:      pdf_renderer.py:  470: printSegment:     → Final: 0.62 → UPGRADED to MEDIUM-HIGH. Needs attention.
+   DEBUG: 2026-04-11 12:41:56,135:      pdf_renderer.py:  470: printSegment:     (ML missed it — student is hiding distress behind OK grades)
+   DEBUG: 2026-04-11 12:41:56,137:      pdf_renderer.py:  470: printSegment: The Intervention Engine — Root Cause → Specific Resource
+   DEBUG: 2026-04-11 12:41:56,164:      pdf_renderer.py:  470: printSegment: This is where 
+   DEBUG: 2026-04-11 12:41:56,165:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:56,167:      pdf_renderer.py:  470: printSegment: connect them to the RIGHT help
+   DEBUG: 2026-04-11 12:41:56,168:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:56,169:      pdf_renderer.py:  470: printSegment:  happens:
+   DEBUG: 2026-04-11 12:41:56,173:      pdf_renderer.py:  470: printSegment: | Root Cause (from Voice) | Intervention | Specific Resources to Connect |
+   DEBUG: 2026-04-11 12:41:56,174:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:56,177:      pdf_renderer.py:  470: printSegment: |------------------------|-------------|------------------------------|
+   DEBUG: 2026-04-11 12:41:56,178:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:56,179:      pdf_renderer.py:  470: printSegment: | 
+   DEBUG: 2026-04-11 12:41:56,182:      pdf_renderer.py:  470: printSegment: Financial
+   DEBUG: 2026-04-11 12:41:56,197:      pdf_renderer.py:  470: printSegment:  | Financial aid + fee waiver | National
+   DEBUG: 2026-04-11 12:41:56,202:      pdf_renderer.py:  470: printSegment: Scholarship Portal (NSP), Vidyalakshmi (edu loans), State merit scholarships, Pratham Foundation, iPartner India |
+   DEBUG: 2026-04-11 12:41:56,204:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:56,205:      pdf_renderer.py:  470: printSegment: | 
+   DEBUG: 2026-04-11 12:41:56,208:      pdf_renderer.py:  470: printSegment: Academic
+   DEBUG: 2026-04-11 12:41:56,213:      pdf_renderer.py:  470: printSegment:  | Learning support | Peer tutoring program, Remedial classes, Course change counseling,
+   DEBUG: 2026-04-11 12:41:56,216:      pdf_renderer.py:  470: printSegment: NPTEL/SWAYAM courses |
+   DEBUG: 2026-04-11 12:41:56,217:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:56,219:      pdf_renderer.py:  470: printSegment: | 
+   DEBUG: 2026-04-11 12:41:56,221:      pdf_renderer.py:  470: printSegment: Social / Isolation
+   DEBUG: 2026-04-11 12:41:56,224:      pdf_renderer.py:  470: printSegment:  | Community 
+   DEBUG: 2026-04-11 12:41:56,225:      pdf_renderer.py:  470: printSegment: &
+   DEBUG: 2026-04-11 12:41:56,227:      pdf_renderer.py:  470: printSegment:  belonging | Peer mentoring, Campus clubs 
+   DEBUG: 2026-04-11 12:41:56,229:      pdf_renderer.py:  470: printSegment: &
+   DEBUG: 2026-04-11 12:41:56,233:      pdf_renderer.py:  470: printSegment: 
+   DEBUG: 2026-04-11 12:41:56,235:      pdf_renderer.py:  470: printSegment: societies, Mental health helpline (iCall, Vandrevala Foundation) |
+   DEBUG: 2026-04-11 12:41:56,237:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:56,239:      pdf_renderer.py:  470: printSegment: | 
+   DEBUG: 2026-04-11 12:41:56,240:      pdf_renderer.py:  470: printSegment: Family Pressure
+   DEBUG: 2026-04-11 12:41:56,248:      pdf_renderer.py:  470: printSegment:  | Family engagement | Family
+   DEBUG: 2026-04-11 12:41:56,251:      pdf_renderer.py:  470: printSegment: counseling session, Flexible scheduling, Part-time work facilitation |
+   DEBUG: 2026-04-11 12:41:56,252:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:56,254:      pdf_renderer.py:  470: printSegment: | 
+   DEBUG: 2026-04-11 12:41:56,255:      pdf_renderer.py:  470: printSegment: Career Uncertainty
+   DEBUG: 2026-04-11 12:41:56,264:      pdf_renderer.py:  470: printSegment:  | Career direction |
+   DEBUG: 2026-04-11 12:41:56,268:      pdf_renderer.py:  470: printSegment: Placement cell connect, Alumni mentoring, Internship database, Skill India programs |
+   DEBUG: 2026-04-11 12:41:56,269:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:56,270:      pdf_renderer.py:  470: printSegment: | 
+   DEBUG: 2026-04-11 12:41:56,272:      pdf_renderer.py:  470: printSegment: Health / Personal
+   DEBUG: 2026-04-11 12:41:56,279:      pdf_renderer.py:  470: printSegment:  |
+   DEBUG: 2026-04-11 12:41:56,282:      pdf_renderer.py:  470: printSegment: Wellness support | College health center, Academic leave policy, Catch-up plan with advisor |
+   DEBUG: 2026-04-11 12:41:56,284:      pdf_renderer.py:  470: printSegment: The Final Gold Table (Enhanced)
+   DEBUG: 2026-04-11 12:41:56,286:      pdf_renderer.py:  470: printSegment: Delta Table: hackbricks.default.dropout_final_gold
+   DEBUG: 2026-04-11 12:41:56,290:      pdf_renderer.py:  470: printSegment: | student_id | ml_risk | voice_intent | final_score | risk_tier |
+   DEBUG: 2026-04-11 12:41:56,292:      pdf_renderer.py:  470: printSegment: root_cause |
+   DEBUG: 2026-04-11 12:41:56,296:      pdf_renderer.py:  470: printSegment: |-----------|---------|-------------|-------------|-----------|------------|
+   DEBUG: 2026-04-11 12:41:56,301:      pdf_renderer.py:  470: printSegment: | 2847      | 0.87    | 0.91        | 0.89        | HIGH      |
+   DEBUG: 2026-04-11 12:41:56,303:      pdf_renderer.py:  470: printSegment: financial  |
+   DEBUG: 2026-04-11 12:41:56,308:      pdf_renderer.py:  470: printSegment: | 3891      | 0.82    | 0.88        | 0.84        | HIGH      |
+   DEBUG: 2026-04-11 12:41:56,309:      pdf_renderer.py:  470: printSegment: academic   |
+   DEBUG: 2026-04-11 12:41:56,315:      pdf_renderer.py:  470: printSegment: | 1556      | 0.75    | 0.12        | 0.50        | MEDIUM    |
+   DEBUG: 2026-04-11 12:41:56,316:      pdf_renderer.py:  470: printSegment: none (FP)  |
+   DEBUG: 2026-04-11 12:41:56,333:      pdf_renderer.py:  470: printSegment: | student_id | top_factor_1    | top_factor_2      |
+   DEBUG: 2026-04-11 12:41:56,337:      pdf_renderer.py:  470: printSegment: specific_action                          |
+   DEBUG: 2026-04-11 12:41:56,340:      pdf_renderer.py:  470: printSegment: |-----------|----------------|-------------------|------------------------------------------|
+   DEBUG: 2026-04-11 12:41:56,345:      pdf_renderer.py:  470: printSegment: | 2847      | tuition_unpaid | grade_drop_40%    | Apply NSP
+   DEBUG: 2026-04-11 12:41:56,347:      pdf_renderer.py:  470: printSegment: scholarship + Vidyalakshmi loan |
+   DEBUG: 2026-04-11 12:41:56,353:      pdf_renderer.py:  470: printSegment: | 3891      | failing_3_subs | no_future_orient  | Remedial class +
+   DEBUG: 2026-04-11 12:41:56,354:      pdf_renderer.py:  470: printSegment: course change counseling |
+   DEBUG: 2026-04-11 12:41:56,362:      pdf_renderer.py:  470: printSegment: | 1556      | grade_dip      | major_switch      | Monitor only —
+   DEBUG: 2026-04-11 12:41:56,365:      pdf_renderer.py:  470: printSegment: false positive removed     |
+   DEBUG: 2026-04-11 12:41:56,367:      pdf_renderer.py:  470: printSegment: What the Counselor Sees (Example Report)
+   DEBUG: 2026-04-11 12:41:56,369:      pdf_renderer.py:  470: printSegment: ╔════════════════════════════════════════════════════════════════════╗
+   DEBUG: 2026-04-11 12:41:56,371:      pdf_renderer.py:  470: printSegment: ║  🚨 STUDENT #2847 — Rahul Kumar                                  ║
+   DEBUG: 2026-04-11 12:41:56,704:      pdf_renderer.py:  470: printSegment: ║  Final Risk: 0.89 (CONFIRMED HIGH)                               ║
+   DEBUG: 2026-04-11 12:41:56,707:      pdf_renderer.py:  470: printSegment: ╠════════════════════════════════════════════════════════════════════╣
+   DEBUG: 2026-04-11 12:41:56,710:      pdf_renderer.py:  470: printSegment: ║                                                                   
+   DEBUG: 2026-04-11 12:41:56,711:      pdf_renderer.py:  470: printSegment: ║
+   DEBUG: 2026-04-11 12:41:56,714:      pdf_renderer.py:  470: printSegment: ║  📊 ML Analysis (Layer 1):                                        ║
+   DEBUG: 2026-04-11 12:41:56,717:      pdf_renderer.py:  470: printSegment: ║    • Sem2 grades dropped 40% from Sem1                            ║
+   DEBUG: 2026-04-11 12:41:56,720:      pdf_renderer.py:  470: printSegment: ║    • Tuition fees unpaid for 2 months                             ║
+   DEBUG: 2026-04-11 12:41:56,722:      pdf_renderer.py:  470: printSegment: ║    • Age 34, mature student with work commitments                 ║
+   DEBUG: 2026-04-11 12:41:56,725:      pdf_renderer.py:  470: printSegment: ║                                                                   
+   DEBUG: 2026-04-11 12:41:56,727:      pdf_renderer.py:  470: printSegment: ║
+   DEBUG: 2026-04-11 12:41:56,729:      pdf_renderer.py:  470: printSegment: ║  🎙️ AI Voice Call (Layer 2):                                     ║
+   DEBUG: 2026-04-11 12:41:56,732:      pdf_renderer.py:  470: printSegment: ║    • Sentiment: Negative ("it's been really tough")               ║
+   DEBUG: 2026-04-11 12:41:56,735:      pdf_renderer.py:  470: printSegment: ║    • Stressor: Financial ("fees are a burden on my family")       ║
+   DEBUG: 2026-04-11 12:41:56,737:      pdf_renderer.py:  470: printSegment: ║    • Confidence to complete: 2/5                                   ║
+   DEBUG: 2026-04-11 12:41:56,742:      pdf_renderer.py:  470: printSegment: ║    • Future orientation: Hesitant ("I'm not sure about next sem") ║
+   DEBUG: 2026-04-11 12:41:56,745:      pdf_renderer.py:  470: printSegment: ║    • Root Cause: FINANCIAL                                         ║
+   DEBUG: 2026-04-11 12:41:56,748:      pdf_renderer.py:  470: printSegment: ║                                                                   
+   DEBUG: 2026-04-11 12:41:56,750:      pdf_renderer.py:  470: printSegment: ║
+   DEBUG: 2026-04-11 12:41:56,752:      pdf_renderer.py:  470: printSegment: ║  🎯 RECOMMENDED ACTIONS:                                          ║
+   DEBUG: 2026-04-11 12:41:56,755:      pdf_renderer.py:  470: printSegment: ║    1. Schedule 1-on-1 counseling within 48 hours                  ║
+   DEBUG: 2026-04-11 12:41:56,757:      pdf_renderer.py:  470: printSegment: ║    2. Connect to National Scholarship Portal (NSP)                ║
+   DEBUG: 2026-04-11 12:41:56,761:      pdf_renderer.py:  470: printSegment: ║    3. Apply for Vidyalakshmi education loan                       ║
+   DEBUG: 2026-04-11 12:41:56,766:      pdf_renderer.py:  470: printSegment: ║    4. Check eligibility: State merit-cum-means scholarship        ║
+   DEBUG: 2026-04-11 12:41:56,769:      pdf_renderer.py:  470: printSegment: ║    5. Refer to Pratham Foundation (if eligible)                   
+   DEBUG: 2026-04-11 12:41:56,770:      pdf_renderer.py:  470: printSegment: ║
+   DEBUG: 2026-04-11 12:41:56,772:      pdf_renderer.py:  470: printSegment: ║                                                                   
+   DEBUG: 2026-04-11 12:41:56,774:      pdf_renderer.py:  470: printSegment: ║
+   DEBUG: 2026-04-11 12:41:56,775:      pdf_renderer.py:  470: printSegment: ║  📞 Contact: +91-9XXXXXXXX | rahul.k@university.edu              ║
+   DEBUG: 2026-04-11 12:41:56,777:      pdf_renderer.py:  470: printSegment: ╚════════════════════════════════════════════════════════════════════╝
+   DEBUG: 2026-04-11 12:41:56,778:      pdf_renderer.py:  470: printSegment: Why This Layer Is a Game-Changer for Judges
+   DEBUG: 2026-04-11 12:41:56,782:      pdf_renderer.py:  470: printSegment: | What Other Teams Do | What We Do |
+   DEBUG: 2026-04-11 12:41:56,783:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:56,785:      pdf_renderer.py:  470: printSegment: |--------------------|------------|
+   DEBUG: 2026-04-11 12:41:56,786:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:56,791:      pdf_renderer.py:  470: printSegment: | Train model → show accuracy → done | Train model
+   DEBUG: 2026-04-11 12:41:56,792:      pdf_renderer.py:  470: printSegment: → AI validates → connect to resources |
+   DEBUG: 2026-04-11 12:41:56,795:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:56,799:      pdf_renderer.py:  470: printSegment: | 30-40% false positives waste counselor time | Voice layer filters false positives
+   DEBUG: 2026-04-11 12:41:56,801:      pdf_renderer.py:  470: printSegment: out |
+   DEBUG: 2026-04-11 12:41:56,802:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:56,803:      pdf_renderer.py:  470: printSegment: | 
+   DEBUG: 2026-04-11 12:41:56,804:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:56,806:      pdf_renderer.py:  470: printSegment: Student X is at risk
+   DEBUG: 2026-04-11 12:41:56,807:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:56,808:      pdf_renderer.py:  470: printSegment:  (vague) | 
+   DEBUG: 2026-04-11 12:41:56,810:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:56,813:      pdf_renderer.py:  470: printSegment: Student X is at risk due to FINANCES — here are 5 aid programs
+   DEBUG: 2026-04-11 12:41:56,815:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:56,816:      pdf_renderer.py:  470: printSegment:  |
+   DEBUG: 2026-04-11 12:41:56,818:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:56,825:      pdf_renderer.py:  470: printSegment: | Bias from
+   DEBUG: 2026-04-11 12:41:56,827:      pdf_renderer.py:  470: printSegment: historical data only | Historical bias audited + current intent verified |
+   DEBUG: 2026-04-11 12:41:56,829:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:56,833:      pdf_renderer.py:  470: printSegment: | One-shot prediction | Two-layer validation =
+   DEBUG: 2026-04-11 12:41:56,834:      pdf_renderer.py:  470: printSegment: super-unbiased output |
+   DEBUG: 2026-04-11 12:41:56,837:      pdf_renderer.py:  470: printSegment: PART 8: BUSINESS MODEL 
+   DEBUG: 2026-04-11 12:41:56,840:      pdf_renderer.py:  470: printSegment: &
+   DEBUG: 2026-04-11 12:41:56,841:      pdf_renderer.py:  470: printSegment:  REAL-WORLD IMPACT
+   DEBUG: 2026-04-11 12:41:56,843:      pdf_renderer.py:  470: printSegment: The Cold Hard Math
+   DEBUG: 2026-04-11 12:41:56,844:      pdf_renderer.py:  470: printSegment: | Metric | Number |
+   DEBUG: 2026-04-11 12:41:56,846:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:56,848:      pdf_renderer.py:  470: printSegment: |--------|--------|
+   DEBUG: 2026-04-11 12:41:56,849:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:56,851:      pdf_renderer.py:  470: printSegment: | Average dropout rate in India | 17-20% |
+   DEBUG: 2026-04-11 12:41:56,852:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:56,854:      pdf_renderer.py:  470: printSegment: | Students in Indian higher education |
+   DEBUG: 2026-04-11 12:41:56,855:      pdf_renderer.py:  470: printSegment: 43 million |
+   DEBUG: 2026-04-11 12:41:56,858:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:56,860:      pdf_renderer.py:  470: printSegment: | Students who drop out yearly | ~7 million |
+   DEBUG: 2026-04-11 12:41:56,862:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:56,864:      pdf_renderer.py:  470: printSegment: | Average annual tuition (private university) | ₹1–3 lakh |
+   DEBUG: 2026-04-11 12:41:56,865:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:56,870:      pdf_renderer.py:  470: printSegment: |
+   DEBUG: 2026-04-11 12:41:56,872:      pdf_renderer.py:  470: printSegment: Revenue lost PER dropout (remaining years) | ₹3–12 lakh |
+   DEBUG: 2026-04-11 12:41:56,874:      pdf_renderer.py:  470: printSegment: For a university with 5,000 students:
+   DEBUG: 2026-04-11 12:41:56,876:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:56,879:      pdf_renderer.py:  470: printSegment: ~1,000 at risk of dropping out (20%)
+   DEBUG: 2026-04-11 12:41:56,881:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:56,883:      pdf_renderer.py:  470: printSegment: Layer 1 (ML) flags ~200 as HIGH risk
+   DEBUG: 2026-04-11 12:41:56,885:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:56,887:      pdf_renderer.py:  470: printSegment: Layer 2 (AI Voice) confirms ~140 as genuine risk (filters ~60 false positives)
+   DEBUG: 2026-04-11 12:41:56,889:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:56,891:      pdf_renderer.py:  470: printSegment: Counselors act on 
+   DEBUG: 2026-04-11 12:41:56,894:      pdf_renderer.py:  470: printSegment: 140 validated cases
+   DEBUG: 2026-04-11 12:41:56,898:      pdf_renderer.py:  470: printSegment:  (not 200 noisy ones)
+   DEBUG: 2026-04-11 12:41:56,900:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:56,902:      pdf_renderer.py:  470: printSegment: If system saves 
+   DEBUG: 2026-04-11 12:41:56,907:      pdf_renderer.py:  470: printSegment: 50%
+   DEBUG: 2026-04-11 12:41:56,909:      pdf_renderer.py:  470: printSegment:  of confirmed cases = 
+   DEBUG: 2026-04-11 12:41:56,913:      pdf_renderer.py:  470: printSegment: 70 students
+   DEBUG: 2026-04-11 12:41:56,917:      pdf_renderer.py:  470: printSegment:  (vs 50 without voice validation)
+   DEBUG: 2026-04-11 12:41:56,919:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:56,922:      pdf_renderer.py:  470: printSegment: At ₹2 lakh/year × 2 remaining years = 
+   DEBUG: 2026-04-11 12:41:56,925:      pdf_renderer.py:  470: printSegment: ₹2.8 crore recovered revenue
+   DEBUG: 2026-04-11 12:41:56,954:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:56,958:      pdf_renderer.py:  470: printSegment: Cost of system: ₹15–25 lakh/year (includes Twilio + LLM API calls)
+   DEBUG: 2026-04-11 12:41:56,960:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:56,963:      pdf_renderer.py:  470: printSegment: ROI: 11x–19x
+   DEBUG: 2026-04-11 12:41:56,965:      pdf_renderer.py:  470: printSegment:  (on confirmed, high-confidence interventions)
+   DEBUG: 2026-04-11 12:41:56,968:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:56,969:      pdf_renderer.py:  470: printSegment: Counselor trust
+   DEBUG: 2026-04-11 12:41:56,972:      pdf_renderer.py:  470: printSegment: : Near-zero false alarm rate means they actually USE the system
+   DEBUG: 2026-04-11 12:41:56,974:      pdf_renderer.py:  470: printSegment: Layer 2 Cost Breakdown:
+   DEBUG: 2026-04-11 12:41:56,976:      pdf_renderer.py:  470: printSegment: | Component | Cost per student call | 200 calls/semester |
+   DEBUG: 2026-04-11 12:41:56,979:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:56,983:      pdf_renderer.py:  470: printSegment: |-----------|---------------------|--------------------|
+   DEBUG: 2026-04-11 12:41:56,984:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:56,990:      pdf_renderer.py:  470: printSegment: | Twilio voice
+   DEBUG: 2026-04-11 12:41:56,992:      pdf_renderer.py:  470: printSegment: (2 min avg call) | ₹3–5 | ₹600–1,000 |
+   DEBUG: 2026-04-11 12:41:56,994:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:56,996:      pdf_renderer.py:  470: printSegment: | LLM API (GPT-4o / Gemini) | ₹5–10 | ₹1,000–2,000 |
+   DEBUG: 2026-04-11 12:41:56,999:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:57,001:      pdf_renderer.py:  470: printSegment: | Total per semester | | 
+   DEBUG: 2026-04-11 12:41:57,003:      pdf_renderer.py:  470: printSegment: ₹1,600–3,000
+   DEBUG: 2026-04-11 12:41:57,004:      pdf_renderer.py:  470: printSegment:  |
+   DEBUG: 2026-04-11 12:41:57,006:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:57,009:      pdf_renderer.py:  470: printSegment: |
+   DEBUG: 2026-04-11 12:41:57,013:      pdf_renderer.py:  470: printSegment: Annual (2 semesters) | | 
+   DEBUG: 2026-04-11 12:41:57,015:      pdf_renderer.py:  470: printSegment: ₹3,200–6,000
+   DEBUG: 2026-04-11 12:41:57,018:      pdf_renderer.py:  470: printSegment:  |
+   DEBUG: 2026-04-11 12:41:57,020:      pdf_renderer.py:  470: printSegment: For ₹6,000/year in AI costs, you save ₹2.8 crore in revenue. That
+   DEBUG: 2026-04-11 12:41:57,021:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:57,023:      pdf_renderer.py:  470: printSegment: s the pitch.
+   DEBUG: 2026-04-11 12:41:57,026:      pdf_renderer.py:  470: printSegment: Impact Chain
+   DEBUG: 2026-04-11 12:41:57,028:      pdf_renderer.py:  470: printSegment: Level 1: The Individual Student
+   DEBUG: 2026-04-11 12:41:57,031:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:57,035:      pdf_renderer.py:  470: printSegment: Completes degree → better job prospects, higher lifetime earnings
+   DEBUG: 2026-04-11 12:41:57,037:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:57,040:      pdf_renderer.py:  470: printSegment: Avoids dropout stigma + education debt with no degree to show
+   DEBUG: 2026-04-11 12:41:57,042:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:57,044:      pdf_renderer.py:  470: printSegment: First-generation college students saved → breaks the poverty cycle
+   DEBUG: 2026-04-11 12:41:57,046:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:57,048:      pdf_renderer.py:  470: printSegment: Mental health: someone noticed before crisis point
+   DEBUG: 2026-04-11 12:41:57,050:      pdf_renderer.py:  470: printSegment: Level 2: The University
+   DEBUG: 2026-04-11 12:41:57,051:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:57,053:      pdf_renderer.py:  470: printSegment: Higher graduation rates → better NIRF ranking
+   DEBUG: 2026-04-11 12:41:57,054:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:57,055:      pdf_renderer.py:  470: printSegment: Retained tuition revenue (₹crores per year)
+   DEBUG: 2026-04-11 12:41:57,057:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:57,059:      pdf_renderer.py:  470: printSegment: Better NAAC accreditation scores (dropout rate is tracked)
+   DEBUG: 2026-04-11 12:41:57,061:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:57,063:      pdf_renderer.py:  470: printSegment: Data-driven resource allocation (counselors, tutors, financial aid)
+   DEBUG: 2026-04-11 12:41:57,065:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:57,066:      pdf_renderer.py:  470: printSegment: Fairness audit → proves no discrimination (legal 
+   DEBUG: 2026-04-11 12:41:57,067:      pdf_renderer.py:  470: printSegment: &
+   DEBUG: 2026-04-11 12:41:57,069:      pdf_renderer.py:  470: printSegment:  ethical shield)
+   DEBUG: 2026-04-11 12:41:57,070:      pdf_renderer.py:  470: printSegment: Level 3: Society / Government
+   DEBUG: 2026-04-11 12:41:57,072:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:57,073:      pdf_renderer.py:  470: printSegment: NEP 2020 mandates reducing dropout rates — this is a direct tool
+   DEBUG: 2026-04-11 12:41:57,075:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:57,078:      pdf_renderer.py:  470: printSegment: Government scholarship ROI improves (funded students actually graduate)
+   DEBUG: 2026-04-11 12:41:57,080:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:57,083:      pdf_renderer.py:  470: printSegment: Workforce quality improves (more graduates in the economy)
+   DEBUG: 2026-04-11 12:41:57,085:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:57,088:      pdf_renderer.py:  470: printSegment: Reduces inequality: model audited for fairness means marginalized groups aren
+   DEBUG: 2026-04-11 12:41:57,089:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:57,091:      pdf_renderer.py:  470: printSegment: t over-flagged or
+   DEBUG: 2026-04-11 12:41:57,094:      pdf_renderer.py:  470: printSegment: under-served
+   DEBUG: 2026-04-11 12:41:57,096:      pdf_renderer.py:  470: printSegment: Production Deployment Vision
+   DEBUG: 2026-04-11 12:41:57,098:      pdf_renderer.py:  470: printSegment: SEMESTER START              MID-SEMESTER                  END OF
+   DEBUG: 2026-04-11 12:41:57,100:      pdf_renderer.py:  470: printSegment: SEMESTER
+   DEBUG: 2026-04-11 12:41:57,102:      pdf_renderer.py:  470: printSegment: ─────┬─────────────────────────┬────────────────────────────┬───
+   DEBUG: 2026-04-11 12:41:57,105:      pdf_renderer.py:  470: printSegment:      │                         │                            │
+   DEBUG: 2026-04-11 12:41:57,107:      pdf_renderer.py:  470: printSegment:      ▼                         ▼                            ▼
+   DEBUG: 2026-04-11 12:41:57,111:      pdf_renderer.py:  470: printSegment:  Student enrolls         LAYER 1 runs every         Measure
+   DEBUG: 2026-04-11 12:41:57,113:      pdf_renderer.py:  470: printSegment: outcomes:
+   DEBUG: 2026-04-11 12:41:57,116:      pdf_renderer.py:  470: printSegment:  → data flows into       2 weeks on fresh           "How many
+   DEBUG: 2026-04-11 12:41:57,118:      pdf_renderer.py:  470: printSegment: confirmed
+   DEBUG: 2026-04-11 12:41:57,122:      pdf_renderer.py:  470: printSegment:  SIS (Student Info       grades & attendance        at-risk
+   DEBUG: 2026-04-11 12:41:57,123:      pdf_renderer.py:  470: printSegment: students were
+   DEBUG: 2026-04-11 12:41:57,126:      pdf_renderer.py:  470: printSegment:  System)                 → Gold table updates       saved by
+   DEBUG: 2026-04-11 12:41:57,128:      pdf_renderer.py:  470: printSegment: intervention?"
+   DEBUG: 2026-04-11 12:41:57,131:      pdf_renderer.py:  470: printSegment:      │                         │                            │
+   DEBUG: 2026-04-11 12:41:57,132:      pdf_renderer.py:  470: printSegment:      │    Auto-ingest          │    LAYER 2 triggers       │
+   DEBUG: 2026-04-11 12:41:57,135:      pdf_renderer.py:  470: printSegment:      ▼                         ▼                            ▼
+   DEBUG: 2026-04-11 12:41:57,139:      pdf_renderer.py:  470: printSegment:  Bronze table            AI Voice calls HIGH-       Retrain model
+   DEBUG: 2026-04-11 12:41:57,141:      pdf_renderer.py:  470: printSegment: with
+   DEBUG: 2026-04-11 12:41:57,144:      pdf_renderer.py:  470: printSegment:  updated                 risk students within       new outcome
+   DEBUG: 2026-04-11 12:41:57,145:      pdf_renderer.py:  470: printSegment: data +
+   DEBUG: 2026-04-11 12:41:57,148:      pdf_renderer.py:  470: printSegment:                          48 hours of flagging       voice feedback
+   DEBUG: 2026-04-11 12:41:57,150:      pdf_renderer.py:  470: printSegment:                                 │                   (feedback loop)
+   DEBUG: 2026-04-11 12:41:57,152:      pdf_renderer.py:  470: printSegment:                                 ▼
+   DEBUG: 2026-04-11 12:41:57,154:      pdf_renderer.py:  470: printSegment:                          Voice Feedback →
+   DEBUG: 2026-04-11 12:41:57,157:      pdf_renderer.py:  470: printSegment:                          Fusion Score →
+   DEBUG: 2026-04-11 12:41:57,159:      pdf_renderer.py:  470: printSegment:                          Resource Match →
+   DEBUG: 2026-04-11 12:41:57,161:      pdf_renderer.py:  470: printSegment:                          Counselor acts on
+   DEBUG: 2026-04-11 12:41:57,163:      pdf_renderer.py:  470: printSegment:                          CONFIRMED cases only
+   DEBUG: 2026-04-11 12:41:57,167:      pdf_renderer.py:  470: printSegment: PART 9: DATABRICKS TECH STACK
+   DEBUG: 2026-04-11 12:41:57,169:      pdf_renderer.py:  470: printSegment: What We Use
+   DEBUG: 2026-04-11 12:41:57,171:      pdf_renderer.py:  470: printSegment: | Component | Purpose |
+   DEBUG: 2026-04-11 12:41:57,172:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:57,174:      pdf_renderer.py:  470: printSegment: |-----------|---------|
+   DEBUG: 2026-04-11 12:41:57,175:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:57,175:      pdf_renderer.py:  470: printSegment: | 
+   DEBUG: 2026-04-11 12:41:57,176:      pdf_renderer.py:  470: printSegment: Delta Lake
+   DEBUG: 2026-04-11 12:41:57,179:      pdf_renderer.py:  470: printSegment:  | Bronze / Silver / Gold medallion tables |
+   DEBUG: 2026-04-11 12:41:57,180:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:57,181:      pdf_renderer.py:  470: printSegment: | 
+   DEBUG: 2026-04-11 12:41:57,182:      pdf_renderer.py:  470: printSegment: Unity Catalog
+   DEBUG: 2026-04-11 12:41:57,186:      pdf_renderer.py:  470: printSegment:  |
+   DEBUG: 2026-04-11 12:41:57,188:      pdf_renderer.py:  470: printSegment: Governance, table registration, access control |
+   DEBUG: 2026-04-11 12:41:57,189:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:57,190:      pdf_renderer.py:  470: printSegment: | 
+   DEBUG: 2026-04-11 12:41:57,191:      pdf_renderer.py:  470: printSegment: MLflow
+   DEBUG: 2026-04-11 12:41:57,194:      pdf_renderer.py:  470: printSegment:  | Experiment tracking, model logging, model registry |
+   DEBUG: 2026-04-11 12:41:57,194:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:57,196:      pdf_renderer.py:  470: printSegment: | 
+   DEBUG: 2026-04-11 12:41:57,197:      pdf_renderer.py:  470: printSegment: SHAP
+   DEBUG: 2026-04-11 12:41:57,199:      pdf_renderer.py:  470: printSegment:  | Per-student explainability (pip install shap) |
+   DEBUG: 2026-04-11 12:41:57,200:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:57,201:      pdf_renderer.py:  470: printSegment: | 
+   DEBUG: 2026-04-11 12:41:57,203:      pdf_renderer.py:  470: printSegment: XGBoost + Logistic Regression
+   DEBUG: 2026-04-11 12:41:57,204:      pdf_renderer.py:  470: printSegment:  | Two models as required |
+   DEBUG: 2026-04-11 12:41:57,205:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:57,207:      pdf_renderer.py:  470: printSegment: | 
+   DEBUG: 2026-04-11 12:41:57,208:      pdf_renderer.py:  470: printSegment: Databricks SQL
+   DEBUG: 2026-04-11 12:41:57,210:      pdf_renderer.py:  470: printSegment:  | Dashboard visualization queries |
+   DEBUG: 2026-04-11 12:41:57,213:      pdf_renderer.py:  470: printSegment: Notebooks We
+   DEBUG: 2026-04-11 12:41:57,214:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:57,217:      pdf_renderer.py:  470: printSegment: ll Build
+   DEBUG: 2026-04-11 12:41:57,218:      pdf_renderer.py:  470: printSegment: | Notebook | Purpose | Eval Criteria Hit |
+   DEBUG: 2026-04-11 12:41:57,219:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:57,221:      pdf_renderer.py:  470: printSegment: |----------|---------|------------------|
+   DEBUG: 2026-04-11 12:41:57,222:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:57,223:      pdf_renderer.py:  470: printSegment: | 
+   DEBUG: 2026-04-11 12:41:57,225:      pdf_renderer.py:  470: printSegment: dropout_pipeline.ipynb
+   DEBUG: 2026-04-11 12:41:57,232:      pdf_renderer.py:  470: printSegment:  |
+   DEBUG: 2026-04-11 12:41:57,235:      pdf_renderer.py:  470: printSegment: Bronze → Silver → Gold | Pipeline architecture (20%) |
+   DEBUG: 2026-04-11 12:41:57,237:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:57,239:      pdf_renderer.py:  470: printSegment: | 
+   DEBUG: 2026-04-11 12:41:57,240:      pdf_renderer.py:  470: printSegment: dropout_ml.ipynb
+   DEBUG: 2026-04-11 12:41:57,247:      pdf_renderer.py:  470: printSegment:  | Train 2 models + MLflow + Fairness +
+   DEBUG: 2026-04-11 12:41:57,250:      pdf_renderer.py:  470: printSegment: SHAP | Model (20%) + Fairness (25%) + SHAP (15%) |
+   DEBUG: 2026-04-11 12:41:57,251:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:57,252:      pdf_renderer.py:  470: printSegment: | 
+   DEBUG: 2026-04-11 12:41:57,254:      pdf_renderer.py:  470: printSegment: dropout_dashboard.ipynb
+   DEBUG: 2026-04-11 12:41:57,258:      pdf_renderer.py:  470: printSegment:  | Visual dashboard |
+   DEBUG: 2026-04-11 12:41:57,260:      pdf_renderer.py:  470: printSegment: Feature engineering (20%) |
+   DEBUG: 2026-04-11 12:41:57,264:      pdf_renderer.py:  470: printSegment: PART 10: EVALUATION SCORING STRATEGY
+   DEBUG: 2026-04-11 12:41:57,266:      pdf_renderer.py:  470: printSegment: Evaluation Criteria (from Problem Statement)
+   DEBUG: 2026-04-11 12:41:57,268:      pdf_renderer.py:  470: printSegment: | Criteria | Weight | How We Score Maximum |
+   DEBUG: 2026-04-11 12:41:57,269:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:57,272:      pdf_renderer.py:  470: printSegment: |----------|--------|---------------------|
+   DEBUG: 2026-04-11 12:41:57,273:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:57,281:      pdf_renderer.py:  470: printSegment: | Pipeline architecture —
+   DEBUG: 2026-04-11 12:41:57,283:      pdf_renderer.py:  470: printSegment: Bronze/Silver/Gold | 20% | Clean 3-layer medallion with schema docs |
+   DEBUG: 2026-04-11 12:41:57,285:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:57,287:      pdf_renderer.py:  470: printSegment: | Feature engineering depth 
+   DEBUG: 2026-04-11 12:41:57,288:      pdf_renderer.py:  470: printSegment: &
+   DEBUG: 2026-04-11 12:41:57,296:      pdf_renderer.py:  470: printSegment:  creativity |
+   DEBUG: 2026-04-11 12:41:57,299:      pdf_renderer.py:  470: printSegment: 20% | 6 engineered features with mathematical justification |
+   DEBUG: 2026-04-11 12:41:57,300:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:57,302:      pdf_renderer.py:  470: printSegment: | Model performance 
+   DEBUG: 2026-04-11 12:41:57,303:      pdf_renderer.py:  470: printSegment: &
+   DEBUG: 2026-04-11 12:41:57,308:      pdf_renderer.py:  470: printSegment:  MLflow hygiene | 20% | 2
+   DEBUG: 2026-04-11 12:41:57,312:      pdf_renderer.py:  470: printSegment: models compared, best registered, metrics logged |
+   DEBUG: 2026-04-11 12:41:57,313:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:57,316:      pdf_renderer.py:  470: printSegment: | 
+   DEBUG: 2026-04-11 12:41:57,318:      pdf_renderer.py:  470: printSegment: Fairness audit — metrics, docs, honest findings
+   DEBUG: 2026-04-11 12:41:57,320:      pdf_renderer.py:  470: printSegment:  | 
+   DEBUG: 2026-04-11 12:41:57,322:      pdf_renderer.py:  470: printSegment: 25%
+   DEBUG: 2026-04-11 12:41:57,326:      pdf_renderer.py:  470: printSegment:  | Full DPR
+   DEBUG: 2026-04-11 12:41:57,330:      pdf_renderer.py:  470: printSegment: + EOR + PP across gender 
+   DEBUG: 2026-04-11 12:41:57,332:      pdf_renderer.py:  470: printSegment: &
+   DEBUG: 2026-04-11 12:41:57,336:      pdf_renderer.py:  470: printSegment:  socioeconomic groups |
+   DEBUG: 2026-04-11 12:41:57,339:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:57,341:      pdf_renderer.py:  470: printSegment: | Explainability 
+   DEBUG: 2026-04-11 12:41:57,343:      pdf_renderer.py:  470: printSegment: &
+   DEBUG: 2026-04-11 12:41:57,351:      pdf_renderer.py:  470: printSegment:  Gold table output quality | 15% | SHAP per
+   DEBUG: 2026-04-11 12:41:57,355:      pdf_renderer.py:  470: printSegment: student + Gold table with tiers + top 3 factors |
+   DEBUG: 2026-04-11 12:41:57,358:      pdf_renderer.py:  470: printSegment: Round 1: Ideation (scored on understanding + creativity + feasibility)
+   DEBUG: 2026-04-11 12:41:57,360:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:57,364:      pdf_renderer.py:  470: printSegment: Show this document. Show we understand the problem deeply.
+   DEBUG: 2026-04-11 12:41:57,365:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:57,369:      pdf_renderer.py:  470: printSegment: Show the fairness angle — 
+   DEBUG: 2026-04-11 12:41:57,371:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:57,373:      pdf_renderer.py:  470: printSegment: we
+   DEBUG: 2026-04-11 12:41:57,375:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:57,378:      pdf_renderer.py:  470: printSegment: re not just predicting, we
+   DEBUG: 2026-04-11 12:41:57,379:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:57,382:      pdf_renderer.py:  470: printSegment: re proving fairness
+   DEBUG: 2026-04-11 12:41:57,383:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:57,384:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:57,388:      pdf_renderer.py:  470: printSegment: Show the feature engineering plan — 
+   DEBUG: 2026-04-11 12:41:57,391:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:57,392:      pdf_renderer.py:  470: printSegment: we
+   DEBUG: 2026-04-11 12:41:57,395:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:57,398:      pdf_renderer.py:  470: printSegment: re creating signals that don
+   DEBUG: 2026-04-11 12:41:57,400:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:57,402:      pdf_renderer.py:  470: printSegment: t exist in raw data
+   DEBUG: 2026-04-11 12:41:57,404:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:57,407:      pdf_renderer.py:  470: printSegment: Round 2: Execution (scored on technical execution + progress + problem
+   DEBUG: 2026-04-11 12:41:57,409:      pdf_renderer.py:  470: printSegment: alignment)
+   DEBUG: 2026-04-11 12:41:57,413:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:57,416:      pdf_renderer.py:  470: printSegment: Working pipeline. All cells run. Tables populated.
+   DEBUG: 2026-04-11 12:41:57,418:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:57,421:      pdf_renderer.py:  470: printSegment: MLflow shows both experiments with comparison.
+   DEBUG: 2026-04-11 12:41:57,423:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:57,425:      pdf_renderer.py:  470: printSegment: Fairness audit table exists with real metrics.
+   DEBUG: 2026-04-11 12:41:57,429:      pdf_renderer.py:  470: printSegment: Round 3: Final Demo (scored on completion + impact + presentation +
+   DEBUG: 2026-04-11 12:41:57,431:      pdf_renderer.py:  470: printSegment: resilience)
+   DEBUG: 2026-04-11 12:41:57,433:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:57,438:      pdf_renderer.py:  470: printSegment: Complete Gold table with student-level risk + factors + tiers
+   DEBUG: 2026-04-11 12:41:57,440:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:57,443:      pdf_renderer.py:  470: printSegment: SHAP plots (visual, impressive)
+   DEBUG: 2026-04-11 12:41:57,444:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:57,447:      pdf_renderer.py:  470: printSegment: Fairness metrics documented honestly
+   DEBUG: 2026-04-11 12:41:57,449:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:57,451:      pdf_renderer.py:  470: printSegment: Clear story: 
+   DEBUG: 2026-04-11 12:41:57,453:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:57,455:      pdf_renderer.py:  470: printSegment: here
+   DEBUG: 2026-04-11 12:41:57,457:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:57,459:      pdf_renderer.py:  470: printSegment: s a student, here
+   DEBUG: 2026-04-11 12:41:57,461:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:57,464:      pdf_renderer.py:  470: printSegment: s why they
+   DEBUG: 2026-04-11 12:41:57,465:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:57,469:      pdf_renderer.py:  470: printSegment: re at risk, here
+   DEBUG: 2026-04-11 12:41:57,471:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:57,475:      pdf_renderer.py:  470: printSegment: s what to do
+   DEBUG: 2026-04-11 12:41:57,478:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:57,481:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:57,485:      pdf_renderer.py:  470: printSegment: Impact story: ₹4 crore revenue recovery + 100 lives changed
+   DEBUG: 2026-04-11 12:41:57,488:      pdf_renderer.py:  470: printSegment: PART 11: THE PITCH SCRIPT
+   DEBUG: 2026-04-11 12:41:57,491:      pdf_renderer.py:  470: printSegment: 30-Second Elevator Pitch
+   DEBUG: 2026-04-11 12:41:57,493:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:57,567:      pdf_renderer.py:  470: printSegment: Universities lose 7 million students to dropout every year in India. The warning signs are scattered
+   DEBUG: 2026-04-11 12:41:57,594:      pdf_renderer.py:  470: printSegment: across 3 departments that never talk to each other. We built The Dropout Signal: a TWO-LAYER
+   DEBUG: 2026-04-11 12:41:57,599:      pdf_renderer.py:  470: printSegment: system on Databricks. Layer 1 predicts risk from grades, fees, and demographics — and mathematically
+   DEBUG: 2026-04-11 12:41:57,600:      pdf_renderer.py:  470: printSegment: PROVES it
+   DEBUG: 2026-04-11 12:41:57,601:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:57,710:      pdf_renderer.py:  470: printSegment: s fair. Layer 2 is our innovation: an AI voice agent calls flagged students with
+   DEBUG: 2026-04-11 12:41:57,796:      pdf_renderer.py:  470: printSegment: non-leading questions, confirms the prediction, identifies the ROOT CAUSE, and connects them to
+   DEBUG: 2026-04-11 12:41:57,825:      pdf_renderer.py:  470: printSegment: the exact help they need — an NGO for aid, a loan scheme, a counselor. No false alarms. No bias. 70
+   DEBUG: 2026-04-11 12:41:57,829:      pdf_renderer.py:  470: printSegment: students saved per semester. ₹2.8 crore recovered.
+   DEBUG: 2026-04-11 12:41:57,831:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:57,835:      pdf_renderer.py:  470: printSegment: 3-Minute Demo Script
+   DEBUG: 2026-04-11 12:41:57,838:      pdf_renderer.py:  470: printSegment: | Time | Say | Show |
+   DEBUG: 2026-04-11 12:41:57,841:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:57,844:      pdf_renderer.py:  470: printSegment: |------|-----|------|
+   DEBUG: 2026-04-11 12:41:57,846:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:57,849:      pdf_renderer.py:  470: printSegment: | 0:00-0:20 | 
+   DEBUG: 2026-04-11 12:41:57,852:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:57,867:      pdf_renderer.py:  470: printSegment: 7M students drop out yearly. The signals are in the data — but
+   DEBUG: 2026-04-11 12:41:57,872:      pdf_renderer.py:  470: printSegment: colleges have it SILOED across 3 departments.
+   DEBUG: 2026-04-11 12:41:57,874:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:57,878:      pdf_renderer.py:  470: printSegment:  | Problem slide + college silo diagram |
+   DEBUG: 2026-04-11 12:41:57,882:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:57,885:      pdf_renderer.py:  470: printSegment: | 0:20-0:45 | 
+   DEBUG: 2026-04-11 12:41:57,888:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:57,907:      pdf_renderer.py:  470: printSegment: We unify it.
+   DEBUG: 2026-04-11 12:41:57,912:      pdf_renderer.py:  470: printSegment: Bronze ingests, Silver engineers 6 new features. The data that never talked — now talks.
+   DEBUG: 2026-04-11 12:41:57,915:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:57,920:      pdf_renderer.py:  470: printSegment:  | Pipeline notebook —
+   DEBUG: 2026-04-11 12:41:57,923:      pdf_renderer.py:  470: printSegment: Bronze/Silver cells |
+   DEBUG: 2026-04-11 12:41:57,927:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:57,933:      pdf_renderer.py:  470: printSegment: | 0:45-1:10 | 
+   DEBUG: 2026-04-11 12:41:57,935:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:57,941:      pdf_renderer.py:  470: printSegment: Two models. MLflow tracks everything. Best model registered. But here
+   DEBUG: 2026-04-11 12:41:57,943:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:57,949:      pdf_renderer.py:  470: printSegment: s the
+   DEBUG: 2026-04-11 12:41:57,952:      pdf_renderer.py:  470: printSegment: twist —
+   DEBUG: 2026-04-11 12:41:57,954:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:57,959:      pdf_renderer.py:  470: printSegment:  | MLflow experiment comparison |
+   DEBUG: 2026-04-11 12:41:57,963:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:57,966:      pdf_renderer.py:  470: printSegment: | 1:10-1:40 | 
+   DEBUG: 2026-04-11 12:41:57,969:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:57,972:      pdf_renderer.py:  470: printSegment: — we don
+   DEBUG: 2026-04-11 12:41:57,976:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:57,991:      pdf_renderer.py:  470: printSegment: t just predict. We PROVE fairness. Demographic
+   DEBUG: 2026-04-11 12:41:57,994:      pdf_renderer.py:  470: printSegment: parity, equal opportunity, across gender AND income.
+   DEBUG: 2026-04-11 12:41:57,999:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:58,002:      pdf_renderer.py:  470: printSegment:  | Fairness audit table + metrics |
+   DEBUG: 2026-04-11 12:41:58,003:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:58,007:      pdf_renderer.py:  470: printSegment: | 1:40-2:10 | 
+   DEBUG: 2026-04-11 12:41:58,011:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:58,032:      pdf_renderer.py:  470: printSegment: Student
+   DEBUG: 2026-04-11 12:41:58,038:      pdf_renderer.py:  470: printSegment: #2847: ML says 87% risk. But is it real? Our AI CALLS them. Five non-leading questions. Student says: 
+   DEBUG: 2026-04-11 12:41:58,042:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:58,046:      pdf_renderer.py:  470: printSegment: fees are a
+   DEBUG: 2026-04-11 12:41:58,048:      pdf_renderer.py:  470: printSegment: burden, I
+   DEBUG: 2026-04-11 12:41:58,050:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:58,052:      pdf_renderer.py:  470: printSegment: m not sure about next semester.
+   DEBUG: 2026-04-11 12:41:58,055:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:58,057:      pdf_renderer.py:  470: printSegment:  Confirmed.
+   DEBUG: 2026-04-11 12:41:58,061:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:58,065:      pdf_renderer.py:  470: printSegment:  | SHAP output + voice call demo |
+   DEBUG: 2026-04-11 12:41:58,069:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:58,073:      pdf_renderer.py:  470: printSegment: | 2:10-2:40 | 
+   DEBUG: 2026-04-11 12:41:58,075:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:58,094:      pdf_renderer.py:  470: printSegment: Root cause:
+   DEBUG: 2026-04-11 12:41:58,102:      pdf_renderer.py:  470: printSegment: financial. System auto-recommends: National Scholarship Portal, Vidyalakshmi loan, Pratham Foundation. The
+   DEBUG: 2026-04-11 12:41:58,106:      pdf_renderer.py:  470: printSegment: counselor doesn
+   DEBUG: 2026-04-11 12:41:58,109:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:58,114:      pdf_renderer.py:  470: printSegment: t just know WHO is at risk — they know WHY and exactly WHERE to send them.
+   DEBUG: 2026-04-11 12:41:58,118:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:58,123:      pdf_renderer.py:  470: printSegment:  | Final Gold table
+   DEBUG: 2026-04-11 12:41:58,127:      pdf_renderer.py:  470: printSegment: with resource mapping |
+   DEBUG: 2026-04-11 12:41:58,130:      pdf_renderer.py:  470: printSegment:  
+   DEBUG: 2026-04-11 12:41:58,132:      pdf_renderer.py:  470: printSegment: | 2:40-3:00 | 
+   DEBUG: 2026-04-11 12:41:58,135:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:58,155:      pdf_renderer.py:  470: printSegment: Two layers. ML + Human voice. Zero bias. Zero false alarms. 70 students
+   DEBUG: 2026-04-11 12:41:58,160:      pdf_renderer.py:  470: printSegment: saved per semester. ₹2.8 crore recovered per university.
+   DEBUG: 2026-04-11 12:41:58,163:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:58,168:      pdf_renderer.py:  470: printSegment:  | Impact numbers + counselor report |
+   DEBUG: 2026-04-11 12:41:58,171:      pdf_renderer.py:  470: printSegment: Killer Judge Q
+   DEBUG: 2026-04-11 12:41:58,174:      pdf_renderer.py:  470: printSegment: &
+   DEBUG: 2026-04-11 12:41:58,178:      pdf_renderer.py:  470: printSegment: A Answers
+   DEBUG: 2026-04-11 12:41:58,181:      pdf_renderer.py:  470: printSegment: Q: 
+   DEBUG: 2026-04-11 12:41:58,185:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:58,189:      pdf_renderer.py:  470: printSegment: What if the model is biased?
+   DEBUG: 2026-04-11 12:41:58,191:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:58,195:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:58,301:      pdf_renderer.py:  470: printSegment: Great question — we measured that. We computed demographic parity and equal opportunity ratios
+   DEBUG: 2026-04-11 12:41:58,321:      pdf_renderer.py:  470: printSegment: across gender and socioeconomic groups. If we found bias, we documented it honestly and proposed
+   DEBUG: 2026-04-11 12:41:58,330:      pdf_renderer.py:  470: printSegment: mitigation strategies. You can see the fairness
+   DEBUG: 2026-04-11 12:41:58,333:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:58,344:      pdf_renderer.py:  470: printSegment: audit Delta table with every metric.
+   DEBUG: 2026-04-11 12:41:58,347:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:58,351:      pdf_renderer.py:  470: printSegment: Q: 
+   DEBUG: 2026-04-11 12:41:58,355:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:58,362:      pdf_renderer.py:  470: printSegment: How is this different from just looking at grades?
+   DEBUG: 2026-04-11 12:41:58,368:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:58,374:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:58,485:      pdf_renderer.py:  470: printSegment: Grades are a snapshot. We compute grade TRAJECTORY — a student declining from 14 to 9 is
+   DEBUG: 2026-04-11 12:41:58,518:      pdf_renderer.py:  470: printSegment: completely different from a student stable at 10. We also combine financial signals, macroeconomic
+   DEBUG: 2026-04-11 12:41:58,525:      pdf_renderer.py:  470: printSegment: context, and engagement ratios into composite features that no single metric captures.
+   DEBUG: 2026-04-11 12:41:58,528:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:58,532:      pdf_renderer.py:  470: printSegment: Q: 
+   DEBUG: 2026-04-11 12:41:58,535:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:58,539:      pdf_renderer.py:  470: printSegment: Can this actually be deployed?
+   DEBUG: 2026-04-11 12:41:58,542:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:58,545:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:58,793:      pdf_renderer.py:  470: printSegment: Yes. Every university has a Student Information System — PeopleSoft, SAP, even Excel. Our pipeline
+   DEBUG: 2026-04-11 12:41:58,922:      pdf_renderer.py:  470: printSegment: reads from CSV export. Gold table feeds the dashboard. AI voice costs ₹6,000/year for 200 calls. The
+   DEBUG: 2026-04-11 12:41:58,985:      pdf_renderer.py:  470: printSegment: fairness audit ensures compliance with UGC anti-discrimination policies. MLflow tracks model
+   DEBUG: 2026-04-11 12:41:59,002:      pdf_renderer.py:  470: printSegment: versions for retraining every semester. We even mapped the 3-phase rollout: manual CSV pilot →
+   DEBUG: 2026-04-11 12:41:59,008:      pdf_renderer.py:  470: printSegment: automated SFTP → full integration.
+   DEBUG: 2026-04-11 12:41:59,014:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:59,018:      pdf_renderer.py:  470: printSegment: Q: 
+   DEBUG: 2026-04-11 12:41:59,021:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:59,025:      pdf_renderer.py:  470: printSegment: How does the AI call work? Isn
+   DEBUG: 2026-04-11 12:41:59,027:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:59,029:      pdf_renderer.py:  470: printSegment: t it intrusive?
+   DEBUG: 2026-04-11 12:41:59,031:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:59,033:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:59,051:      pdf_renderer.py:  470: printSegment: The student never knows they were flagged. The call is positioned as a routine semester wellness
+   DEBUG: 2026-04-11 12:41:59,056:      pdf_renderer.py:  470: printSegment: check-in. Five open-ended questions — 
+   DEBUG: 2026-04-11 12:41:59,058:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:59,060:      pdf_renderer.py:  470: printSegment: How
+   DEBUG: 2026-04-11 12:41:59,062:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:59,064:      pdf_renderer.py:  470: printSegment: s your semester going?
+   DEBUG: 2026-04-11 12:41:59,067:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:59,068:      pdf_renderer.py:  470: printSegment: , 
+   DEBUG: 2026-04-11 12:41:59,070:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:59,072:      pdf_renderer.py:  470: printSegment: What
+   DEBUG: 2026-04-11 12:41:59,075:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:59,077:      pdf_renderer.py:  470: printSegment: s been challenging?
+   DEBUG: 2026-04-11 12:41:59,080:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:59,101:      pdf_renderer.py:  470: printSegment:  — no
+   DEBUG: 2026-04-11 12:41:59,118:      pdf_renderer.py:  470: printSegment: question mentions dropout or risk. The AI analyzes sentiment, root cause, and future orientation. A
+   DEBUG: 2026-04-11 12:41:59,121:      pdf_renderer.py:  470: printSegment: student happily talking about next semester
+   DEBUG: 2026-04-11 12:41:59,122:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:59,125:      pdf_renderer.py:  470: printSegment: s fest? False positive removed. A student who says 
+   DEBUG: 2026-04-11 12:41:59,128:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:59,130:      pdf_renderer.py:  470: printSegment: I
+   DEBUG: 2026-04-11 12:41:59,132:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:59,135:      pdf_renderer.py:  470: printSegment: m
+   DEBUG: 2026-04-11 12:41:59,138:      pdf_renderer.py:  470: printSegment: not sure about continuing
+   DEBUG: 2026-04-11 12:41:59,141:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:59,147:      pdf_renderer.py:  470: printSegment: ? Confirmed and connected to help.
+   DEBUG: 2026-04-11 12:41:59,149:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:59,152:      pdf_renderer.py:  470: printSegment: Q: 
+   DEBUG: 2026-04-11 12:41:59,155:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:59,160:      pdf_renderer.py:  470: printSegment: What if the student lies on the call?
+   DEBUG: 2026-04-11 12:41:59,163:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:59,170:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:59,172:      pdf_renderer.py:  470: printSegment: Great question. That
+   DEBUG: 2026-04-11 12:41:59,175:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:59,213:      pdf_renderer.py:  470: printSegment: s why we weight ML at 60% and voice at 40%. Even if a student masks their
+   DEBUG: 2026-04-11 12:41:59,221:      pdf_renderer.py:  470: printSegment: intent, the quantitative signals — grades dropping 40%, fees unpaid — still dominate. The voice layer
+   DEBUG: 2026-04-11 12:41:59,225:      pdf_renderer.py:  470: printSegment: ADDS confidence, it doesn
+   DEBUG: 2026-04-11 12:41:59,229:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:59,236:      pdf_renderer.py:  470: printSegment: t replace the data. But in our analysis, most students who are struggling
+   DEBUG: 2026-04-11 12:41:59,240:      pdf_renderer.py:  470: printSegment: appreciate someone asking.
+   DEBUG: 2026-04-11 12:41:59,243:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:59,246:      pdf_renderer.py:  470: printSegment: Q: 
+   DEBUG: 2026-04-11 12:41:59,249:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:59,251:      pdf_renderer.py:  470: printSegment: Why didn
+   DEBUG: 2026-04-11 12:41:59,253:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:59,257:      pdf_renderer.py:  470: printSegment: t you choose the Advanced problem?
+   DEBUG: 2026-04-11 12:41:59,261:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:59,265:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:59,317:      pdf_renderer.py:  470: printSegment: Because a clean, complete, FAIR Standard solution with a two-layer innovation beats an
+   DEBUG: 2026-04-11 12:41:59,329:      pdf_renderer.py:  470: printSegment: incomplete Advanced one. We have something no other team has: AI-validated predictions with
+   DEBUG: 2026-04-11 12:41:59,333:      pdf_renderer.py:  470: printSegment: root-cause-specific interventions. That
+   DEBUG: 2026-04-11 12:41:59,336:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:59,338:      pdf_renderer.py:  470: printSegment: s not Standard difficulty — that
+   DEBUG: 2026-04-11 12:41:59,341:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:59,344:      pdf_renderer.py:  470: printSegment: s Standard choice with
+   DEBUG: 2026-04-11 12:41:59,349:      pdf_renderer.py:  470: printSegment: Advanced execution.
+   DEBUG: 2026-04-11 12:41:59,351:      pdf_renderer.py:  470: printSegment: "
+   DEBUG: 2026-04-11 12:41:59,357:      pdf_renderer.py:  470: printSegment: PART 12: QUICK REFERENCE
+   DEBUG: 2026-04-11 12:41:59,360:      pdf_renderer.py:  470: printSegment: Dataset Location
+   DEBUG: 2026-04-11 12:41:59,365:      pdf_renderer.py:  470: printSegment: /Volumes/hackbricks/raw/uci_dropout.csv
+   DEBUG: 2026-04-11 12:41:59,369:      pdf_renderer.py:  470: printSegment: Key Numbers
+   DEBUG: 2026-04-11 12:41:59,372:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:59,377:      pdf_renderer.py:  470: printSegment: 4,400 records, 37 features
+   DEBUG: 2026-04-11 12:41:59,381:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:59,387:      pdf_renderer.py:  470: printSegment: Target: binary (Dropout=1, Enrolled/Graduate=0)
+   DEBUG: 2026-04-11 12:41:59,392:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:59,398:      pdf_renderer.py:  470: printSegment: Direct access, no auth needed
+   DEBUG: 2026-04-11 12:41:59,402:      pdf_renderer.py:  470: printSegment: Models
+   DEBUG: 2026-04-11 12:41:59,405:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:59,410:      pdf_renderer.py:  470: printSegment: Model A: Logistic Regression (sklearn)
+   DEBUG: 2026-04-11 12:41:59,415:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:59,419:      pdf_renderer.py:  470: printSegment: Model B: XGBoost (xgboost library)
+   DEBUG: 2026-04-11 12:41:59,421:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:59,423:      pdf_renderer.py:  470: printSegment: Both logged to MLflow, best registered
+   DEBUG: 2026-04-11 12:41:59,425:      pdf_renderer.py:  470: printSegment: Fairness Audit Groups
+   DEBUG: 2026-04-11 12:41:59,429:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:59,432:      pdf_renderer.py:  470: printSegment: Gender: Male vs Female
+   DEBUG: 2026-04-11 12:41:59,434:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:59,436:      pdf_renderer.py:  470: printSegment: Socioeconomic: scholarship + parent
+   DEBUG: 2026-04-11 12:41:59,438:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:59,442:      pdf_renderer.py:  470: printSegment: occupation + tuition
+   DEBUG: 2026-04-11 12:41:59,446:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:59,449:      pdf_renderer.py:  470: printSegment: status
+   DEBUG: 2026-04-11 12:41:59,453:      pdf_renderer.py:  470: printSegment: Engineered Features
+   DEBUG: 2026-04-11 12:41:59,455:      pdf_renderer.py:  470: printSegment:  1 
+   DEBUG: 2026-04-11 12:41:59,460:      pdf_renderer.py:  470: printSegment: grade
+   DEBUG: 2026-04-11 12:41:59,463:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:59,466:      pdf_renderer.py:  470: printSegment: trajectory (slope)
+   DEBUG: 2026-04-11 12:41:59,469:      pdf_renderer.py:  470: printSegment:  2 
+   DEBUG: 2026-04-11 12:41:59,473:      pdf_renderer.py:  470: printSegment: financial
+   DEBUG: 2026-04-11 12:41:59,477:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:59,481:      pdf_renderer.py:  470: printSegment: stress
+   DEBUG: 2026-04-11 12:41:59,485:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:59,489:      pdf_renderer.py:  470: printSegment: index (composite)
+   DEBUG: 2026-04-11 12:41:59,493:      pdf_renderer.py:  470: printSegment:  3 
+   DEBUG: 2026-04-11 12:41:59,496:      pdf_renderer.py:  470: printSegment: curricular
+   DEBUG: 2026-04-11 12:41:59,497:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:59,499:      pdf_renderer.py:  470: printSegment: engagement
+   DEBUG: 2026-04-11 12:41:59,501:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:59,504:      pdf_renderer.py:  470: printSegment: ratio
+   DEBUG: 2026-04-11 12:41:59,506:      pdf_renderer.py:  470: printSegment:  4 
+   DEBUG: 2026-04-11 12:41:59,507:      pdf_renderer.py:  470: printSegment: semester
+   DEBUG: 2026-04-11 12:41:59,509:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:59,511:      pdf_renderer.py:  470: printSegment: grade
+   DEBUG: 2026-04-11 12:41:59,513:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:59,515:      pdf_renderer.py:  470: printSegment: delta (per subject)
+   DEBUG: 2026-04-11 12:41:59,516:      pdf_renderer.py:  470: printSegment:  5 
+   DEBUG: 2026-04-11 12:41:59,518:      pdf_renderer.py:  470: printSegment: economic
+   DEBUG: 2026-04-11 12:41:59,520:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:59,522:      pdf_renderer.py:  470: printSegment: pressure
+   DEBUG: 2026-04-11 12:41:59,523:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:59,525:      pdf_renderer.py:  470: printSegment: index
+   DEBUG: 2026-04-11 12:41:59,528:      pdf_renderer.py:  470: printSegment:  6 
+   DEBUG: 2026-04-11 12:41:59,531:      pdf_renderer.py:  470: printSegment: age
+   DEBUG: 2026-04-11 12:41:59,533:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:59,538:      pdf_renderer.py:  470: printSegment: risk
+   DEBUG: 2026-04-11 12:41:59,540:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:59,542:      pdf_renderer.py:  470: printSegment: flag
+   DEBUG: 2026-04-11 12:41:59,546:      pdf_renderer.py:  470: printSegment: Gold Table Columns
+   DEBUG: 2026-04-11 12:41:59,549:      pdf_renderer.py:  470: printSegment: student
+   DEBUG: 2026-04-11 12:41:59,552:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:59,553:      pdf_renderer.py:  470: printSegment: id, risk
+   DEBUG: 2026-04-11 12:41:59,555:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:59,558:      pdf_renderer.py:  470: printSegment: score, risk
+   DEBUG: 2026-04-11 12:41:59,560:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:59,564:      pdf_renderer.py:  470: printSegment: tier (HIGH/MEDIUM/LOW), top
+   DEBUG: 2026-04-11 12:41:59,567:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:59,569:      pdf_renderer.py:  470: printSegment: factor
+   DEBUG: 2026-04-11 12:41:59,571:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:59,573:      pdf_renderer.py:  470: printSegment: 1, top
+   DEBUG: 2026-04-11 12:41:59,578:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:59,582:      pdf_renderer.py:  470: printSegment: factor
+   DEBUG: 2026-04-11 12:41:59,584:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:59,587:      pdf_renderer.py:  470: printSegment: 2, top
+   DEBUG: 2026-04-11 12:41:59,589:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:59,592:      pdf_renderer.py:  470: printSegment: factor
+   DEBUG: 2026-04-11 12:41:59,594:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:59,596:      pdf_renderer.py:  470: printSegment: 3, recommended
+   DEBUG: 2026-04-11 12:41:59,599:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:59,602:      pdf_renderer.py:  470: printSegment: action
+   DEBUG: 2026-04-11 12:41:59,606:      pdf_renderer.py:  470: printSegment: Layer 2 — AI Voice Verification
+   DEBUG: 2026-04-11 12:41:59,609:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:59,617:      pdf_renderer.py:  470: printSegment: Trigger: risk
+   DEBUG: 2026-04-11 12:41:59,620:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:59,623:      pdf_renderer.py:  470: printSegment: score > 0.7 (HIGH tier)
+   DEBUG: 2026-04-11 12:41:59,625:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:59,635:      pdf_renderer.py:  470: printSegment: Tech: Twilio Voice + LLM (GPT-4o / Gemini)
+   DEBUG: 2026-04-11 12:41:59,639:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:59,642:      pdf_renderer.py:  470: printSegment: 5 non-leading questions (student doesn
+   DEBUG: 2026-04-11 12:41:59,646:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:59,649:      pdf_renderer.py:  470: printSegment: t know they
+   DEBUG: 2026-04-11 12:41:59,651:      pdf_renderer.py:  470: printSegment: '
+   DEBUG: 2026-04-11 12:41:59,653:      pdf_renderer.py:  470: printSegment: re flagged)
+   DEBUG: 2026-04-11 12:41:59,656:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:59,659:      pdf_renderer.py:  470: printSegment: Output: dropout
+   DEBUG: 2026-04-11 12:41:59,663:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:59,666:      pdf_renderer.py:  470: printSegment: voice
+   DEBUG: 2026-04-11 12:41:59,668:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:59,672:      pdf_renderer.py:  470: printSegment: feedback Delta table (sentiment, root
+   DEBUG: 2026-04-11 12:41:59,678:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:59,681:      pdf_renderer.py:  470: printSegment: cause, confidence)
+   DEBUG: 2026-04-11 12:41:59,684:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:59,687:      pdf_renderer.py:  470: printSegment: Fusion: final
+   DEBUG: 2026-04-11 12:41:59,691:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:59,694:      pdf_renderer.py:  470: printSegment: score = 0.6 × ML
+   DEBUG: 2026-04-11 12:41:59,698:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:59,701:      pdf_renderer.py:  470: printSegment: risk + 0.4 × voice
+   DEBUG: 2026-04-11 12:41:59,704:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:59,707:      pdf_renderer.py:  470: printSegment: intent
+   DEBUG: 2026-04-11 12:41:59,710:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:59,713:      pdf_renderer.py:  470: printSegment: Delta table: dropout
+   DEBUG: 2026-04-11 12:41:59,716:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:59,719:      pdf_renderer.py:  470: printSegment: final
+   DEBUG: 2026-04-11 12:41:59,722:      pdf_renderer.py:  470: printSegment: _
+   DEBUG: 2026-04-11 12:41:59,725:      pdf_renderer.py:  470: printSegment: gold
+   DEBUG: 2026-04-11 12:41:59,730:      pdf_renderer.py:  470: printSegment: Intervention Mapping (Root Cause → Resource)
+   DEBUG: 2026-04-11 12:41:59,732:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:59,740:      pdf_renderer.py:  470: printSegment: Financial → NSP, Vidyalakshmi loans, State scholarships, Pratham Foundation
+   DEBUG: 2026-04-11 12:41:59,745:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:59,750:      pdf_renderer.py:  470: printSegment: Academic → Peer tutoring, Remedial classes, NPTEL/SWAYAM, Course change
+   DEBUG: 2026-04-11 12:41:59,752:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:59,756:      pdf_renderer.py:  470: printSegment: Social → Peer mentoring, Campus clubs, iCall / Vandrevala Foundation
+   DEBUG: 2026-04-11 12:41:59,759:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:59,764:      pdf_renderer.py:  470: printSegment: Family → Family counseling, Flexible scheduling, Part-time facilitation
+   DEBUG: 2026-04-11 12:41:59,767:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:59,772:      pdf_renderer.py:  470: printSegment: Career → Placement cell, Alumni mentoring, Skill India programs
+   DEBUG: 2026-04-11 12:41:59,778:      pdf_renderer.py:  470: printSegment: Intervention Tiers (After Layer 2 Validation)
+   DEBUG: 2026-04-11 12:41:59,781:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:59,787:      pdf_renderer.py:  470: printSegment: HIGH (>0.7): AI Voice call → If confirmed → Immediate counselor + resource match
+   DEBUG: 2026-04-11 12:41:59,790:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:59,795:      pdf_renderer.py:  470: printSegment: MEDIUM (0.4-0.7): Email alert + advisor dashboard flag
+   DEBUG: 2026-04-11 12:41:59,798:      pdf_renderer.py:  470: printSegment: l
+   DEBUG: 2026-04-11 12:41:59,801:      pdf_renderer.py:  470: printSegment: LOW (
+   DEBUG: 2026-04-11 12:41:59,803:      pdf_renderer.py:  470: printSegment: <
+   DEBUG: 2026-04-11 12:41:59,807:      pdf_renderer.py:  470: printSegment: 0.4): Monitor only
+   DEBUG: 2026-04-11 12:41:59,813:      pdf_renderer.py:   53: 0, [1, 'THE DROPOUT SIGNAL', 1, 68.0]
+   DEBUG: 2026-04-11 12:41:59,814:      pdf_renderer.py:   53: 1, [2, 'An AI-Powered Early Warning System for Student Retention', 1, 106.0]
+   DEBUG: 2026-04-11 12:41:59,814:      pdf_renderer.py:   53: 2, [3, 'HackBricks 2026 — Problem Statement 1', 1, 139.20000000000002]
+   DEBUG: 2026-04-11 12:41:59,814:      pdf_renderer.py:   53: 3, [1, 'PART 1: THE PROBLEM', 1, 180.8]
+   DEBUG: 2026-04-11 12:41:59,815:      pdf_renderer.py:   53: 4, [2, 'Why This Matters', 1, 218.8]
+   DEBUG: 2026-04-11 12:41:59,815:      pdf_renderer.py:   53: 5, [2, 'The Hidden Truth', 1, 312.40000000000003]
+   DEBUG: 2026-04-11 12:41:59,815:      pdf_renderer.py:   53: 6, [2, 'The Challenge Beyond Prediction', 1, 466.00000000000006]
+   DEBUG: 2026-04-11 12:41:59,815:      pdf_renderer.py:   53: 7, [1, 'THE COLLEGE DATA PIPELINE — HOW DATA ACTUALLY FLOWS', 1, 698.0000000000001]
+   DEBUG: 2026-04-11 12:41:59,815:      pdf_renderer.py:   53: 8, [2, 'How Colleges Work Today (The Gap We Fill)', 2, 70.0]
+   DEBUG: 2026-04-11 12:41:59,815:      pdf_renderer.py:   53: 9, [2, 'Our Integration Point — Bridging the Silos', 2, 493.6]
+   DEBUG: 2026-04-11 12:41:59,815:      pdf_renderer.py:   53: 10, [2, 'Practical Deployment Timeline', 3, 320.8]
+   DEBUG: 2026-04-11 12:41:59,816:      pdf_renderer.py:   53: 11, [1, 'PART 2: OUR SOLUTION', 3, 420.8]
+   DEBUG: 2026-04-11 12:41:59,816:      pdf_renderer.py:   53: 12, [2, 'One-Line Pitch', 3, 458.8]
+   DEBUG: 2026-04-11 12:41:59,816:      pdf_renderer.py:   53: 13, [2, 'System Architecture', 3, 564.4]
+   DEBUG: 2026-04-11 12:41:59,816:      pdf_renderer.py:   53: 14, [1, 'PART 3: WHO USES THIS?', 5, 633.2]
+   DEBUG: 2026-04-11 12:41:59,816:      pdf_renderer.py:   53: 15, [2, 'Three User Personas', 5, 671.2]
+   DEBUG: 2026-04-11 12:41:59,816:      pdf_renderer.py:   53: 16, [3, '1. University Admin (Dean / Registrar)', 5, 704.4]
+   DEBUG: 2026-04-11 12:41:59,816:      pdf_renderer.py:   53: 17, [3, '2. Academic Counselor / Faculty Advisor', 6, 170.4]
+   DEBUG: 2026-04-11 12:41:59,817:      pdf_renderer.py:   53: 18, [3, '3. The Student (Indirect Beneficiary)', 6, 319.2]
+   DEBUG: 2026-04-11 12:41:59,817:      pdf_renderer.py:   53: 19, [1, 'PART 4: FEATURE ENGINEERING — Our Creativity Edge', 6, 516.8]
+   DEBUG: 2026-04-11 12:41:59,817:      pdf_renderer.py:   53: 20, [2, 'Original Features in Dataset (37 columns)', 6, 554.8]
+   DEBUG: 2026-04-11 12:41:59,818:      pdf_renderer.py:   53: 21, [2, 'Our Engineered Features (the 20% creativity score)', 6, 618.3999999999999]
+   DEBUG: 2026-04-11 12:41:59,818:      pdf_renderer.py:   53: 22, [3, '1. Grade Trajectory Slope', 6, 651.5999999999998]
+   DEBUG: 2026-04-11 12:41:59,818:      pdf_renderer.py:   53: 23, [3, '2. Financial Stress Index', 7, 152.4]
+   DEBUG: 2026-04-11 12:41:59,818:      pdf_renderer.py:   53: 24, [3, '3. Curricular Engagement Ratio', 7, 337.2]
+   DEBUG: 2026-04-11 12:41:59,818:      pdf_renderer.py:   53: 25, [3, '4. Semester-over-Semester Grade Delta', 7, 473.99999999999994]
+   DEBUG: 2026-04-11 12:41:59,818:      pdf_renderer.py:   53: 26, [3, '5. Economic Pressure Index', 7, 586.7999999999998]
+   DEBUG: 2026-04-11 12:41:59,818:      pdf_renderer.py:   53: 27, [3, '6. Age Risk Indicator', 7, 687.5999999999998]
+   DEBUG: 2026-04-11 12:41:59,818:      pdf_renderer.py:   53: 28, [1, 'PART 5: FAIRNESS AUDIT — The Winning Differentiator', 8, 141.2]
+   DEBUG: 2026-04-11 12:41:59,819:      pdf_renderer.py:   53: 29, [2, 'Why This Is 25% of the Score', 8, 179.2]
+   DEBUG: 2026-04-11 12:41:59,819:      pdf_renderer.py:   53: 30, [2, 'What We Audit', 8, 284.8]
+   DEBUG: 2026-04-11 12:41:59,819:      pdf_renderer.py:   53: 31, [3, 'Protected Attributes:', 8, 318.0]
+   DEBUG: 2026-04-11 12:41:59,819:      pdf_renderer.py:   53: 32, [3, 'Metrics We Compute:', 8, 382.79999999999995]
+   DEBUG: 2026-04-11 12:41:59,819:      pdf_renderer.py:   53: 33, [4, 'A. Demographic Parity Ratio', 8, 411.19999999999993]
+   DEBUG: 2026-04-11 12:41:59,819:      pdf_renderer.py:   53: 34, [4, 'B. Equal Opportunity Ratio', 8, 555.1999999999999]
+   DEBUG: 2026-04-11 12:41:59,819:      pdf_renderer.py:   53: 35, [4, 'C. Predictive Parity', 9, 74.0]
+   DEBUG: 2026-04-11 12:41:59,820:      pdf_renderer.py:   53: 36, [3, 'How We Report It', 9, 218.4]
+   DEBUG: 2026-04-11 12:41:59,820:      pdf_renderer.py:   53: 37, [3, 'If We Find Bias (We Probably Will)', 9, 319.2]
+   DEBUG: 2026-04-11 12:41:59,820:      pdf_renderer.py:   53: 38, [1, 'PART 6: SHAP EXPLAINABILITY', 9, 546.8]
+   DEBUG: 2026-04-11 12:41:59,820:      pdf_renderer.py:   53: 39, [2, 'What It Does', 9, 584.8]
+   DEBUG: 2026-04-11 12:41:59,820:      pdf_renderer.py:   53: 40, [2, 'Global Feature Importance (for all students)', 9, 648.3999999999999]
+   DEBUG: 2026-04-11 12:41:59,820:      pdf_renderer.py:   53: 41, [2, 'Per-Student Explanation (the ', 10, 200.8]
+   DEBUG: 2026-04-11 12:41:59,820:      pdf_renderer.py:   53: 42, [1, 'PART 7: GOLD TABLE — The Final Output', 10, 540.8000000000001]
+   DEBUG: 2026-04-11 12:41:59,820:      pdf_renderer.py:   53: 43, [2, 'What the University Gets', 10, 578.8000000000001]
+   DEBUG: 2026-04-11 12:41:59,821:      pdf_renderer.py:   53: 44, [2, 'Intervention Tiers', 10, 696.4]
+   DEBUG: 2026-04-11 12:41:59,821:      pdf_renderer.py:   53: 45, [1, 'LAYER 2: AI VOICE VERIFICATION — THE INNOVATION THAT CHANGES EVERYTHING', 11, 172.39999999999998]
+   DEBUG: 2026-04-11 12:41:59,821:      pdf_renderer.py:   53: 46, [2, 'The Problem With Layer 1 Alone', 11, 210.39999999999998]
+   DEBUG: 2026-04-11 12:41:59,821:      pdf_renderer.py:   53: 47, [2, 'Layer 2: AI-Powered Student Conversation', 11, 340.0]
+   DEBUG: 2026-04-11 12:41:59,821:      pdf_renderer.py:   53: 48, [2, 'The Call — Designed to be Completely Unbiased', 12, 260.8]
+   DEBUG: 2026-04-11 12:41:59,821:      pdf_renderer.py:   53: 49, [3, 'The 5 Questions (Carefully Designed, Non-Leading)', 12, 366.0]
+   DEBUG: 2026-04-11 12:41:59,821:      pdf_renderer.py:   53: 50, [3, 'Why These Questions Work', 12, 496.79999999999995]
+   DEBUG: 2026-04-11 12:41:59,822:      pdf_renderer.py:   53: 51, [3, 'AI Analysis of Responses', 12, 609.5999999999999]
+   DEBUG: 2026-04-11 12:41:59,822:      pdf_renderer.py:   53: 52, [3, 'Output: Voice Feedback Table', 13, 72.0]
+   DEBUG: 2026-04-11 12:41:59,822:      pdf_renderer.py:   53: 53, [2, 'Layer 2 Fusion: ML Score + Voice Validation', 13, 365.2]
+   DEBUG: 2026-04-11 12:41:59,822:      pdf_renderer.py:   53: 54, [2, 'The Intervention Engine — Root Cause → Specific Resource', 13, 590.8]
+   DEBUG: 2026-04-11 12:41:59,822:      pdf_renderer.py:   53: 55, [3, 'The Final Gold Table (Enhanced)', 14, 110.4]
+   DEBUG: 2026-04-11 12:41:59,822:      pdf_renderer.py:   53: 56, [3, 'What the Counselor Sees (Example Report)', 14, 403.2]
+   DEBUG: 2026-04-11 12:41:59,822:      pdf_renderer.py:   53: 57, [2, 'Why This Layer Is a Game-Changer for Judges', 15, 176.8]
+   DEBUG: 2026-04-11 12:41:59,822:      pdf_renderer.py:   53: 58, [1, 'PART 8: BUSINESS MODEL ', 15, 288.8]
+   DEBUG: 2026-04-11 12:41:59,823:      pdf_renderer.py:   53: 59, [2, 'The Cold Hard Math', 15, 326.8]
+   DEBUG: 2026-04-11 12:41:59,823:      pdf_renderer.py:   53: 60, [3, 'For a university with 5,000 students:', 15, 402.0]
+   DEBUG: 2026-04-11 12:41:59,823:      pdf_renderer.py:   53: 61, [3, 'Layer 2 Cost Breakdown:', 15, 550.8]
+   DEBUG: 2026-04-11 12:41:59,823:      pdf_renderer.py:   53: 62, [2, 'Impact Chain', 15, 639.9999999999999]
+   DEBUG: 2026-04-11 12:41:59,823:      pdf_renderer.py:   53: 63, [3, 'Level 1: The Individual Student', 15, 673.1999999999998]
+   DEBUG: 2026-04-11 12:41:59,823:      pdf_renderer.py:   53: 64, [3, 'Level 2: The University', 16, 116.4]
+   DEBUG: 2026-04-11 12:41:59,823:      pdf_renderer.py:   53: 65, [3, 'Level 3: Society / Government', 16, 217.20000000000002]
+   DEBUG: 2026-04-11 12:41:59,823:      pdf_renderer.py:   53: 66, [2, 'Production Deployment Vision', 16, 318.40000000000003]
+   DEBUG: 2026-04-11 12:41:59,824:      pdf_renderer.py:   53: 67, [1, 'PART 9: DATABRICKS TECH STACK', 17, 68.0]
+   DEBUG: 2026-04-11 12:41:59,824:      pdf_renderer.py:   53: 68, [2, 'What We Use', 17, 106.0]
+   DEBUG: 2026-04-11 12:41:59,824:      pdf_renderer.py:   53: 69, [2, 'Notebooks We', 17, 193.60000000000002]
+   DEBUG: 2026-04-11 12:41:59,824:      pdf_renderer.py:   53: 70, [1, 'PART 10: EVALUATION SCORING STRATEGY', 17, 293.6]
+   DEBUG: 2026-04-11 12:41:59,824:      pdf_renderer.py:   53: 71, [2, 'Evaluation Criteria (from Problem Statement)', 17, 331.6]
+   DEBUG: 2026-04-11 12:41:59,824:      pdf_renderer.py:   53: 72, [2, 'Round 1: Ideation (scored on understanding + creativity + feasibility)', 17, 443.20000000000005]
+   DEBUG: 2026-04-11 12:41:59,824:      pdf_renderer.py:   53: 73, [2, 'Round 2: Execution (scored on technical execution + progress + problem alignment)', 17, 541.5999999999999]
+   DEBUG: 2026-04-11 12:41:59,825:      pdf_renderer.py:   53: 74, [2, 'Round 3: Final Demo (scored on completion + impact + presentation + resilience)', 17, 639.9999999999998]
+   DEBUG: 2026-04-11 12:41:59,825:      pdf_renderer.py:   53: 75, [1, 'PART 11: THE PITCH SCRIPT', 18, 117.19999999999999]
+   DEBUG: 2026-04-11 12:41:59,825:      pdf_renderer.py:   53: 76, [2, '30-Second Elevator Pitch', 18, 155.2]
+   DEBUG: 2026-04-11 12:41:59,825:      pdf_renderer.py:   53: 77, [2, '3-Minute Demo Script', 18, 284.8]
+   DEBUG: 2026-04-11 12:41:59,825:      pdf_renderer.py:   53: 78, [2, 'Killer Judge Q', 18, 468.40000000000003]
+   DEBUG: 2026-04-11 12:41:59,825:      pdf_renderer.py:   53: 79, [1, 'PART 12: QUICK REFERENCE', 19, 345.2]
+   DEBUG: 2026-04-11 12:41:59,825:      pdf_renderer.py:   53: 80, [2, 'Dataset Location', 19, 383.2]
+   DEBUG: 2026-04-11 12:41:59,825:      pdf_renderer.py:   53: 81, [2, 'Key Numbers', 19, 434.8]
+   DEBUG: 2026-04-11 12:41:59,825:      pdf_renderer.py:   53: 82, [2, 'Models', 19, 516.4]
+   DEBUG: 2026-04-11 12:41:59,826:      pdf_renderer.py:   53: 83, [2, 'Fairness Audit Groups', 19, 597.9999999999999]
+   DEBUG: 2026-04-11 12:41:59,826:      pdf_renderer.py:   53: 84, [2, 'Engineered Features', 19, 667.5999999999998]
+   DEBUG: 2026-04-11 12:41:59,826:      pdf_renderer.py:   53: 85, [2, 'Gold Table Columns', 20, 140.8]
+   DEBUG: 2026-04-11 12:41:59,826:      pdf_renderer.py:   53: 86, [2, 'Layer 2 — AI Voice Verification', 20, 204.40000000000003]
+   DEBUG: 2026-04-11 12:41:59,826:      pdf_renderer.py:   53: 87, [2, 'Intervention Mapping (Root Cause → Resource)', 20, 322.00000000000006]
+   DEBUG: 2026-04-11 12:41:59,826:      pdf_renderer.py:   53: 88, [2, 'Intervention Tiers (After Layer 2 Validation)', 20, 427.6000000000001]
