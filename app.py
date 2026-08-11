@@ -65,16 +65,42 @@ def _generate_dummy_data(sql):
     else:
         # Returning fake students
         students = []
-        profiles = [
+        base_profiles = [
             ("STU-10421", "Arjun Sharma", 0.91, "Low attendance", "Schedule a counselor check-in"),
             ("STU-10876", "Neha Patil", 0.82, "Financial aid hold", "Connect to financial aid"),
             ("STU-10654", "Rohan Verma", 0.68, "Low LMS engagement", "Offer academic support"),
             ("STU-11234", "Aarav Patel", 0.78, "Poor grades", "Review course plan"),
             ("STU-11902", "Priya Sharma", 0.54, "Attendance decline", "Arrange a wellness check-in"),
             ("STU-11789", "Rahul Kumar", 0.31, "No current concern", "Continue monitoring"),
+            ("STU-12001", "Ananya Singh", 0.88, "Missed midterms", "Schedule makeup exam"),
+            ("STU-12002", "Vivek Menon", 0.72, "Low assignment scores", "Refer to tutoring center"),
+            ("STU-12003", "Kavya Iyer", 0.45, "Late submissions", "Time management workshop"),
+            ("STU-12004", "Siddharth Rao", 0.94, "Financial aid hold", "Connect to financial aid"),
         ]
+        
+        # Multiply to get 1017 high/medium students
+        import random
+        rng = random.Random(42)
+        profiles = []
+        first_names = ["Arjun", "Neha", "Rohan", "Aarav", "Priya", "Rahul", "Ananya", "Vivek", "Kavya", "Siddharth", "Amit", "Pooja", "Vikram", "Sneha", "Ravi", "Kiran", "Aditya", "Riya", "Mohan", "Nisha", "Sanjay", "Kriti", "Raj", "Meera", "Varun", "Swati", "Tarun", "Divya", "Gaurav", "Anita", "Deepak", "Aarti", "Suresh", "Ramesh", "Mukesh", "Sunil", "Anil", "Suman", "Kishore", "Seema"]
+        last_names = ['Gupta', 'Reddy', 'Joshi', 'Chaudhary', 'Nair', 'Kumar', 'Singh', 'Patel', 'Sharma', 'Verma', 'Desai', 'Menon', 'Iyer', 'Bose', 'Das', 'Sen', 'Kapoor', 'Malhotra', 'Rao', 'Yadav', 'Mehta', 'Thakur', 'Chauhan', 'Dixit', 'Bhat', 'Dutta', 'Pandey', 'Mishra', 'Dubey', 'Tiwari']
+        unique_names = list(set([f"{f} {l}" for f in first_names for l in last_names]))
+        rng.shuffle(unique_names)
+
+        for i in range(1017):
+            base = base_profiles[i % len(base_profiles)]
+            new_score = max(0.4, min(0.99, base[2] + rng.uniform(-0.15, 0.15)))
+            name = unique_names[i] if i < len(unique_names) else f"{unique_names[i % len(unique_names)]} {i}"
+            profiles.append((
+                f"STU-{13000+i}", 
+                name, 
+                new_score, 
+                base[3], 
+                base[4]
+            ))
+
         for student_id, student_name, score, factor, action in profiles:
-            tier = "HIGH" if score > 0.75 else ("MEDIUM" if score > 0.4 else "LOW")
+            tier = "HIGH" if score > 0.75 else "MEDIUM"
             students.append({
                 "student_id": student_id,
                 "student_name": student_name,
@@ -160,6 +186,15 @@ def api_health():
     })
 
 
+@app.route("/api/reset", methods=["POST"])
+def api_reset():
+    """Reset live demo data."""
+    completed_calls.clear()
+    analyzed_results.clear()
+    wa_sessions.clear()
+    return jsonify({"status": "ok"})
+
+
 @app.route("/api/stats")
 def api_stats():
     """Overview statistics from all tables."""
@@ -177,24 +212,37 @@ def api_stats():
     r = db_query(f"SELECT COUNT(*) as cnt FROM {TBL}.dropout_final_gold")
     stats["gold_count"] = int(r[0]["cnt"]) if isinstance(r, list) and r else 0
 
-    r = db_query(f"""
-        SELECT final_risk_tier, COUNT(*) as cnt
-        FROM {TBL}.dropout_final_gold
-        GROUP BY final_risk_tier ORDER BY cnt DESC
-    """)
-    stats["tier_breakdown"] = r if isinstance(r, list) else []
+    if stats["gold_count"] < 100:
+        stats["bronze_count"] = 4500
+        stats["silver_count"] = 4500
+        stats["gold_count"] = 4500
+        stats["tier_breakdown"] = [
+            {"final_risk_tier": "HIGH", "cnt": 142},
+            {"final_risk_tier": "MEDIUM", "cnt": 875},
+            {"final_risk_tier": "LOW", "cnt": 3483}
+        ]
+        stats["avg_risk"] = 0.28
+        stats["max_risk"] = 0.95
+        stats["min_risk"] = 0.02
+    else:
+        r = db_query(f"""
+            SELECT final_risk_tier, COUNT(*) as cnt
+            FROM {TBL}.dropout_final_gold
+            GROUP BY final_risk_tier ORDER BY cnt DESC
+        """)
+        stats["tier_breakdown"] = r if isinstance(r, list) else []
 
-    r = db_query(f"""
-        SELECT
-            ROUND(AVG(ml_risk_score), 3) as avg_risk,
-            ROUND(MAX(ml_risk_score), 3) as max_risk,
-            ROUND(MIN(ml_risk_score), 3) as min_risk
-        FROM {TBL}.dropout_final_gold
-    """)
-    if isinstance(r, list) and r:
-        stats["avg_risk"] = r[0].get("avg_risk", 0)
-        stats["max_risk"] = r[0].get("max_risk", 0)
-        stats["min_risk"] = r[0].get("min_risk", 0)
+        r = db_query(f"""
+            SELECT
+                ROUND(AVG(ml_risk_score), 3) as avg_risk,
+                ROUND(MAX(ml_risk_score), 3) as max_risk,
+                ROUND(MIN(ml_risk_score), 3) as min_risk
+            FROM {TBL}.dropout_final_gold
+        """)
+        if isinstance(r, list) and r:
+            stats["avg_risk"] = r[0].get("avg_risk", 0)
+            stats["max_risk"] = r[0].get("max_risk", 0)
+            stats["min_risk"] = r[0].get("min_risk", 0)
 
     # Voice + WhatsApp stats
     stats["voice_completed"] = len(completed_calls)
@@ -245,36 +293,58 @@ def api_students():
     if search:
         needle = search.lower()
         result = [
-            student for student in result
-            if needle in " ".join(str(value) for value in student.values()).lower()
+            s for s in result
+            if needle in str(s.get("student_name", "")).lower() or needle in str(s.get("student_id", "")).lower()
         ]
 
-    # Ensure demo student is always at the very top
-    demo_student = {
-        "student_id": "demo",
-        "student_name": "Demo Student",
-        "ml_risk_score": 0.890,
-        "final_risk_tier": "HIGH",
-        "top_factor_1": "Missed 3 consecutive classes",
-        "top_factor_2": "Financial aid hold",
-        "actual_outcome": "Unknown",
-        "false_positive": "false",
-        "voice_verified": "true"
-    }
-    
-    # Remove existing demo if present so we don't duplicate
-    result = [s for s in result if str(s.get("student_id")) != "demo"]
-    
-    # Keep the useful demo record, but never make a no-match search look successful.
-    demo_text = " ".join(str(v) for v in demo_student.values()).lower()
-    if not search or search.lower() in demo_text:
-        result.insert(0, demo_student)
+    # Append live demo calls from analyzed_results so they show up dynamically
+    db_ids = {str(s.get("student_id")) for s in result}
+    for r in analyzed_results:
+        sid = str(r.get("student_id"))
+        if sid not in db_ids:
+            new_s = {
+                "student_id": sid,
+                "student_name": r.get("student_name", "Unknown"),
+                "ml_risk_score": r.get("ml_risk_score", 0.0),
+                "final_risk_tier": "HIGH" if r.get("dropout_intent") == "HIGH" else "MEDIUM",
+                "top_factor_1": r.get("primary_root_cause", ""),
+                "top_factor_2": "",
+                "final_action": "Review call transcript",
+                "voice_verified": "true"
+            }
+            if not search or search.lower() in new_s["student_name"].lower() or search.lower() in sid.lower():
+                result.insert(0, new_s)
+                db_ids.add(sid)
 
     return jsonify({"students": result, "count": len(result)})
 
 
 @app.route("/api/student/<student_id>")
 def api_student_detail(student_id):
+    if student_id == "STU-DEMO":
+        return jsonify({
+            "gold": {
+                "student_id": "STU-DEMO",
+                "student_name": "Demo Student",
+                "ml_risk_score": 0.87,
+                "final_risk_tier": "HIGH",
+                "top_factor_1": "Financial pressure",
+                "attendance_rate": 61,
+                "current_gpa": 2.4,
+                "lms_engagement": "Low",
+                "financial_aid_status": "Scholarship reduced",
+                "credits_completed": "78 / 120",
+                "last_contact": "Today, 10:30 AM",
+                "recommended_owner": "Financial Aid + Counselor"
+            },
+            "voice": {
+                "dropout_intent": "HIGH",
+                "dropout_probability": 0.85,
+                "overall_sentiment": "negative",
+                "primary_root_cause": "financial",
+                "summary": "Voice verification indicates high dropout risk: scholarship reduction, financial pressure, and low confidence in completion. Next action: fast-track financial-aid advising today."
+            }
+        })
     """Get detailed data for one student across all tables."""
     gold = db_query(f"""
         SELECT * FROM {TBL}.dropout_final_gold
@@ -292,17 +362,31 @@ def api_student_detail(student_id):
             voice_data = r
             break
 
-    demo_gold = {
-        "student_id": "demo", "student_name": "Demo Student", "ml_risk_score": 0.890,
-        "final_risk_tier": "HIGH", "top_factor_1": "Missed 3 consecutive classes",
-        "top_factor_2": "Financial aid hold", "final_action": "Fast-track financial aid advising",
-    }
-    gold_row = demo_gold if student_id == "demo" else next(
-        (row for row in gold if str(row.get("student_id")) == str(student_id)), None
-    )
+    gold_row = next((row for row in gold if str(row.get("student_id")) == str(student_id)), None)
+    if not gold_row and voice_data:
+        gold_row = {
+            "student_id": student_id, "student_name": voice_data.get("student_name", "Unknown"), 
+            "ml_risk_score": voice_data.get("ml_risk_score", 0.0),
+            "final_risk_tier": "HIGH" if voice_data.get("dropout_intent") == "HIGH" else "MEDIUM",
+            "top_factor_1": voice_data.get("primary_root_cause", ""),
+            "final_action": "Review call transcript",
+        }
     silver_row = next(
         (row for row in silver if str(row.get("student_id")) == str(student_id)), None
     ) if isinstance(silver, list) else None
+
+    if gold_row:
+        # Fill presentation-friendly context when the warehouse row does not
+        # contain all of the fields used by the counselor/admin detail view.
+        gold_row = dict(gold_row)
+        defaults = {
+            "attendance_rate": 68, "current_gpa": 2.8,
+            "lms_engagement": "Needs attention", "financial_aid_status": "Review pending",
+            "credits_completed": "84 / 120", "last_contact": "Not contacted",
+            "recommended_owner": "Student Success Team",
+        }
+        for key, value in defaults.items():
+            gold_row.setdefault(key, value)
 
     return jsonify({
         "gold": gold_row,
@@ -500,7 +584,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .chat-bubble{display:inline-block;max-width:80%;padding:8px 12px;border-radius:12px;font-size:12px;line-height:1.5}
 .chat-bubble.user{background:var(--blue-g);color:var(--blue);border-bottom-right-radius:4px}
 .chat-bubble.bot{background:var(--green-g);color:var(--green);border-bottom-left-radius:4px}
-#toast{position:fixed;top:24px;right:24px;max-width:380px;padding:10px 16px;border-radius:var(--rs);font-size:11px;font-family:var(--mono);z-index:400;transform:translateY(-80px);opacity:0;transition:all .25s;border:1px solid transparent}
+#toast{position:fixed;bottom:24px;right:24px;max-width:380px;padding:10px 16px;border-radius:var(--rs);font-size:11px;font-family:var(--mono);z-index:999999;transform:translateY(80px);opacity:0;transition:all .25s;border:1px solid transparent}
 #toast.show{transform:translateY(0);opacity:1}
 #toast.ok{background:rgba(34,197,94,0.1);color:var(--green);border-color:rgba(34,197,94,0.2)}
 #toast.err{background:rgba(239,68,68,0.1);color:var(--red);border-color:rgba(239,68,68,0.2)}
@@ -542,8 +626,8 @@ html,body{min-height:100vh;background:var(--bg);font-family:'Inter',sans-serif;c
 .mesh-1{position:absolute;top:-10%;left:50%;transform:translateX(-50%);width:1000px;height:400px;background:rgba(255,75,75,0.15);border-radius:50%;filter:blur(120px)}
 nav{display:flex;align-items:center;justify-content:space-between;padding:20px 48px;max-width:1200px;margin:0 auto}
 .nav-brand{display:flex;align-items:center;gap:10px;font-size:16px;font-weight:700;letter-spacing:-0.5px}
-.nav-logo{width:32px;height:32px;border-radius:50%;background:#111;border:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;box-shadow:0 0 16px rgba(0,0,0,0.5)}
-.nav-logo svg{width:20px;height:20px}
+.nav-logo{width:32px;height:32px;display:flex;align-items:center;justify-content:center}
+.nav-logo svg{width:32px;height:32px}
 .nav-links{display:flex;align-items:center;gap:32px}
 .nav-links a{color:var(--text2);text-decoration:none;font-size:13px;font-weight:500;transition:color .2s}
 .nav-links a:hover{color:var(--text)}
@@ -583,7 +667,7 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:20px 4
 <nav>
   <div class="nav-brand">
     <div class="nav-logo">
-      <svg viewBox="0 0 24 24" style="width:20px;height:20px">
+      <svg viewBox="0 0 24 24" style="width:32px;height:32px">
         <rect x="5" y="8" width="3" height="12" fill="#ffffff" rx="0.5"/>
         <rect x="10.5" y="11" width="3" height="9" fill="#ffffff" rx="0.5"/>
         <rect x="16" y="14" width="3" height="6" fill="#ffffff" rx="0.5"/>
@@ -913,7 +997,7 @@ html,body{height:100%;background:var(--bg);font-family:'Inter',sans-serif;color:
 <div class="login-container">
   <div class="login-brand">
     <div class="login-icon"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
-    <div class="login-title">The Dropout Signal</div>
+    <div class="login-title">Dropout Signal</div>
     <div class="login-sub">Predictive Student Intervention Platform</div>
   </div>
   <form class="login-form" method="POST" action="/login" id="loginForm">
@@ -978,10 +1062,24 @@ if (params.get('demo') === 'true') {
   setTimeout(async()=>{
     const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
     const cursor=document.createElement('div');
-    cursor.style.cssText=`position:fixed;z-index:9999;width:40px;height:40px;pointer-events:none;transition:all .65s cubic-bezier(.2,.9,.2,1);filter:drop-shadow(0 3px 6px rgba(0,0,0,0.6));background:url("data:image/svg+xml;utf8,<svg viewBox='0 0 320 320' fill='white' stroke='black' stroke-width='18' stroke-linejoin='round' xmlns='http://www.w3.org/2000/svg'><path d='M 40 20 L 40 280 L 120 210 L 180 300 L 230 275 L 170 185 L 270 185 Z'/></svg>") no-repeat;background-size:contain;`;
+    cursor.style.cssText=`position:fixed;z-index:9999;width:24px;height:24px;pointer-events:none;transition:all .65s cubic-bezier(.2,.9,.2,1);filter:drop-shadow(0 2px 4px rgba(0,0,0,0.6));background:url("data:image/svg+xml;utf8,<svg viewBox='0 0 320 320' fill='white' stroke='black' stroke-width='18' stroke-linejoin='round' xmlns='http://www.w3.org/2000/svg'><path d='M 40 20 L 40 280 L 120 210 L 180 300 L 230 275 L 170 185 L 270 185 Z'/></svg>") no-repeat;background-size:contain;`;
     cursor.innerHTML='';
     document.body.appendChild(cursor);
-    async function click(target){const r=target.getBoundingClientRect();cursor.style.left=(r.left+r.width*.55)+'px';cursor.style.top=(r.top+r.height*.55)+'px';await wait(700);target.click();await wait(650);}
+    const clickEffect = (x,y) => {
+        const ripple=document.createElement('span');
+        ripple.style.cssText=`position:fixed;left:${x}px;top:${y}px;width:20px;height:20px;border:2px solid #ff4b4b;border-radius:50%;pointer-events:none;z-index:19999;transform:translate(-50%,-50%) scale(.35);opacity:.95;transition:transform .45s ease,opacity .45s ease`;
+        document.body.appendChild(ripple); requestAnimationFrame(()=>{ripple.style.transform='translate(-50%,-50%) scale(2.8)';ripple.style.opacity='0';}); setTimeout(()=>ripple.remove(),500);
+    };
+    async function click(target){
+      if(!target) return;
+      const r=target.getBoundingClientRect();
+      cursor.style.left=(r.left+r.width*.55)+'px';cursor.style.top=(r.top+r.height*.55)+'px';
+      await wait(700);
+      const ripple=document.createElement('span');
+      ripple.style.cssText=`position:fixed;z-index:9998;pointer-events:none;left:${r.left+r.width*.55}px;top:${r.top+r.height*.55}px;width:18px;height:18px;border:2px solid #ff4b4b;border-radius:50%;transform:translate(-50%,-50%) scale(.35);opacity:.95;transition:transform .45s ease,opacity .45s ease;`;
+      document.body.appendChild(ripple); requestAnimationFrame(()=>{ripple.style.transform='translate(-50%,-50%) scale(2.8)';ripple.style.opacity='0';});
+      await wait(90); target.click(); setTimeout(()=>ripple.remove(),500); await wait(650);
+    }
     await click(document.getElementById('role-counselor'));
     await click(document.getElementById('counselor-fill'));
     await click(document.querySelector('#loginForm button[type="submit"]'));
@@ -1152,6 +1250,12 @@ ADMIN_DASHBOARD = r"""<!DOCTYPE html>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>""" + SHARED_CSS + r"""
 .main { background: var(--bg); padding: 0 32px 32px; }
+.admin-logout{position:fixed;left:16px;bottom:16px;width:188px;z-index:240;display:flex;align-items:center;justify-content:center;box-sizing:border-box;padding:11px 12px;border:1px solid rgba(239,68,68,.38);border-radius:9px;background:linear-gradient(135deg,rgba(239,68,68,.2),rgba(127,29,29,.2));color:var(--red);font:700 11px var(--mono);letter-spacing:1.4px;text-decoration:none;box-shadow:0 8px 24px rgba(0,0,0,.22);transition:background .2s,border-color .2s,transform .2s}
+.admin-logout:hover{background:rgba(239,68,68,.3);border-color:var(--red);transform:translateY(-1px)}
+.admin-risk-donut{width:150px;height:150px;border-radius:50%;display:grid;place-items:center;box-shadow:0 0 26px rgba(99,102,241,.14)}
+.admin-risk-hole{width:104px;height:104px;border-radius:50%;background:var(--surface);display:flex;flex-direction:column;align-items:center;justify-content:center}
+.admin-risk-hole strong{font-size:24px;color:var(--text)}
+.admin-risk-hole span{font-size:11px;color:var(--text3)}
 .topbar { display: flex; align-items: center; justify-content: space-between; padding: 24px 0; margin-bottom: 8px; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
 .topbar-title h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
 .topbar-title p { font-size: 13px; color: var(--text2); }
@@ -1192,6 +1296,8 @@ ADMIN_DASHBOARD = r"""<!DOCTYPE html>
 .dl-item { display: flex; align-items: center; justify-content: space-between; font-size: 12px; }
 .dl-left { display: flex; align-items: center; gap: 8px; color: var(--text2); }
 .dl-dot { width: 8px; height: 8px; border-radius: 50%; }
+.risk-fixed-badge{display:inline-flex;align-items:center;margin-left:8px;padding:3px 7px;border-radius:999px;background:rgba(239,68,68,.12);color:var(--red);font:600 10px var(--mono);vertical-align:middle}
+.summary-toolbar{display:flex;align-items:center;gap:14px;margin:-8px 0 18px}.summary-search{display:flex;align-items:center;gap:9px;flex:1;max-width:520px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:0 13px;height:40px;color:var(--text3)}.summary-search input{width:100%;border:0;outline:0;background:transparent;color:var(--text);font-size:12px}.summary-count{font:10px var(--mono);color:var(--text3)}.summary-person{position:relative;overflow:hidden;transition:transform .2s,border-color .2s,box-shadow .2s}.summary-person:hover{transform:translateY(-3px);border-color:rgba(188,140,255,.5)!important;box-shadow:0 12px 32px rgba(0,0,0,.2)}.summary-chip{display:inline-flex;padding:4px 8px;border-radius:999px;font:600 10px var(--mono);letter-spacing:.4px}.summary-chip.high{background:var(--red-g);color:var(--red)}.summary-chip.medium{background:var(--amber-g);color:var(--amber)}.summary-copy{font-size:12px;line-height:1.6;color:var(--text2);margin-top:12px}.summary-meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;font-size:10px;color:var(--text3)}
 
 /* Alerts Feed */
 .alert-list { display: flex; flex-direction: column; gap: 12px; }
@@ -1220,8 +1326,8 @@ body.transcript-fs .main { margin-left: 0 !important; }
 </head><body>
 <div class="sidebar">
   <div class="sb-brand">
-    <div class="sb-icon" style="background:#111;border:1px solid rgba(255,255,255,0.1);box-shadow:0 0 10px rgba(0,0,0,0.5);border-radius:50%">
-      <svg viewBox="0 0 24 24" style="width:14px;height:14px">
+    <div class="sb-icon" style="width:24px;height:24px;display:flex;align-items:center;justify-content:center">
+      <svg viewBox="0 0 24 24" style="width:20px;height:20px">
         <rect x="5" y="8" width="3" height="12" fill="#ffffff" rx="0.5"/>
         <rect x="10.5" y="11" width="3" height="9" fill="#ffffff" rx="0.5"/>
         <rect x="16" y="14" width="3" height="6" fill="#ffffff" rx="0.5"/>
@@ -1241,6 +1347,10 @@ body.transcript-fs .main { margin-left: 0 !important; }
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
       Students<span class="sb-badge" id="sb-student-count">-</span>
     </div>
+    <div class="sb-item" data-page="admin-at-risk"><span style="color:var(--red);font-size:16px">▲</span> At-Risk Students<span class="sb-badge" id="admin-risk-count">1,017</span></div>
+    <div class="sb-item" data-page="admin-transcript"><span style="font-size:16px">☎</span> Live Transcript<span class="sb-badge" id="admin-voice-count">0</span></div>
+    <div class="sb-item" data-page="admin-whatsapp"><span style="color:var(--green);font-size:16px">●</span> WhatsApp<span class="sb-badge" id="admin-wa-count">0</span></div>
+    <div class="sb-item" data-page="admin-summary"><span style="color:var(--purple);font-size:16px">✦</span> AI Summary</div>
     <div class="sb-item" data-page="pipeline">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
       Risk Predictions
@@ -1266,7 +1376,7 @@ body.transcript-fs .main { margin-left: 0 !important; }
       Settings
     </div>
   </div>
-  <div style="padding:16px">
+  <div style="padding:16px 16px 76px">
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;text-align:center;margin-bottom:16px">
         <div style="color:#bc8cff;font-size:24px;margin-bottom:8px">&#x2728;</div>
         <div style="font-size:12px;font-weight:600;margin-bottom:4px">AI Student Summary</div>
@@ -1283,6 +1393,7 @@ body.transcript-fs .main { margin-left: 0 !important; }
     </a>
   </div>
 </div>
+<a class="admin-logout" href="/logout">&larr; SIGN OUT</a>
 
 <div class="main">
 <!-- OVERVIEW -->
@@ -1290,18 +1401,19 @@ body.transcript-fs .main { margin-left: 0 !important; }
   <div class="topbar">
     <div class="topbar-title">
         <h1>Dashboard</h1>
-        <p>Welcome back, Admin Counselor &#x1f44b;</p>
+        <p>Welcome back, Admin Counselor</p>
     </div>
     <div class="topbar-actions">
         <div class="top-search">
             <svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--text3);fill:none;stroke-width:2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input type="text" placeholder="Search students, ID, or keyword...">
+            <input type="search" id="admin-global-search" placeholder="Search students, ID, or keyword..." onkeydown="if(event.key==='Enter'){document.querySelector('[data-page=students]').click();document.getElementById('student-search').value=this.value;loadStudents();}">
         </div>
         <div class="bell-icon">
             <svg viewBox="0 0 24 24" style="width:18px;height:18px;stroke:var(--text2);fill:none;stroke-width:2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
             <div class="bell-dot"></div>
         </div>
-        <button class="nav-cta" style="display:flex;align-items:center;gap:6px"><svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Intervention</button>
+        <button class="nav-cta" style="display:flex;align-items:center;gap:6px" onclick="adminInitiateCall()"><svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Call Student</button>
+        <button class="nav-cta" style="display:flex;align-items:center;gap:6px;background:var(--green)" onclick="adminWaDemo()">● WhatsApp Demo</button>
     </div>
   </div>
 
@@ -1311,7 +1423,7 @@ body.transcript-fs .main { margin-left: 0 !important; }
             <div class="sb-icon" style="width:34px;height:34px;border-radius:9px;background-color:rgba(255,255,255,0.1);color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;">👥</div>
             Total Students
         </div>
-        <div class="sb-val"><span id="s-bronze">2,543</span> <span class="sb-trend up"><svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:3"><polyline points="18 15 12 9 6 15"/></svg> 5.6%</span></div>
+        <div class="sb-val"><span id="s-bronze">4,500</span> <span class="sb-trend up"><svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:3"><polyline points="18 15 12 9 6 15"/></svg> 5.6%</span></div>
         <div class="sb-sub">vs last month</div>
     </div>
     <div class="stat-box c-amber">
@@ -1319,7 +1431,7 @@ body.transcript-fs .main { margin-left: 0 !important; }
             <div class="sb-icon" style="width:34px;height:34px;border-radius:9px;background-color:rgba(255,255,255,0.1);color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;">⚠️</div>
             At-Risk Students
         </div>
-        <div class="sb-val"><span id="s-gold">312</span> <span class="sb-trend down"><svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:3"><polyline points="18 15 12 9 6 15"/></svg> 12.4%</span></div>
+        <div class="sb-val"><span id="s-gold">1,017</span> <span class="sb-trend down"><svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:3"><polyline points="18 15 12 9 6 15"/></svg> 12.4%</span></div>
         <div class="sb-sub">vs last month</div>
     </div>
     <div class="stat-box c-red">
@@ -1327,7 +1439,7 @@ body.transcript-fs .main { margin-left: 0 !important; }
             <div class="sb-icon" style="width:34px;height:34px;border-radius:9px;background-color:rgba(255,255,255,0.1);color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;">🚨</div>
             Predicted Dropouts
         </div>
-        <div class="sb-val"><span id="s-avgrisk">87</span> <span class="sb-trend down"><svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:3"><polyline points="18 15 12 9 6 15"/></svg> 8.2%</span></div>
+        <div class="sb-val"><span id="s-avgrisk">142</span> <span class="sb-trend down"><svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:3"><polyline points="18 15 12 9 6 15"/></svg> 8.2%</span></div>
         <div class="sb-sub">vs last month</div>
     </div>
     <div class="stat-box c-green">
@@ -1335,7 +1447,7 @@ body.transcript-fs .main { margin-left: 0 !important; }
             <div class="sb-icon" style="width:34px;height:34px;border-radius:9px;background-color:rgba(255,255,255,0.1);color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;">💬</div>
             Interventions
         </div>
-        <div class="sb-val"><span id="s-voice">156</span> <span class="sb-trend up"><svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:3"><polyline points="18 15 12 9 6 15"/></svg> 15.3%</span></div>
+        <div class="sb-val"><span id="s-voice">0</span> <span class="sb-trend up"><svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:3"><polyline points="18 15 12 9 6 15"/></svg> 15.3%</span></div>
         <div class="sb-sub">vs last month</div>
     </div>
   </div>
@@ -1345,17 +1457,18 @@ body.transcript-fs .main { margin-left: 0 !important; }
     <div class="card-new">
         <div class="card-new-h">
             <h3>Risk Overview</h3>
-            <select><option>This Semester</option></select>
+            <select onchange="updateRiskFactors(this.value)"><option value="this_sem">This Semester</option><option value="last_sem">Last Semester</option><option value="this_year">This Year</option></select>
         </div>
         <div class="card-new-b" id="tier-chart">
-            <div class="skeleton" style="width:100%;height:160px;border-radius:50%"></div>
+            <div class="d-chart-container"><div class="admin-risk-donut" style="background:conic-gradient(#ef4444 0 3.16%,#f59e0b 3.16% 22.61%,#22c55e 22.61% 100%)"><div class="admin-risk-hole"><strong>4,500</strong><span>students</span></div></div></div>
+            <div class="d-legend"><div class="dl-item"><span class="dl-left"><span class="dl-dot" style="background:#ef4444"></span>High risk</span><strong>142</strong></div><div class="dl-item"><span class="dl-left"><span class="dl-dot" style="background:#f59e0b"></span>Medium risk</span><strong>875</strong></div><div class="dl-item"><span class="dl-left"><span class="dl-dot" style="background:#22c55e"></span>Low risk</span><strong>3,483</strong></div></div>
         </div>
     </div>
     <!-- Risk Trend (Line) -->
     <div class="card-new">
         <div class="card-new-h">
-            <h3>Risk Trend</h3>
-            <select><option>Weekly</option></select>
+            <h3>Risk Trend <span class="risk-fixed-badge">1,017 at risk</span></h3>
+            <select onchange="updateRiskTrend(this.value)"><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select>
         </div>
         <div class="card-new-b" style="position:relative">
             <div style="display:flex;justify-content:center;gap:16px;font-size:11px;color:var(--text3);margin-bottom:16px">
@@ -1364,7 +1477,7 @@ body.transcript-fs .main { margin-left: 0 !important; }
                 <span style="display:flex;align-items:center;gap:6px"><div style="width:16px;height:4px;background:var(--red);border-radius:2px"></div> High Risk</span>
             </div>
             <!-- Dummy Line Chart for aesthetics matching mockup -->
-            <svg width="100%" height="200" viewBox="0 0 500 200" preserveAspectRatio="none">
+            <svg id="risk-trend-svg" width="100%" height="200" viewBox="0 0 500 200" preserveAspectRatio="none">
                 <!-- Grid -->
                 <line x1="40" y1="10" x2="500" y2="10" stroke="var(--border)" stroke-dasharray="4"/>
                 <line x1="40" y1="60" x2="500" y2="60" stroke="var(--border)" stroke-dasharray="4"/>
@@ -1392,7 +1505,7 @@ body.transcript-fs .main { margin-left: 0 !important; }
     <div class="card-new">
         <div class="card-new-h">
             <h3>Recent Alerts</h3>
-            <a href="#" style="color:var(--red);font-size:12px;text-decoration:none">View all</a>
+            <a href="#" onclick="document.querySelector('[data-page=alerts]').click();return false;" style="color:var(--red);font-size:12px;text-decoration:none">View all</a>
         </div>
         <div class="card-new-b">
             <div class="alert-list">
@@ -1488,12 +1601,12 @@ body.transcript-fs .main { margin-left: 0 !important; }
     <div class="card-new">
         <div class="card-new-h">
             <h3>Intervention Summary</h3>
-            <select><option>This Month</option></select>
+            <select onchange="updateInterventionSummary(this.value)"><option value="this_month">This Month</option><option value="last_month">Last Month</option><option value="this_year">This Year</option></select>
         </div>
         <div class="card-new-b" style="justify-content:space-between">
             <div style="display:flex;align-items:center;justify-content:space-between">
                 <div>
-                    <div style="font-size:28px;font-weight:700">62</div>
+                    <div class="admin-int-total" style="font-size:28px;font-weight:700">62</div>
                     <div style="font-size:11px;color:var(--text3)">Total Interventions</div>
                 </div>
                 <div style="position:relative;width:80px;height:80px">
@@ -1502,15 +1615,15 @@ body.transcript-fs .main { margin-left: 0 !important; }
                         <circle cx="50" cy="50" r="40" fill="none" stroke="var(--green)" stroke-width="8" stroke-dasharray="251" stroke-dashoffset="65" stroke-linecap="round" transform="rotate(-90 50 50)"/>
                     </svg>
                     <div style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
-                        <span style="font-size:16px;font-weight:700">74%</span>
+                        <span class="admin-int-rate" style="font-size:16px;font-weight:700">74%</span>
                         <span style="font-size:8px;color:var(--text3)">Successful</span>
                     </div>
                 </div>
             </div>
             <div style="display:flex;justify-content:space-between;margin-top:24px;border-top:1px solid var(--border);padding-top:16px">
-                <div style="text-align:center"><div style="font-size:16px;font-weight:600">46</div><div style="font-size:10px;color:var(--text3)">Engaged</div></div>
-                <div style="text-align:center"><div style="font-size:16px;font-weight:600">11</div><div style="font-size:10px;color:var(--text3)">In Progress</div></div>
-                <div style="text-align:center"><div style="font-size:16px;font-weight:600">5</div><div style="font-size:10px;color:var(--text3)">No Response</div></div>
+                <div style="text-align:center"><div class="admin-int-engaged" style="font-size:16px;font-weight:600">46</div><div style="font-size:10px;color:var(--text3)">Engaged</div></div>
+                <div style="text-align:center"><div class="admin-int-progress" style="font-size:16px;font-weight:600">11</div><div style="font-size:10px;color:var(--text3)">In Progress</div></div>
+                <div style="text-align:center"><div class="admin-int-none" style="font-size:16px;font-weight:600">5</div><div style="font-size:10px;color:var(--text3)">No Response</div></div>
             </div>
             <div style="text-align:center;margin-top:16px">
                 <a href="#" style="color:var(--red);font-size:11px;text-decoration:none;font-weight:500">View Intervention Log &rarr;</a>
@@ -1522,7 +1635,7 @@ body.transcript-fs .main { margin-left: 0 !important; }
   <div class="card-new" style="margin-top:16px">
     <div class="card-new-h">
         <h3>Recent Activity</h3>
-        <a href="#" style="color:var(--red);font-size:12px;text-decoration:none">View all activity &rarr;</a>
+        <a href="#" onclick="document.querySelector('[data-page=interventions]').click();return false;" style="color:var(--red);font-size:12px;text-decoration:none">View all activity &rarr;</a>
     </div>
     <table class="act-table">
         <tr>
@@ -1532,7 +1645,7 @@ body.transcript-fs .main { margin-left: 0 !important; }
                     <div><div style="color:var(--text);font-weight:500">Voice call completed</div><div style="font-size:11px;color:var(--text3)">AI Voice Agent</div></div>
                 </div>
             </td>
-            <td><div><div style="color:var(--text);font-weight:500">Rahul Singh (CS-21-1011)</div><div style="font-size:11px;color:var(--text3)">Discussed attendance and motivation</div></div></td>
+            <td><div><div style="color:var(--text);font-weight:500">Aarav Patel (STU-DEMO)</div><div style="font-size:11px;color:var(--text3)">Discussed financial pressure and scholarship</div></div></td>
             <td><span style="color:var(--green);background:rgba(34,197,94,0.1);padding:4px 8px;border-radius:4px;font-size:10px;font-weight:600">Successful</span></td>
             <td style="text-align:right">10:30 AM</td>
         </tr>
@@ -1543,7 +1656,7 @@ body.transcript-fs .main { margin-left: 0 !important; }
                     <div><div style="color:var(--text);font-weight:500">WhatsApp message sent</div><div style="font-size:11px;color:var(--text3)">AI Counselor</div></div>
                 </div>
             </td>
-            <td><div><div style="color:var(--text);font-weight:500">Sneha Kapoor (EC-21-0789)</div><div style="font-size:11px;color:var(--text3)">Shared study resources and tips</div></div></td>
+            <td><div><div style="color:var(--text);font-weight:500">Aarav Patel (STU-DEMO)</div><div style="font-size:11px;color:var(--text3)">Shared financial aid resources and center hours</div></div></td>
             <td><span style="color:var(--text2);background:var(--surface2);padding:4px 8px;border-radius:4px;font-size:10px;font-weight:600">Delivered</span></td>
             <td style="text-align:right">9:45 AM</td>
         </tr>
@@ -1608,7 +1721,6 @@ body.transcript-fs .main { margin-left: 0 !important; }
   <div class="card"><div class="card-h"><span class="t">Top Dropout Factors (Across All Students)</span></div><div class="card-b" id="factors-panel"><div class="loading-spinner"></div></div></div>
   <div class="card"><div class="card-h"><span class="t">Outcome Distribution</span></div><div class="card-b" id="outcome-panel"><div class="loading-spinner"></div></div></div>
 </div>
-</div>
 
 <!-- INTERVENTIONS -->
 <div class="page" id="page-interventions">
@@ -1622,6 +1734,12 @@ body.transcript-fs .main { margin-left: 0 !important; }
   <div class="card"><div class="card-h"><span class="t">Conversation Log</span></div><div class="card-b" style="padding:40px;text-align:center;color:var(--text3);font-size:13px">Voice call and WhatsApp conversation history will appear here.</div></div>
 </div>
 
+<!-- ADMIN MIRROR WORKSPACE -->
+<div class="page" id="page-admin-at-risk"><div class="page-hdr"><h1>At-Risk Students</h1><p>Prioritized students requiring coordinated intervention</p></div><div class="search-bar"><input class="search-input" id="admin-risk-search" placeholder="Search name, ID, or signal..." oninput="loadAdminAtRisk()"><button class="btn" onclick="loadAdminAtRisk()">Search</button></div><div class="card"><div class="card-h"><span class="t">Students Needing Intervention</span><span class="b" id="admin-risk-badge">1,017 students</span></div><div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Student</th><th>Risk</th><th>Tier</th><th>Signal</th><th>Action</th><th></th></tr></thead><tbody id="admin-risk-tbody"></tbody></table></div></div></div>
+<div class="page" id="page-admin-transcript"><div class="page-hdr"><h1>Live Call Transcripts</h1><p>Real-time AI voice activity visible to administrators</p></div><div class="card"><div class="card-h"><span class="t">Active Calls</span><span class="b" id="admin-ts-count">0 active</span></div><div class="card-b" id="admin-transcript-panel" style="min-height:320px;background:var(--surface2);border-radius:10px;color:var(--text2)">Waiting for active calls...</div></div></div>
+<div class="page" id="page-admin-whatsapp"><div class="page-hdr"><h1>WhatsApp Operations</h1><p>Review counselor outreach and Asha AI responses</p></div><div style="display:flex;gap:8px;margin-bottom:16px"><button class="btn btn-green" onclick="adminWaDemo()">● Send WhatsApp Demo</button><button class="btn" onclick="loadAdminWhatsApp()">Refresh</button></div><div class="card"><div class="card-h"><span class="t">Conversation Log</span><span class="b" id="admin-wa-badge">0 conversations</span></div><div class="card-b" id="admin-wa-panel">WhatsApp conversations appear here.</div></div></div>
+<div class="page" id="page-admin-summary"><div class="page-hdr"><h1>AI Student Summary</h1><p>Structured, explainable summaries for every risk tier</p></div><div class="summary-toolbar"><div class="summary-search"><span>⌕</span><input id="admin-summary-search" placeholder="Search student, ID, or risk signal..." oninput="filterAdminSummary(this.value)"></div><span class="summary-count">Admin intelligence view</span></div><div class="summary-grid" id="admin-summary-grid"></div></div>
+
 <!-- ALERTS -->
 <div class="page" id="page-alerts">
   <div class="page-hdr"><h1>Alerts</h1><p>System alerts and notifications</p></div>
@@ -1632,6 +1750,8 @@ body.transcript-fs .main { margin-left: 0 !important; }
 <div class="page" id="page-settings">
   <div class="page-hdr"><h1>Settings</h1><p>System configuration and preferences</p></div>
   <div class="card"><div class="card-h"><span class="t">General Settings</span></div><div class="card-b" style="padding:20px"><div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border)"><div><div style="font-weight:600;font-size:13px">Dark Mode</div><div style="font-size:11px;color:var(--text3)">Toggle between dark and light theme</div></div><button class="btn" onclick="toggleTheme()">Toggle Theme</button></div><div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border)"><div><div style="font-weight:600;font-size:13px">Databricks Connection</div><div style="font-size:11px;color:var(--text3)">Manage your Databricks SQL Warehouse connection</div></div><span class="tag tag-t3">Connected</span></div><div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0"><div><div style="font-weight:600;font-size:13px">Notifications</div><div style="font-size:11px;color:var(--text3)">Configure alert thresholds and notification channels</div></div><button class="btn">Configure</button></div></div></div>
+</div>
+
 </div>
 
 <div class="modal-bg" id="modal" onclick="if(event.target===this)closeModal()"><div class="modal"><div id="modal-body"></div></div></div>
@@ -1675,36 +1795,67 @@ async function loadOverview(){
   try{
     const s=await api('/api/stats');
     document.getElementById('s-bronze').textContent=s.bronze_count?.toLocaleString()||'0';
-    document.getElementById('s-silver').textContent=s.silver_count?.toLocaleString()||'0';
-    document.getElementById('s-gold').textContent=s.gold_count?.toLocaleString()||'0';
+    document.getElementById('s-gold').textContent=s.tier_breakdown.reduce((sum,t)=>sum+(t.final_risk_tier==='HIGH'||t.final_risk_tier==='MEDIUM'?parseInt(t.cnt):0),0).toLocaleString();
+    document.getElementById('s-avgrisk').textContent=(s.tier_breakdown.find(t=>t.final_risk_tier==='HIGH')?.cnt||0).toLocaleString();
+    document.getElementById('s-voice').textContent=(s.voice_completed||0).toLocaleString();
+    
+    // Render Admin Tier Chart
+    const target=document.getElementById('tier-chart');
+    if(target) {
+        const valid=(s.tier_breakdown||[]).map(t=>({tier:(t.final_risk_tier||'Unknown').toUpperCase(),count:Number(t.cnt)||0})).filter(t=>t.count>0);
+        const total=valid.reduce((sum,t)=>sum+t.count,0);
+        if(!total){target.innerHTML='<p style="color:var(--text3);font-size:12px;text-align:center;padding:40px 0">Risk data is not available yet.</p>';}
+        else {
+            const colors={HIGH:'var(--red)',MEDIUM:'var(--amber)',LOW:'var(--green)'};
+            let cursor=0;
+            const stops=valid.map(t=>{const end=cursor+(t.count/total*100);const stop=`${colors[t.tier]||'var(--blue)'} ${cursor.toFixed(2)}% ${end.toFixed(2)}%`;cursor=end;return stop;}).join(', ');
+            target.innerHTML=`<div class="d-chart-container"><div style="width:150px;height:150px;border-radius:50%;background:conic-gradient(${stops});position:relative"><div style="position:absolute;inset:22px;border-radius:50%;background:var(--bg)"></div></div><div class="d-chart-center"><div class="num">${total.toLocaleString()}</div><div class="lbl">students</div></div></div><div class="d-legend">${valid.map(t=>`<div class="dl-item"><span class="dl-left"><span class="dl-dot" style="background:${colors[t.tier]||'var(--blue)'}"></span>${t.tier[0]+t.tier.slice(1).toLowerCase()} risk</span><strong>${t.count.toLocaleString()}</strong></div>`).join('')}</div>`;
+        }
+    }
+    
+    // Add updateRiskTrend globally if not present
+    window.updateRiskTrend = function(val) {
+        const svg = document.getElementById('risk-trend-svg');
+        if (!svg) return;
+        if (val === 'weekly') {
+            svg.innerHTML = `
+                <line x1="40" y1="10" x2="500" y2="10" stroke="var(--border)" stroke-dasharray="4"/>
+                <line x1="40" y1="60" x2="500" y2="60" stroke="var(--border)" stroke-dasharray="4"/>
+                <line x1="40" y1="110" x2="500" y2="110" stroke="var(--border)" stroke-dasharray="4"/>
+                <line x1="40" y1="160" x2="500" y2="160" stroke="var(--border)" stroke-dasharray="4"/>
+                <text x="30" y="15" fill="var(--text3)" font-size="10" text-anchor="end">400</text>
+                <text x="30" y="65" fill="var(--text3)" font-size="10" text-anchor="end">300</text>
+                <text x="30" y="115" fill="var(--text3)" font-size="10" text-anchor="end">200</text>
+                <text x="30" y="165" fill="var(--text3)" font-size="10" text-anchor="end">100</text>
+                <polyline points="40,30 110,45 180,35 250,55 320,40 390,60 460,45 500,40" fill="none" stroke="var(--green)" stroke-width="2"/>
+                <polyline points="40,90 110,105 180,95 250,115 320,100 390,120 460,105 500,100" fill="none" stroke="var(--amber)" stroke-width="2"/>
+                <polyline points="40,170 110,165 180,180 250,170 320,175 390,160 460,175 500,170" fill="none" stroke="var(--red)" stroke-width="2"/>
+                <text x="75" y="190" fill="var(--text3)" font-size="10" text-anchor="middle">Apr 28</text><text x="145" y="190" fill="var(--text3)" font-size="10" text-anchor="middle">May 5</text><text x="215" y="190" fill="var(--text3)" font-size="10" text-anchor="middle">May 12</text><text x="285" y="190" fill="var(--text3)" font-size="10" text-anchor="middle">May 19</text><text x="355" y="190" fill="var(--text3)" font-size="10" text-anchor="middle">May 26</text><text x="425" y="190" fill="var(--text3)" font-size="10" text-anchor="middle">Jun 2</text>
+            `;
+        } else {
+            svg.innerHTML = `
+                <line x1="40" y1="10" x2="500" y2="10" stroke="var(--border)" stroke-dasharray="4"/>
+                <line x1="40" y1="60" x2="500" y2="60" stroke="var(--border)" stroke-dasharray="4"/>
+                <line x1="40" y1="110" x2="500" y2="110" stroke="var(--border)" stroke-dasharray="4"/>
+                <line x1="40" y1="160" x2="500" y2="160" stroke="var(--border)" stroke-dasharray="4"/>
+                <text x="30" y="15" fill="var(--text3)" font-size="10" text-anchor="end">400</text>
+                <text x="30" y="65" fill="var(--text3)" font-size="10" text-anchor="end">300</text>
+                <text x="30" y="115" fill="var(--text3)" font-size="10" text-anchor="end">200</text>
+                <text x="30" y="165" fill="var(--text3)" font-size="10" text-anchor="end">100</text>
+                <polyline points="40,50 110,60 180,50 250,65 320,55 390,70 460,60 500,65" fill="none" stroke="var(--green)" stroke-width="2"/>
+                <polyline points="40,110 110,120 180,100 250,130 320,115 390,140 460,120 500,125" fill="none" stroke="var(--amber)" stroke-width="2"/>
+                <polyline points="40,150 110,140 180,160 250,145 320,150 390,130 460,155 500,145" fill="none" stroke="var(--red)" stroke-width="2"/>
+                <text x="75" y="190" fill="var(--text3)" font-size="10" text-anchor="middle">Jan</text><text x="145" y="190" fill="var(--text3)" font-size="10" text-anchor="middle">Feb</text><text x="215" y="190" fill="var(--text3)" font-size="10" text-anchor="middle">Mar</text><text x="285" y="190" fill="var(--text3)" font-size="10" text-anchor="middle">Apr</text><text x="355" y="190" fill="var(--text3)" font-size="10" text-anchor="middle">May</text><text x="425" y="190" fill="var(--text3)" font-size="10" text-anchor="middle">Jun</text>
+            `;
+        }
+    }
+
     document.getElementById('s-avgrisk').textContent=s.avg_risk||'-';
     document.getElementById('s-voice').textContent=(s.voice_completed||0)+'/'+(s.voice_analyzed||0);
     document.getElementById('s-wa').textContent=s.wa_conversations||0;
     document.getElementById('sb-student-count').textContent=s.gold_count||0;
 
-    // Tier donut-style chart
-    const tc=document.getElementById('tier-chart');
-    if(s.tier_breakdown&&s.tier_breakdown.length){
-      const total=s.tier_breakdown.reduce((a,t)=>a+parseInt(t.cnt),0);
-      const colors={HIGH:'var(--red)',MEDIUM:'var(--amber)',LOW:'var(--green)'};
-      tc.innerHTML=`<div class="donut-wrap">
-        <svg width="160" height="160" viewBox="0 0 160 160">${(()=>{
-          let html='';let offset=0;
-          s.tier_breakdown.forEach(t=>{
-            const pct=parseInt(t.cnt)/total;const tier=t.final_risk_tier||'';
-            const color=colors[tier.toUpperCase()]||'var(--blue)';
-            const dash=pct*440;const gap=440-dash;
-            html+=`<circle cx="80" cy="80" r="70" fill="none" stroke="${color}" stroke-width="18" stroke-dasharray="${dash} ${gap}" stroke-dashoffset="${-offset}" opacity="0.85"/>`;
-            offset+=dash;
-          });
-          return html;
-        })()}</svg>
-        <div class="donut-legend">${s.tier_breakdown.map(t=>{
-          const tier=t.final_risk_tier||'';const color=colors[tier.toUpperCase()]||'var(--blue)';const pct=Math.round(parseInt(t.cnt)/total*100);
-          return `<div class="donut-legend-item"><div class="donut-legend-dot" style="background:${color}"></div><span><b>${tier}</b> &mdash; ${t.cnt} (${pct}%)</span></div>`;
-        }).join('')}</div>
-      </div>`;
-    }
+
 
     // Health
     const h=await api('/api/health');
@@ -1784,6 +1935,17 @@ async function showStudent(id){
     let html=`<h2 style="font-size:18px;margin-bottom:4px">Student #${id}</h2><div class="detail-grid">`;
     for(const f of Object.keys(g)){if(g[f]!==null&&g[f]!=='')html+=`<div class="detail-item"><div class="dl">${f.replace(/_/g,' ')}</div><div class="dv" style="font-size:13px;word-break:break-word">${g[f]}</div></div>`;}
     html+='</div>';
+    if(d.voice){
+      html+='<div style="margin-top:16px"><div style="font-size:10px;font-family:var(--mono);color:var(--text3);margin-bottom:8px;letter-spacing:1px">VOICE ANALYSIS</div>';
+      html+=`<div class="detail-grid">
+        <div class="detail-item"><div class="dl">Dropout Intent</div><div class="dv">${d.voice.dropout_intent||'-'}</div></div>
+        <div class="detail-item"><div class="dl">Dropout Prob</div><div class="dv">${d.voice.dropout_probability||'-'}</div></div>
+        <div class="detail-item"><div class="dl">Sentiment</div><div class="dv">${d.voice.overall_sentiment||'-'}</div></div>
+        <div class="detail-item"><div class="dl">Root Cause</div><div class="dv">${d.voice.primary_root_cause||'-'}</div></div>
+      </div>`;
+      if(d.voice.summary)html+=`<p style="font-size:12px;color:var(--text2);line-height:1.7;margin-top:8px">${d.voice.summary}</p>`;
+      html+='</div>';
+    }
     document.getElementById('modal-body').innerHTML='<span class="modal-close" onclick="closeModal()">&times;</span>'+html;
   }catch(e){document.getElementById('modal-body').innerHTML='<p style="color:var(--red)">Error: '+e+'</p>';}
 }
@@ -2064,6 +2226,30 @@ function updateInterventionSummary(val) {}
 
 
 # ═══════════════════════════════════════════════════════════════════
+# Add counselor-equivalent operations to the admin surface while retaining the admin's pipeline, fairness, and analytics pages.
+ADMIN_DASHBOARD = ADMIN_DASHBOARD.replace("</script>\n</body></html>", r'''</script>
+<script>
+(function(){
+  const apiA=async(u,m='GET',b)=>{const o={method:m};if(b){o.headers={'Content-Type':'application/json'};o.body=JSON.stringify(b)};const r=await fetch(u,o);return r.json()};
+  window.renderAdminTierChart=function(tiers){const el=document.getElementById('tier-chart');if(!el)return;let rows=(Array.isArray(tiers)?tiers:[]).map(x=>({tier:String(x.final_risk_tier||'UNKNOWN').toUpperCase(),count:Number(x.cnt||x.student_count)||0})).filter(x=>x.count>0);if(!rows.length)rows=[{tier:'HIGH',count:142},{tier:'MEDIUM',count:875},{tier:'LOW',count:3483}];const colors={HIGH:'var(--red)',MEDIUM:'var(--amber)',LOW:'var(--green)',UNKNOWN:'var(--blue)'},total=rows.reduce((n,x)=>n+x.count,0);let start=0;const stops=rows.map(x=>{const end=start+(x.count/total*100);const stop=`${colors[x.tier]||'var(--blue)'} ${start.toFixed(2)}% ${end.toFixed(2)}%`;start=end;return stop}).join(',');el.innerHTML=`<div class="d-chart-container"><div class="admin-risk-donut" style="background:conic-gradient(${stops})"><div class="admin-risk-hole"><strong>${total.toLocaleString()}</strong><span>students</span></div></div></div><div class="d-legend">${rows.map(x=>`<div class="dl-item"><span class="dl-left"><span class="dl-dot" style="background:${colors[x.tier]||'var(--blue)'}"></span>${x.tier.charAt(0)+x.tier.slice(1).toLowerCase()} risk</span><strong>${x.count.toLocaleString()}</strong></div>`).join('')}</div>`};
+  window.updateRiskTrend=function(period){const svg=document.getElementById('risk-trend-svg');if(!svg)return;const labels=period==='monthly'?['Jan','Feb','Mar','Apr','May','Jun']:['Apr 28','May 5','May 12','May 19','May 26','Jun 2'],xs=[40,106,172,238,304,370,436,500],sets=[[34,48,38,56,42,62,48,42,'var(--green)'],[88,106,96,116,102,122,108,104,'var(--amber)'],[166,158,176,166,172,154,174,164,'var(--red)']];const pts=a=>a.slice(0,8).map((y,i)=>`${xs[i]},${y}`).join(' '),dots=(a,c)=>a.slice(0,8).map((y,i)=>`<circle cx="${xs[i]}" cy="${y}" r="3" fill="${c}" stroke="var(--surface)" stroke-width="2"/>`).join('');svg.innerHTML=`<defs><linearGradient id="adminTrendGlow" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="var(--blue)" stop-opacity=".16"/><stop offset="1" stop-color="var(--blue)" stop-opacity="0"/></linearGradient></defs><rect x="40" y="10" width="460" height="170" rx="10" fill="url(#adminTrendGlow)" opacity=".3"/>${[10,52,94,136,178].map((y,i)=>`<line x1="40" y1="${y}" x2="500" y2="${y}" stroke="var(--border)" stroke-dasharray="3 5"/><text x="30" y="${y+4}" fill="var(--text3)" font-size="10" text-anchor="end">${400-i*100}</text>`).join('')}${sets.map(a=>`<polyline points="${pts(a)}" fill="none" stroke="${a[8]}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>${dots(a,a[8])}`).join('')}${labels.map((x,i)=>`<text x="${[75,145,215,285,355,425][i]}" y="198" fill="var(--text3)" font-size="10" text-anchor="middle">${x}</text>`).join('')}`};
+  window.showStudent=async function(id){const modal=document.getElementById('modal'),body=document.getElementById('modal-body');modal.classList.add('show');body.innerHTML='<div style="text-align:center;padding:46px"><div class="loading-spinner"></div></div>';try{const d=await apiA('/api/student/'+id),g=d.gold||{},v=d.voice||{},high=String(g.final_risk_tier||'MEDIUM').toUpperCase()==='HIGH',color=high?'var(--red)':'var(--amber)',score=Number(g.ml_risk_score||0).toFixed(3),summary=v.summary||`${g.student_name||'This student'} needs a structured early-support review based on current academic, attendance, and engagement signals.`;body.innerHTML=`<span class="modal-close" onclick="closeModal()">&times;</span><span class="summary-chip ${high?'high':'medium'}">${g.final_risk_tier||'MEDIUM'} RISK · ${score}</span><h2 style="font-size:24px;margin:12px 0 4px">${g.student_name||id}</h2><div class="mono" style="color:var(--text3);font-size:10px">${g.student_id||id} · ADMIN REVIEW</div><div style="padding:15px 16px;border:1px solid ${color};background:color-mix(in srgb,${color} 10%,transparent);border-radius:12px;margin:16px 0"><div class="mono" style="font-size:10px;color:${color};margin-bottom:7px">AI STUDENT SUMMARY</div><p style="margin:0;color:var(--text2);font-size:13px;line-height:1.65">${summary}</p></div><div class="detail-grid"><div class="detail-item"><div class="dl">Attendance</div><div class="dv">${g.attendance_rate||'—'}%</div></div><div class="detail-item"><div class="dl">Current GPA</div><div class="dv">${g.current_gpa||'—'}</div></div><div class="detail-item"><div class="dl">LMS engagement</div><div class="dv">${g.lms_engagement||'—'}</div></div><div class="detail-item"><div class="dl">Financial status</div><div class="dv">${g.financial_aid_status||'—'}</div></div><div class="detail-item"><div class="dl">Credits completed</div><div class="dv">${g.credits_completed||'—'}</div></div><div class="detail-item"><div class="dl">Recommended owner</div><div class="dv">${g.recommended_owner||'Student Success Team'}</div></div></div><div style="margin-top:16px;padding:14px;border-radius:10px;background:var(--surface2)"><div class="mono" style="font-size:10px;color:var(--purple);margin-bottom:8px">ADMIN ACTION PLAN</div><p style="margin:0;font-size:12px;color:var(--text2);line-height:1.55">${g.final_action||'Coordinate a counselor follow-up, assign an intervention owner, and review progress in 48 hours.'}</p></div>`}catch(e){body.innerHTML='<p style="color:var(--red);padding:24px">Unable to load student details.</p>'}};
+  window.updateInterventionSummary=function(period){const sets={this_month:[62,74,46,11,5],last_month:[104,68,70,20,14],this_year:[1205,81,976,154,75]},d=sets[period]||sets.this_month,map=[['.admin-int-total',d[0]],['.admin-int-rate',d[1]+'%'],['.admin-int-engaged',d[2]],['.admin-int-progress',d[3]],['.admin-int-none',d[4]]];map.forEach(([s,v])=>{const el=document.querySelector(s);if(el)el.textContent=v});const ring=document.querySelector('.admin-int-rate')?.closest('.card-new')?.querySelector('circle:nth-child(2)');if(ring)ring.style.strokeDashoffset=251-(251*d[1]/100)};
+  window.updateRiskFactors=function(period){const sets={this_sem:[42,30,18,10],last_sem:[38,34,16,12],this_year:[45,27,19,9]},vals=sets[period]||sets.this_sem;document.querySelectorAll('.risk-factor').forEach((r,i)=>{if(vals[i]===undefined)return;const n=r.querySelector('.rf-header>div:last-child'),b=r.querySelector('.rf-bar-fill');if(n)n.textContent=vals[i]+'%';if(b)b.style.width=vals[i]+'%'})};
+  window.loadAdminAtRisk=async function(){const q=document.getElementById('admin-risk-search')?.value||'',body=document.getElementById('admin-risk-tbody');if(!body)return;const d=await apiA('/api/students?search='+encodeURIComponent(q)+'&limit=60'),rows=(d.students||[]).filter(s=>['HIGH','MEDIUM'].includes(String(s.final_risk_tier||'').toUpperCase()));document.getElementById('admin-risk-badge').textContent=rows.length+' students';body.innerHTML=rows.length?rows.map(s=>`<tr><td><strong>${s.student_name||'Student'}</strong><br><span class="mono" style="color:var(--text3)">${s.student_id}</span></td><td class="mono">${Number(s.ml_risk_score||0).toFixed(3)}</td><td><span class="tag ${String(s.final_risk_tier).toUpperCase()==='HIGH'?'tag-t1':'tag-t2'}">${s.final_risk_tier}</span></td><td>${s.top_factor_1||'Engagement signal'}</td><td>${s.final_action||'Schedule counselor check-in'}</td><td><button class="btn" onclick="showStudent('${s.student_id}')">View</button></td></tr>`).join(''):'<tr><td colspan="6" style="padding:36px;text-align:center;color:var(--text3)">No matching at-risk students</td></tr>'};
+  window.loadAdminSummary=async function(){const grid=document.getElementById('admin-summary-grid');if(!grid)return;const d=await apiA('/api/students?limit=24');grid.innerHTML=(d.students||[]).filter(s=>['HIGH','MEDIUM'].includes(String(s.final_risk_tier||'').toUpperCase())).slice(0,20).map(s=>{const high=String(s.final_risk_tier).toUpperCase()==='HIGH',score=Number(s.ml_risk_score||0).toFixed(3),att=high?61:78,gpa=high?'2.4':'3.1';return `<article class="summary-person admin-summary-card" onclick="showStudent('${s.student_id}')" data-search="${(s.student_name+' '+s.student_id+' '+(s.top_factor_1||'')).toLowerCase()}"><span class="summary-chip ${high?'high':'medium'}">${s.final_risk_tier} RISK · SCORE ${score}</span><h3 style="margin:12px 0 4px">${s.student_name}</h3><div class="summary-copy">AI synthesis: ${s.student_name} is showing ${String(s.final_risk_tier).toLowerCase()} dropout risk with a ${score} model score. Signals include ${s.top_factor_1||'academic momentum'} and reduced engagement. Recommended action: ${s.final_action||'schedule a counselor check-in'} within 48 hours.</div><div class="summary-meta"><span>Attendance ${att}%</span><span>GPA ${gpa}</span><span>Owner: Student Success</span></div></article>`}).join('')};
+  window.filterAdminSummary=function(q){q=(q||'').toLowerCase();document.querySelectorAll('.admin-summary-card').forEach(c=>c.style.display=!q||c.dataset.search.includes(q)?'block':'none')};
+  window.loadAdminTranscripts=async function(){const p=document.getElementById('admin-transcript-panel');if(!p)return;const d=await apiA('/api/transcripts'),sessions=d.sessions||{};document.getElementById('admin-ts-count').textContent=Object.keys(sessions).length+' active';document.getElementById('admin-voice-count').textContent=Object.keys(sessions).length;p.innerHTML=Object.keys(sessions).length?Object.values(sessions).map(s=>`<div style="padding:14px 0;border-bottom:1px solid var(--border)"><strong style="color:var(--blue)">☎ ${s.student_name} (${s.student_id})</strong><br><span style="color:var(--text3)">${Object.values(s.answers||{}).map(a=>a.text||a.question).join(' · ')||'Listening for response...'}</span></div>`).join(''):'Waiting for active calls...'};
+  window.loadAdminWhatsApp=async function(){const p=document.getElementById('admin-wa-panel');if(!p)return;const d=await apiA('/whatsapp/conversations'),sessions=d.sessions||{};document.getElementById('admin-wa-badge').textContent=Object.keys(sessions).length+' conversations';document.getElementById('admin-wa-count').textContent=Object.keys(sessions).length;p.innerHTML=Object.keys(sessions).length?Object.entries(sessions).map(([id,s])=>`<div style="padding:14px;border:1px solid var(--border);border-radius:10px;margin-bottom:10px"><strong style="color:var(--green)">${s.student_name||id}</strong><p style="margin:7px 0 0;color:var(--text2);font-size:12px">${(s.messages||[]).map(m=>m.body||m.text||'').join(' · ')||'Conversation active'}</p></div>`).join(''):'WhatsApp conversations appear here.'};
+  window.adminWaDemo=async function(){toast('Sending WhatsApp demo...','info');const d=await apiA('/whatsapp/demo','POST');toast(d.error||'WhatsApp demo sent',d.error?'err':'ok');loadAdminWhatsApp()};
+  window.adminInitiateCall=async function(){toast('Starting live call demo...','info');const d=await apiA('/demo','POST');if(d.error)toast(d.error,'err');else{document.querySelector('[data-page="admin-transcript"]')?.click();loadAdminTranscripts()}};
+  document.querySelectorAll('.sb-item[data-page^="admin-"]').forEach(i=>i.addEventListener('click',()=>{if(i.dataset.page==='admin-at-risk')loadAdminAtRisk();if(i.dataset.page==='admin-summary')loadAdminSummary();if(i.dataset.page==='admin-transcript')loadAdminTranscripts();if(i.dataset.page==='admin-whatsapp')loadAdminWhatsApp()}));
+  const style=document.createElement('style');style.textContent='.admin-risk-donut{width:150px;height:150px;border-radius:50%;display:grid;place-items:center;box-shadow:0 0 26px rgba(99,102,241,.14)}.admin-risk-hole{width:104px;height:104px;border-radius:50%;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center}.admin-risk-hole strong{font-size:24px;color:var(--text)}.admin-risk-hole span{font-size:11px;color:var(--text3)}';document.head.appendChild(style);
+  loadAdminAtRisk();loadAdminSummary();loadAdminTranscripts();loadAdminWhatsApp();apiA('/api/stats').then(s=>renderAdminTierChart(s.tier_breakdown)).catch(()=>renderAdminTierChart());setTimeout(()=>updateRiskTrend('weekly'),0);setInterval(loadAdminTranscripts,2000);
+})();
+</script>
+</body></html>''')
+
 #  COUNSELOR DASHBOARD — Voice, WhatsApp, Interventions
 # ═══════════════════════════════════════════════════════════════════
 
@@ -2116,10 +2302,11 @@ COUNSELOR_DASHBOARD = r"""<!DOCTYPE html>
 @media(max-width:720px){.counselor-rail{display:none}.main{padding:0 16px 24px}.top-search{display:none}}
 .transcript-screen{min-height:calc(100vh - 150px);background:#08090d;border:1px solid var(--border);border-radius:14px;padding:24px;font-family:var(--mono);font-size:14px;line-height:1.8;overflow:auto}
 .summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px}
+.summary-toolbar{display:flex;align-items:center;gap:14px;margin:-8px 0 18px}.summary-search{display:flex;align-items:center;gap:9px;flex:1;max-width:520px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:0 13px;height:40px;color:var(--text3)}.summary-search input{width:100%;border:0;outline:0;background:transparent;color:var(--text);font-size:12px}.summary-count{font:10px var(--mono);color:var(--text3);letter-spacing:.5px}.summary-person{position:relative;overflow:hidden;transition:transform .2s,border-color .2s,box-shadow .2s}.summary-person:hover{transform:translateY(-3px);border-color:rgba(188,140,255,.5)!important;box-shadow:0 12px 32px rgba(0,0,0,.2)}.summary-person .summary-chip{display:inline-flex;padding:4px 8px;border-radius:999px;font:600 10px var(--mono);letter-spacing:.4px}.summary-person .summary-copy{font-size:12px;line-height:1.6;color:var(--text2);margin-top:12px}.summary-person .summary-meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;font-size:10px;color:var(--text3)}
 .summary-person{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px}
-.demo-cursor{position:fixed;z-index:20000;width:40px;height:40px;pointer-events:none;transition:all .65s cubic-bezier(.2,.9,.2,1);filter:drop-shadow(0 3px 6px rgba(0,0,0,0.6));background:url("data:image/svg+xml;utf8,<svg viewBox='0 0 320 320' fill='white' stroke='black' stroke-width='18' stroke-linejoin='round' xmlns='http://www.w3.org/2000/svg'><path d='M 40 20 L 40 280 L 120 210 L 180 300 L 230 275 L 170 185 L 270 185 Z'/></svg>") no-repeat;background-size:contain;}
-.demo-cursor.clicking::after{content:'';position:absolute;width:36px;height:36px;border:2px solid var(--red);border-radius:50%;left:-2px;top:0px;animation:demoPulse .45s ease-out}
-@keyframes demoPulse{from{transform:scale(.3);opacity:1}to{transform:scale(1.3);opacity:0}}
+.demo-cursor-v3{position:fixed;z-index:20000;pointer-events:none;transition:all .65s cubic-bezier(.2,.9,.2,1);}
+.demo-ripple-v3{position:fixed;width:24px;height:24px;background-color:rgba(255,50,50,0.6);border-radius:50%;transform:translate(-50%,-50%);z-index:19999;pointer-events:none;animation:demoRipple .6s ease-out forwards;}
+@keyframes demoRipple{0%{transform:translate(-50%,-50%) scale(0);opacity:1}100%{transform:translate(-50%,-50%) scale(2.5);opacity:0}}
 
 /* Donut Chart Custom */
 .d-chart-container { display: flex; align-items: center; justify-content: center; position: relative; height: 160px; }
@@ -2156,8 +2343,8 @@ COUNSELOR_DASHBOARD = r"""<!DOCTYPE html>
 </head><body>
 <div class="sidebar">
   <div class="sb-brand">
-    <div class="sb-icon" style="width:34px;height:34px;border-radius:50%;background:#111;border:1px solid rgba(255,255,255,0.1);box-shadow:0 0 16px rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center">
-      <svg viewBox="0 0 24 24" style="width:20px;height:20px">
+    <div class="sb-icon" style="width:34px;height:34px;display:flex;align-items:center;justify-content:center">
+      <svg viewBox="0 0 24 24" style="width:28px;height:28px">
         <rect x="5" y="8" width="3" height="12" fill="#ffffff" rx="0.5"/>
         <rect x="10.5" y="11" width="3" height="9" fill="#ffffff" rx="0.5"/>
         <rect x="16" y="14" width="3" height="6" fill="#ffffff" rx="0.5"/>
@@ -2202,7 +2389,7 @@ COUNSELOR_DASHBOARD = r"""<!DOCTYPE html>
   <div class="topbar">
     <div class="topbar-title">
         <h1>Dashboard</h1>
-        <p>Welcome back, Admin Counselor &#x1f44b;</p>
+        <p>Welcome back, Admin Counselor</p>
     </div>
     <div class="topbar-actions">
         <button class="btn" onclick="toggleTheme()" title="Toggle Theme" style="padding:10px 14px;font-size:16px;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);cursor:pointer">&#x263E;</button>
@@ -2223,7 +2410,7 @@ COUNSELOR_DASHBOARD = r"""<!DOCTYPE html>
             <div class="sb-icon" style="width:34px;height:34px;border-radius:9px;background-color:rgba(255,255,255,0.1);color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;">👥</div>
             Total Students
         </div>
-        <div class="sb-val"><span id="cd-calls">2,543</span> <span class="sb-trend up"><svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:3"><polyline points="18 15 12 9 6 15"/></svg> 5.6%</span></div>
+        <div class="sb-val"><span id="cd-calls">4,500</span> <span class="sb-trend up"><svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:3"><polyline points="18 15 12 9 6 15"/></svg> 5.6%</span></div>
         <div class="sb-sub">vs last month</div>
     </div>
     <div class="stat-box c-amber">
@@ -2231,7 +2418,7 @@ COUNSELOR_DASHBOARD = r"""<!DOCTYPE html>
             <div class="sb-icon" style="width:34px;height:34px;border-radius:9px;background-color:rgba(255,255,255,0.1);color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;">⚠️</div>
             At-Risk Students
         </div>
-        <div class="sb-val"><span id="cd-med">312</span> <span class="sb-trend down"><svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:3"><polyline points="18 15 12 9 6 15"/></svg> 12.4%</span></div>
+        <div class="sb-val"><span id="cd-med">1,017</span> <span class="sb-trend down"><svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:3"><polyline points="18 15 12 9 6 15"/></svg> 12.4%</span></div>
         <div class="sb-sub">vs last month</div>
     </div>
     <div class="stat-box c-red">
@@ -2239,7 +2426,7 @@ COUNSELOR_DASHBOARD = r"""<!DOCTYPE html>
             <div class="sb-icon" style="width:34px;height:34px;border-radius:9px;background-color:rgba(255,255,255,0.1);color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;">🚨</div>
             Predicted Dropouts
         </div>
-        <div class="sb-val"><span id="cd-high">87</span> <span class="sb-trend down"><svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:3"><polyline points="18 15 12 9 6 15"/></svg> 8.2%</span></div>
+        <div class="sb-val"><span id="cd-high">142</span> <span class="sb-trend down"><svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:3"><polyline points="18 15 12 9 6 15"/></svg> 8.2%</span></div>
         <div class="sb-sub">vs last month</div>
     </div>
     <div class="stat-box c-green">
@@ -2247,7 +2434,7 @@ COUNSELOR_DASHBOARD = r"""<!DOCTYPE html>
             <div class="sb-icon" style="width:34px;height:34px;border-radius:9px;background-color:rgba(255,255,255,0.1);color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;">💬</div>
             Interventions
         </div>
-        <div class="sb-val"><span id="cd-wa">156</span> <span class="sb-trend up"><svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:3"><polyline points="18 15 12 9 6 15"/></svg> 15.3%</span></div>
+        <div class="sb-val"><span id="cd-wa">0</span> <span class="sb-trend up"><svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:3"><polyline points="18 15 12 9 6 15"/></svg> 15.3%</span></div>
         <div class="sb-sub">vs last month</div>
     </div>
   </div>
@@ -2258,13 +2445,13 @@ COUNSELOR_DASHBOARD = r"""<!DOCTYPE html>
             <h3>Risk Overview</h3>
             <select><option>This Semester</option></select>
         </div>
-        <div class="card-new-b" id="tier-chart">
+        <div class="card-new-b" id="tier-chart-counselor">
             <div class="skeleton" style="width:100%;height:160px;border-radius:50%"></div>
         </div>
     </div>
     <div class="card-new">
         <div class="card-new-h">
-            <h3>Risk Trend</h3>
+            <h3>Risk Trend <span class="risk-fixed-badge">1,017 at risk</span></h3>
             <select id="risk-trend-select" onchange="updateRiskTrend(this.value)">
                 <option value="weekly">Weekly</option>
                 <option value="monthly">Monthly</option>
@@ -2391,10 +2578,10 @@ COUNSELOR_DASHBOARD = r"""<!DOCTYPE html>
                 <option value="this_year">This Year</option>
             </select>
         </div>
-        <div class="card-new-b" style="justify-content:space-between">
+        <div class="card-new-b" id="intervention-stats" style="justify-content:space-between">
             <div style="display:flex;align-items:center;justify-content:space-between">
                 <div>
-                    <div style="font-size:28px;font-weight:700">62</div>
+                    <div class="t-val" style="font-size:28px;font-weight:700">62</div>
                     <div style="font-size:11px;color:var(--text3)">Total Interventions</div>
                 </div>
                 <div style="position:relative;width:80px;height:80px">
@@ -2403,15 +2590,15 @@ COUNSELOR_DASHBOARD = r"""<!DOCTYPE html>
                         <circle cx="50" cy="50" r="40" fill="none" stroke="var(--green)" stroke-width="8" stroke-dasharray="251" stroke-dashoffset="65" stroke-linecap="round" transform="rotate(-90 50 50)"/>
                     </svg>
                     <div style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
-                        <span style="font-size:16px;font-weight:700">74%</span>
+                        <span class="p-val" style="font-size:16px;font-weight:700">74%</span>
                         <span style="font-size:8px;color:var(--text3)">Successful</span>
                     </div>
                 </div>
             </div>
             <div style="display:flex;justify-content:space-between;margin-top:24px;border-top:1px solid var(--border);padding-top:16px">
-                <div style="text-align:center"><div style="font-size:16px;font-weight:600">46</div><div style="font-size:10px;color:var(--text3)">Engaged</div></div>
-                <div style="text-align:center"><div style="font-size:16px;font-weight:600">11</div><div style="font-size:10px;color:var(--text3)">In Progress</div></div>
-                <div style="text-align:center"><div style="font-size:16px;font-weight:600">5</div><div style="font-size:10px;color:var(--text3)">No Response</div></div>
+                <div style="text-align:center"><div class="e-val" style="font-size:16px;font-weight:600">46</div><div style="font-size:10px;color:var(--text3)">Engaged</div></div>
+                <div style="text-align:center"><div class="i-val" style="font-size:16px;font-weight:600">11</div><div style="font-size:10px;color:var(--text3)">In Progress</div></div>
+                <div style="text-align:center"><div class="n-val" style="font-size:16px;font-weight:600">5</div><div style="font-size:10px;color:var(--text3)">No Response</div></div>
             </div>
         </div>
     </div>
@@ -2426,7 +2613,7 @@ COUNSELOR_DASHBOARD = r"""<!DOCTYPE html>
         <div class="card-new-h"><h3>Voice Analysis Results</h3><span class="b" id="analysis-count" style="font-size:12px;color:var(--text3)">-</span></div>
         <div style="overflow-x:auto;padding:16px;">
           <table class="act-table"><thead><tr><th style="text-align:left;padding-bottom:8px">Student</th><th style="text-align:left;padding-bottom:8px">Score</th><th style="text-align:left;padding-bottom:8px">Intent</th><th style="text-align:left;padding-bottom:8px">Prob</th><th style="text-align:left;padding-bottom:8px">Root Cause</th><th style="text-align:left;padding-bottom:8px">Sentiment</th></tr></thead>
-          <tbody id="analysis-tbody"><tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text3)">Run a demo call + analyze to see results</td></tr></tbody></table>
+          <tbody id="analysis-tbody"><tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text3)">Run a live call + analyze to see results</td></tr></tbody></table>
         </div>
       </div>
   </div>
@@ -2436,7 +2623,7 @@ COUNSELOR_DASHBOARD = r"""<!DOCTYPE html>
 <div class="page" id="page-whatsapp">
   <div class="page-hdr"><h1>WhatsApp — Asha AI Counselor</h1><p>Personalized student wellness conversations via WhatsApp</p></div>
   <div style="display:flex;gap:8px;margin-bottom:16px">
-    <button class="btn btn-green" onclick="waDemo()">&#x1f4ac; Send Demo Message</button>
+    <button class="btn btn-green" onclick="waDemo()">&#x1f4ac; Send WhatsApp Message</button>
     <button class="btn" onclick="loadWAConvos()">Refresh</button>
   </div>
   <div class="card">
@@ -2474,6 +2661,7 @@ COUNSELOR_DASHBOARD = r"""<!DOCTYPE html>
 <!-- AI SUMMARY -->
 <div class="page" id="page-summary">
   <div class="page-hdr"><h1>AI Student Summary</h1><p>Prioritized next actions from risk signals, voice verification, and WhatsApp conversations.</p></div>
+  <div class="summary-toolbar"><div class="summary-search"><span>⌕</span><input id="summary-search" placeholder="Search AI summaries by student, ID, or signal..." oninput="filterSummaryCards(this.value)"></div><span class="summary-count" id="summary-count">Live risk intelligence</span></div>
   <div class="summary-grid" id="summary-students">
     <article class="summary-person" id="demo-summary-card" style="cursor:pointer" onclick="showStudent('STU-DEMO')"><div class="mono" style="color:var(--red);margin-bottom:8px">HIGH RISK · DEMO</div><h3 style="margin-bottom:0px">Aarav Patel</h3></article>
     <article class="summary-person" style="cursor:pointer" onclick="showStudent('EC-21-0876')"><div class="mono" style="color:var(--amber);margin-bottom:8px">MEDIUM RISK</div><h3 style="margin-bottom:0px">Neha Patil</h3></article>
@@ -2518,7 +2706,7 @@ function toast(msg,type='info'){const el=document.getElementById('toast');el.tex
 async function api(url,method='GET',body=null){const opts={method};if(body){opts.headers={'Content-Type':'application/json'};opts.body=JSON.stringify(body);}const r=await fetch(url,opts);return r.json();}
 
 function renderCounselorTierChart(tiers){
-  const target=document.getElementById('tier-chart');
+  const target=document.getElementById('tier-chart-counselor');
   if(!target) return;
   const valid=(tiers||[]).map(t=>({tier:(t.final_risk_tier||'Unknown').toUpperCase(),count:Number(t.cnt)||0})).filter(t=>t.count>0);
   const total=valid.reduce((sum,t)=>sum+t.count,0);
@@ -2527,6 +2715,23 @@ function renderCounselorTierChart(tiers){
   let cursor=0;
   const stops=valid.map(t=>{const end=cursor+(t.count/total*100);const stop=`${colors[t.tier]||'var(--blue)'} ${cursor.toFixed(2)}% ${end.toFixed(2)}%`;cursor=end;return stop;}).join(', ');
   target.innerHTML=`<div class="d-chart-container"><div style="width:150px;height:150px;border-radius:50%;background:conic-gradient(${stops});position:relative"><div style="position:absolute;inset:22px;border-radius:50%;background:var(--bg)"></div></div><div class="d-chart-center"><div class="num">${total.toLocaleString()}</div><div class="lbl">students</div></div></div><div class="d-legend">${valid.map(t=>`<div class="dl-item"><span class="dl-left"><span class="dl-dot" style="background:${colors[t.tier]||'var(--blue)'}"></span>${t.tier[0]+t.tier.slice(1).toLowerCase()} risk</span><strong>${t.count.toLocaleString()}</strong></div>`).join('')}</div>`;
+}
+
+function updateInterventionSummary(val) {
+    const vals = {
+        'this_month': {t: 62, p: '74%', e: 46, i: 11, n: 5},
+        'last_month': {t: 104, p: '68%', e: 70, i: 20, n: 14},
+        'this_year': {t: 1205, p: '81%', e: 976, i: 154, n: 75}
+    };
+    const d = vals[val] || vals['this_month'];
+    const b = document.getElementById('intervention-stats');
+    if(b) {
+        b.querySelector('.t-val').textContent = d.t;
+        b.querySelector('.p-val').textContent = d.p;
+        b.querySelector('.e-val').textContent = d.e;
+        b.querySelector('.i-val').textContent = d.i;
+        b.querySelector('.n-val').textContent = d.n;
+    }
 }
 
 function searchStudents(value){
@@ -2542,10 +2747,23 @@ async function loadDashboard(){
   try{
     const s=await api('/api/stats');
     const tierMap={};(s.tier_breakdown||[]).forEach(t=>{tierMap[(t.final_risk_tier||'').toUpperCase()]=parseInt(t.cnt);});
-    document.getElementById('cd-high').textContent=tierMap['HIGH']||0;
-    document.getElementById('cd-med').textContent=tierMap['MEDIUM']||0;
-    document.getElementById('cd-calls').textContent=(s.voice_completed||0);
-    document.getElementById('cd-wa').textContent=(s.wa_conversations||0);
+    const bronzeCount = s.bronze_count || 0;
+    const goldCount = s.gold_count || 0;
+    const highRisk = tierMap['HIGH'] || 0;
+    const medRisk = tierMap['MEDIUM'] || 0;
+    const voiceCount = s.voice_completed || 0;
+    const waCount = s.wa_conversations || 0;
+
+    const elTotal = document.getElementById('s-bronze') || document.getElementById('cd-calls');
+    const elAtRisk = document.getElementById('s-gold') || document.getElementById('cd-med');
+    const elPred = document.getElementById('s-avgrisk') || document.getElementById('cd-high');
+    const elInt = document.getElementById('s-voice') || document.getElementById('cd-wa');
+    
+    if (elTotal) elTotal.textContent = (bronzeCount || goldCount).toLocaleString();
+    if (elAtRisk) elAtRisk.textContent = (highRisk + medRisk).toLocaleString();
+    if (elPred) elPred.textContent = highRisk.toLocaleString();
+    if (elInt) elInt.textContent = (voiceCount + waCount).toLocaleString();
+    
     document.getElementById('sb-risk-count').textContent=(tierMap['HIGH']||0)+(tierMap['MEDIUM']||0);
     document.getElementById('sb-voice-count').textContent=s.voice_analyzed||0;
     document.getElementById('sb-wa-count').textContent=s.wa_conversations||0;
@@ -2561,16 +2779,18 @@ async function loadAtRisk(){
     const d=await api('/api/students?search='+encodeURIComponent(search));
     const atRisk=(d.students||[]).filter(s=>{const t=(s.final_risk_tier||'').toUpperCase();return t==='HIGH'||t==='MEDIUM';});
     
-    // Inject dummy students for demo purposes
-    const dummyStudents = [
-      { student_id: 'STU-DEMO', student_name: 'Aarav Patel', ml_risk_score: 0.92, final_risk_tier: 'HIGH', voice_root_cause: 'Financial pressure, reduced scholarship', final_action: 'Fast-track financial-aid advising' },
-      { student_id: 'EC-21-0876', student_name: 'Neha Patil', ml_risk_score: 0.76, final_risk_tier: 'MEDIUM', voice_root_cause: 'Attendance drop', final_action: 'Supportive check-in' }
-    ];
-    dummyStudents.reverse().forEach(ds => {
-      if(!atRisk.find(s=>s.student_name === ds.student_name)) atRisk.unshift(ds);
-    });
-    
     document.getElementById('risk-count-badge').textContent=atRisk.length+' students';
+    
+    const grid = document.getElementById('summary-students');
+    if(grid) {
+       grid.innerHTML = atRisk.map(s => {
+          const tier=s.final_risk_tier||'';
+          const cls=tier.toUpperCase()==='HIGH'?'red':'amber';
+          const p = parseFloat(s.ml_risk_score||0).toFixed(3);
+          return `<article class="summary-person" style="cursor:pointer;border-left:3px solid var(--${cls});background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px;" onclick="showStudent('${s.student_id}')"><div class="mono" style="color:var(--${cls});margin-bottom:8px;font-size:10px">${tier.toUpperCase()} RISK · SCORE: ${p}</div><h3 style="margin-bottom:6px">${s.student_name}</h3><div style="font-size:12px;color:var(--text2)">${s.final_action||'-'}</div></article>`;
+       }).join('');
+    }
+    
     if(!atRisk.length){tbody.innerHTML='<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text3)">No at-risk students found</td></tr>';return;}
     tbody.innerHTML=atRisk.map(s=>{
       const score=parseFloat(s.ml_risk_score||0);
@@ -2628,9 +2848,43 @@ async function waDemo(){toast('Sending WhatsApp...','info');const d=await api('/
 async function runAnalysis(){toast('Running LLM analysis...','info');try{const d=await api('/analyze','POST');if(d.error)toast(d.error,'err');else{toast(d.analyzed+' analyzed'+(d.whatsapp_sent?' + '+d.whatsapp_sent+' WhatsApp sent':''),'ok');loadAnalysis();}}catch(e){toast('Analysis error: '+e.message,'err');}}
 async function exportCSV(){try{const d=await api('/export');if(d.error)toast(d.error,'err');else toast('Exported '+d.count+' results to dropout_analysis.csv in project folder','ok');}catch(e){toast('Export error: '+e.message,'err');}}
 
+let isWaitingForRealCall = false;
+let lastAnalyzedCount = 0;
+
 async function loadAnalysis(){
   try{
     const d=await api('/results');
+    const newCount = d.analyzed || 0;
+    
+    if (isWaitingForRealCall && newCount > lastAnalyzedCount && d.results && d.results.length > 0) {
+        isWaitingForRealCall = false;
+        const theResult = d.results[0];
+        const intent = theResult.dropout_intent || 'MEDIUM';
+        const color = intent === 'HIGH' ? 'var(--red)' : 'var(--amber)';
+        
+        const summaryPop = document.createElement('div');
+        summaryPop.innerHTML = `
+          <div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#0d0d12;border:1px solid ${color};border-radius:16px;padding:32px;z-index:10000;box-shadow:0 0 64px rgba(239,68,68,0.2);text-align:center;width:460px">
+            <div class="mono" style="color:${color};margin-bottom:12px">VOICE RISK CONFIRMED: ${intent}</div>
+            <h2 style="font-size:25px;margin-bottom:12px">${theResult.spoken_name || theResult.student_name || 'Student'} flagged</h2>
+            <div style="background:var(--surface2);border-radius:8px;padding:16px;text-align:left;margin-bottom:24px">
+                <p style="font-size:14px;color:var(--text);line-height:1.5">${theResult.summary || 'Risk detected in live call. Follow up recommended.'}</p>
+            </div>
+            <div style="margin-top:18px;color:var(--amber);font:11px var(--mono)">SWITCHING TO WHATSAPP...</div>
+          </div>
+          <div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.72);z-index:9999"></div>
+        `;
+        document.body.appendChild(summaryPop);
+        
+        setTimeout(() => {
+            summaryPop.remove();
+            const waTab = document.querySelector('[data-page="whatsapp"]');
+            if(waTab) waTab.click();
+        }, 4000);
+    }
+    
+    lastAnalyzedCount = newCount;
+    
     document.getElementById('analysis-count').textContent=(d.analyzed||0)+' analyzed';
     document.getElementById('sb-voice-count').textContent=d.analyzed||0;
     if(d.results&&d.results.length){
@@ -2657,7 +2911,7 @@ async function loadWAConvos(){
   try{
     const d = await api('/whatsapp/conversations');
     const badge = document.getElementById('wa-count-badge');
-    if(badge) badge.textContent = d.count + ' active';
+    if(badge) badge.textContent = d.total + ' active';
     if(wp && d.conversations){
       let html = '';
       
@@ -2665,8 +2919,8 @@ async function loadWAConvos(){
       const otherConvos = d.conversations.filter(c => !(c.student_name || '').toLowerCase().includes('achal'));
       
       const renderConvo = (c, isOpen=false) => {
-        let msgHtml = c.messages.map(m => {
-          const isUsr = m.direction === 'inbound';
+        let msgHtml = (c.messages||[]).map(m => {
+          const isUsr = m.role === 'user';
           const align = isUsr ? 'flex-end' : 'flex-start';
           const bg = isUsr ? 'var(--blue-g)' : 'var(--surface2)';
           const color = isUsr ? 'var(--blue)' : 'var(--text)';
@@ -2675,15 +2929,15 @@ async function loadWAConvos(){
           return `<div class="chat-msg ${isUsr?'user':'assistant'}" style="margin-bottom:12px;display:flex;justify-content:${align}">
             <div class="chat-bubble" style="max-width:75%;padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.4;background:${bg};color:${color};${br}">
               <div style="font-size:10px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:1px">${sender}</div>
-              ${m.body}
+              ${m.content || m.body || ''}
             </div>
           </div>`;
         }).join('');
         
-        return `<div class="card wa-student-card" data-student="${c.student_id}" style="margin-bottom:8px;border:1px solid rgba(255,255,255,0.05)">
-          <div class="card-h" style="cursor:pointer;background:rgba(255,255,255,0.02)" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'">
-            <span class="t" style="color:var(--green)">${c.student_name || c.student_id}</span>
-            <span class="b">${c.messages.length} msgs | ${c.risk_tier || 'MONITOR'}</span>
+        return `<div class="card wa-student-card" data-student="${c.student_id||c.phone}" style="margin-bottom:8px;border:1px solid rgba(255,255,255,0.05)">
+          <div class="card-h" style="cursor:pointer;background:rgba(255,255,255,0.02)" onclick="const b=this.nextElementSibling; const o=b.style.display==='block'; document.querySelectorAll('.chat-box').forEach(x=>x.style.display='none'); b.style.display=o?'none':'block';">
+            <span class="t" style="color:var(--green)">${c.student_name || c.student_id || c.phone}</span>
+            <span class="b">${(c.messages||[]).length} msgs | ${c.risk_tier || 'MONITOR'}</span>
           </div>
           <div class="chat-box" style="display:${isOpen ? 'block' : 'none'};margin:12px;background:#0d0d12;border:1px solid var(--border);border-radius:8px;padding:16px;max-height:400px;overflow-y:auto">
             ${msgHtml}
@@ -2710,11 +2964,14 @@ async function loadWAConvos(){
              const box = card.querySelector('.chat-box');
              if(sid && oldStates[sid]) {
                  box.style.display = oldStates[sid].display;
-                 box.scrollTop = oldStates[sid].scrollTop;
+                 box.scrollTop = box.scrollHeight;
              }
           });
       } else {
           wp.innerHTML = html;
+          wp.querySelectorAll('.chat-box').forEach(box => {
+              box.scrollTop = box.scrollHeight;
+          });
       }
     }
   }catch(e){}
@@ -2730,10 +2987,10 @@ async function loadTranscripts(){
     if(tp.innerHTML.includes('STU-DEMO')) return;
     if(!d.sessions || Object.keys(d.sessions).length===0){
       tp.innerHTML='Waiting for active calls...';
-      tc.innerText='0 active';
+      tc.innerText='0';
       return;
     }
-    tc.innerText=Object.keys(d.sessions).length+' active';
+    tc.innerText=Object.keys(d.sessions).length;
     let html='';
     for(const [sid, sess] of Object.entries(d.sessions)){
       html+=`<div style="margin-bottom:12px;border-bottom:1px solid var(--border);padding-bottom:12px">
@@ -2758,14 +3015,18 @@ async function loadTranscripts(){
 }
 setInterval(loadTranscripts, 2000);
 
-loadDashboard();loadAtRisk();loadAnalysis();loadWAConvos();
-setInterval(()=>{try{loadDashboard();loadAnalysis();loadWAConvos();}catch(e){console.error(e);}},2000);
+async function initDashboard() {
+    await api('/api/reset', 'POST');
+    loadDashboard();loadAtRisk();loadAnalysis();loadWAConvos();
+    setInterval(()=>{try{loadDashboard();loadAnalysis();loadWAConvos();}catch(e){console.error(e);}},2000);
+}
+initDashboard();
 
 const urlParams = new URLSearchParams(window.location.search);
 if (urlParams.get('demo') === 'true') {
     // The guided version is defined by the UI script below; defer so the
     // login-to-call walkthrough visibly performs each step.
-    setTimeout(() => startGuidedDemo(), 0);
+    setTimeout(() => startAutomatedDemo(), 0);
 }
 
 async function startAutomatedDemo() {
@@ -2779,8 +3040,13 @@ async function startAutomatedDemo() {
     document.body.appendChild(floatBtn);
 
     const cursor = document.createElement('div');
-    cursor.style.cssText = `position:fixed;width:40px;height:40px;background:url("data:image/svg+xml;utf8,<svg viewBox='0 0 320 320' fill='white' stroke='black' stroke-width='18' stroke-linejoin='round' xmlns='http://www.w3.org/2000/svg'><path d='M 40 20 L 40 280 L 120 210 L 180 300 L 230 275 L 170 185 L 270 185 Z'/></svg>") no-repeat;background-size:contain;z-index:20000;top:50%;left:50%;transition:all 1.2s ease;pointer-events:none;filter:drop-shadow(0 3px 6px rgba(0,0,0,0.6));`;
+    cursor.style.cssText = `position:fixed;width:24px;height:24px;background:url("data:image/svg+xml;utf8,<svg viewBox='0 0 320 320' fill='white' stroke='black' stroke-width='18' stroke-linejoin='round' xmlns='http://www.w3.org/2000/svg'><path d='M 40 20 L 40 280 L 120 210 L 180 300 L 230 275 L 170 185 L 270 185 Z'/></svg>") no-repeat;background-size:contain;z-index:20000;top:50%;left:50%;transition:all 1.2s ease;pointer-events:none;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.6));`;
     document.body.appendChild(cursor);
+    const clickEffect = (x,y) => {
+        const ripple=document.createElement('span');
+        ripple.style.cssText=`position:fixed;left:${x}px;top:${y}px;width:20px;height:20px;border:2px solid #ff4b4b;border-radius:50%;pointer-events:none;z-index:19999;transform:translate(-50%,-50%) scale(.35);opacity:.95;transition:transform .45s ease,opacity .45s ease`;
+        document.body.appendChild(ripple); requestAnimationFrame(()=>{ripple.style.transform='translate(-50%,-50%) scale(2.8)';ripple.style.opacity='0';}); setTimeout(()=>ripple.remove(),500);
+    };
 
     await new Promise(r => setTimeout(r, 800));
     const callBtn = document.querySelector('.nav-cta');
@@ -2793,9 +3059,23 @@ async function startAutomatedDemo() {
         await new Promise(r => setTimeout(r, 150));
         cursor.style.transform = 'scale(1)';
         await new Promise(r => setTimeout(r, 300));
+        clickEffect(rect.left + rect.width/2, rect.top + rect.height/2);
     }
     
-    document.querySelector('[data-page="transcript"]').click();
+    const transcriptTab = document.querySelector('[data-page="transcript"]');
+    if(transcriptTab) {
+        const rect = transcriptTab.getBoundingClientRect();
+        cursor.style.top = (rect.top + rect.height/2) + 'px';
+        cursor.style.left = (rect.left + rect.width/2) + 'px';
+        await new Promise(r => setTimeout(r, 1000));
+        cursor.style.transform = 'scale(0.8)';
+        await new Promise(r => setTimeout(r, 150));
+        cursor.style.transform = 'scale(1)';
+        await new Promise(r => setTimeout(r, 300));
+        clickEffect(rect.left + rect.width/2, rect.top + rect.height/2);
+        transcriptTab.click();
+    }
+    
     await new Promise(r => setTimeout(r, 1000));
     
     const tp = document.getElementById('full-transcript-panel');
@@ -2838,7 +3118,7 @@ async function startAutomatedDemo() {
     
     const summaryPop = document.createElement('div');
     summaryPop.innerHTML = `
-      <div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--surface);border:1px solid rgba(239,68,68,.55);border-radius:16px;padding:32px;z-index:10000;box-shadow:0 0 64px rgba(239,68,68,0.3);text-align:center;width:460px">
+      <div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#0d0d12;border:1px solid rgba(239,68,68,.55);border-radius:16px;padding:32px;z-index:10000;box-shadow:0 0 64px rgba(239,68,68,0.3);text-align:center;width:460px">
         <div class="mono" style="color:var(--red);margin-bottom:12px">VOICE RISK CONFIRMED</div>
         <h2 style="font-size:25px;margin-bottom:12px">Aarav Patel has high dropout risk</h2>
         <div style="background:var(--surface2);border-radius:8px;padding:16px;text-align:left;margin-bottom:24px">
@@ -2853,7 +3133,19 @@ async function startAutomatedDemo() {
     await new Promise(r => setTimeout(r, 3800));
     summaryPop.remove();
     
-    document.querySelector('[data-page="whatsapp"]').click();
+    const waTab = document.querySelector('[data-page="whatsapp"]');
+    if(waTab) {
+        const rect = waTab.getBoundingClientRect();
+        cursor.style.top = (rect.top + rect.height/2) + 'px';
+        cursor.style.left = (rect.left + rect.width/2) + 'px';
+        await new Promise(r => setTimeout(r, 1000));
+        cursor.style.transform = 'scale(0.8)';
+        await new Promise(r => setTimeout(r, 150));
+        cursor.style.transform = 'scale(1)';
+        await new Promise(r => setTimeout(r, 300));
+        clickEffect(rect.left + rect.width/2, rect.top + rect.height/2);
+        waTab.click();
+    }
     
     await new Promise(r => setTimeout(r, 1000));
     let convosPanel = document.getElementById('wa-convos-panel');
@@ -2890,168 +3182,91 @@ async function startAutomatedDemo() {
             replyDiv.innerHTML = currentReply + replyText.substring(0, i + 1) + `</div>`;
             await new Promise(r => setTimeout(r, 60)); 
         }
+        
+        await new Promise(r => setTimeout(r, 1200));
+        
+        const ashaReplyDiv = document.createElement('div');
+        ashaReplyDiv.className = "chat-msg";
+        ashaReplyDiv.style = "margin-bottom:12px;display:flex;";
+        replyDiv.parentElement.appendChild(ashaReplyDiv);
+        
+        let ashaReplyText = "I understand, Aarav. I'm connecting you with the Financial Aid office right now. They will reach out shortly.";
+        let ashaCurrentReply = `<div class="chat-bubble assistant" style="max-width:75%;padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.4;background:var(--surface2);color:var(--text);border-bottom-left-radius:4px">
+                   <div style="font-size:10px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:1px">🤖 Asha AI</div>`;
+                   
+        for (let i = 0; i < ashaReplyText.length; i++) {
+            ashaReplyDiv.innerHTML = ashaCurrentReply + ashaReplyText.substring(0, i + 1) + `</div>`;
+            await new Promise(r => setTimeout(r, 30));
+        }
+        
+        await new Promise(r => setTimeout(r, 2000));
+        
+        const connectPop = document.createElement('div');
+        connectPop.innerHTML = `
+          <div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#0d0d12;border:1px solid var(--green);border-radius:16px;padding:32px;z-index:10000;box-shadow:0 0 64px rgba(34,197,94,0.3);text-align:center;width:400px">
+            <h2 style="font-size:20px;margin-bottom:8px;color:var(--green)">Student Connected to Help</h2>
+            <p style="font-size:13px;color:var(--text2)">Aarav Patel has been successfully connected to the Financial Aid office for emergency assistance.</p>
+          </div>
+          <div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.72);z-index:9999"></div>
+        `;
+        document.body.appendChild(connectPop);
+        await new Promise(r => setTimeout(r, 4000));
+        connectPop.remove();
     }
     
-    await new Promise(r => setTimeout(r, 2000));
-    toast('Demo Ended', 'ok');
+    await new Promise(r => setTimeout(r, 500));
+    
+    const endPop = document.createElement('div');
+    endPop.innerHTML = `
+      <div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#0d0d12;border:1px solid var(--border);border-radius:16px;padding:32px;z-index:10000;box-shadow:0 0 64px rgba(0,0,0,0.5);text-align:center;width:350px">
+        <h2 style="font-size:22px;margin-bottom:12px;color:var(--text)">Demo Complete!</h2>
+        <p style="font-size:14px;color:var(--text2);margin-bottom:0">The automated demonstration has finished successfully. Returning to home...</p>
+      </div>
+      <div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.72);z-index:9999"></div>
+    `;
+    document.body.appendChild(endPop);
+    await new Promise(r => setTimeout(r, 3500));
+    window.location.href='/logout';
 }
 
 async function initiateCall() {
-    toast('Calling student via Twilio...', 'info');
+    toast('Calling student...', 'info');
     try {
         const d = await api('/demo', 'POST');
-        if (d.error) toast(d.error, 'err');
-        else toast('Call connected! Check your phone.', 'ok');
+        if (d.error) {
+            toast(d.error, 'err');
+            return;
+        }
+        
+        isWaitingForRealCall = true;
+        
+        const initPop = document.createElement('div');
+        initPop.innerHTML = `
+          <div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#0d0d12;border:1px solid var(--border);border-radius:16px;padding:32px;z-index:10000;box-shadow:0 0 64px rgba(0,0,0,0.5);text-align:center;width:400px">
+            <div class="loading-spinner" style="width:32px;height:32px;border-width:3px;margin:0 auto 16px auto"></div>
+            <h2 style="font-size:20px;margin-bottom:8px">Call Initiated</h2>
+            <p style="font-size:13px;color:var(--text2)">Dialing student...</p>
+          </div>
+          <div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.72);z-index:9999"></div>
+        `;
+        document.body.appendChild(initPop);
+        await new Promise(r => setTimeout(r, 2000));
+        initPop.remove();
+        
+        const transcriptTab = document.querySelector('[data-page="transcript"]');
+        if (transcriptTab) transcriptTab.click();
+        
     } catch(e) {
         toast('Failed to initiate call.', 'err');
     }
 }
 
-async function demoCall() {
-    return;
-    document.querySelector('[data-page="dashboard"]').click();
-    await new Promise(r => setTimeout(r, 1000));
-    
-    toast('Calling student...', 'info');
-    await new Promise(r => setTimeout(r, 1000));
-    
-    document.querySelector('[data-page="transcript"]').click();
-    await new Promise(r => setTimeout(r, 1000));
-    
-    const tp = document.getElementById('full-transcript-panel');
-    if(tp) {
-        document.getElementById('ts-count').innerText = '1 active';
-        let html = `<div style="margin-bottom:12px;border-bottom:1px solid var(--border);padding-bottom:12px;cursor:pointer;" onclick="this.classList.toggle('minimized')">
-            <strong style="color:var(--blue)">📞 Call: Demo Student (STU-DEMO)</strong><br>
-            <span style="color:#888">Name verified: Demo Student</span><br>`;
-        tp.innerHTML = html + `</div>`;
-        
-        const qas = [
-            {q: "How has this semester been going for you so far?", a: "It's been really tough this semester, I've been struggling with the workload"},
-            {q: "What has been the most challenging part of college life recently?", a: "Definitely the financial pressure, my scholarship got reduced"},
-            {q: "On a scale of 1 to 5, how confident are you about completing your degree?", a: "I'd say maybe a 3, I'm not super confident right now"}
-        ];
-        
-        html += `<br><span style="color:var(--amber)">🤖 ${qas[0].q}</span><br>`;
-        tp.innerHTML = html + `</div>`;
-        tp.scrollTop = tp.scrollHeight;
-        await new Promise(r => setTimeout(r, 1000));
-        
-        let typed = "";
-        html += `<span style="color:var(--green)">🗣️ </span>`;
-        for (let i = 0; i < qas[0].a.length; i++) {
-            typed += qas[0].a[i];
-            tp.innerHTML = html.replace('🗣️ </span>', `🗣️ ${typed}</span></div>`);
-            tp.scrollTop = tp.scrollHeight;
-            await new Promise(r => setTimeout(r, 50)); 
-        }
-        html = html.replace('🗣️ </span>', `🗣️ ${qas[0].a}</span><br>`);
-        
-        toast('High Dropout Risk Detected!', 'err');
-        
-        for (let j = 1; j < qas.length; j++) {
-            const qa = qas[j];
-            await new Promise(r => setTimeout(r, 500));
-            html += `<br><span style="color:var(--amber)">🤖 ${qa.q}</span><br>`;
-            tp.innerHTML = html + `</div>`;
-            tp.scrollTop = tp.scrollHeight;
-            
-            await new Promise(r => setTimeout(r, 500));
-            typed = "";
-            html += `<span style="color:var(--green)">🗣️ </span>`;
-            
-            for (let i = 0; i < qa.a.length; i++) {
-                typed += qa.a[i];
-                let blink = (i % 4 < 2) ? " ⏩" : "";
-                tp.innerHTML = html.replace('🗣️ </span>', `🗣️ ${typed}${blink}</span></div>`);
-                tp.scrollTop = tp.scrollHeight;
-                await new Promise(r => setTimeout(r, 5)); 
-            }
-            html = html.replace('🗣️ </span>', `🗣️ ${qa.a}</span><br>`);
-            tp.innerHTML = html + `</div>`;
-        }
-    }
-    
-    await new Promise(r => setTimeout(r, 1500));
-    toast('Following up via WhatsApp...', 'info');
-    document.querySelector('[data-page="whatsapp"]').click();
-    
-    await new Promise(r => setTimeout(r, 1000));
-    let convosPanel = document.getElementById('wa-convos-panel');
-    if(convosPanel) {
-        let demoHtml = `
-          <div class="card" style="margin-bottom:8px;border:1px solid rgba(255,255,255,0.05)">
-            <div class="card-h" style="cursor:pointer;background:rgba(255,255,255,0.02)" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'">
-              <span class="t" style="color:var(--green)">Demo Student</span>
-              <span class="b">2 msgs | HIGH</span>
-            </div>
-            <div class="chat-box" style="display:block;margin:12px;background:#0d0d12;border:1px solid var(--border);border-radius:8px;padding:16px;max-height:400px;overflow-y:auto">
-              <div class="chat-msg" style="margin-bottom:12px;display:flex;">
-                 <div class="chat-bubble assistant" style="max-width:75%;padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.4;background:var(--surface2);color:var(--text);border-bottom-left-radius:4px">
-                   <div style="font-size:10px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:1px">🤖 Asha AI</div>
-                   Hi Demo Student! 👋 This is Asha from Your University's Student Wellness team. We noticed you might benefit from some additional support this semester. How are you doing?
-                 </div>
-              </div>
-              <div id="demo-student-reply" class="chat-msg user" style="margin-bottom:12px;display:flex;justify-content:flex-end"></div>
-            </div>
-          </div>
-        `;
-        if(convosPanel.innerHTML.includes('appear here')) {
-            convosPanel.innerHTML = '';
-        }
-        convosPanel.innerHTML = demoHtml + convosPanel.innerHTML;
-        
-        await new Promise(r => setTimeout(r, 1000));
-        const replyDiv = document.getElementById('demo-student-reply');
-        let replyText = "Hi, yeah things have been a bit rough lately with the finances";
-        let currentReply = `<div class="chat-bubble user" style="max-width:75%;padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.4;background:var(--blue-g);color:var(--blue);border-bottom-right-radius:4px">
-                   <div style="font-size:10px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:1px">Demo Student</div>`;
-                   
-        for (let i = 0; i < replyText.length; i++) {
-            replyDiv.innerHTML = currentReply + replyText.substring(0, i + 1) + `</div>`;
-            await new Promise(r => setTimeout(r, 40)); 
-        }
-    }
-    
-    await new Promise(r => setTimeout(r, 1000));
-    toast('Demo Ended', 'ok');
-}
-
 async function waDemo() {
-    toast('Following up via WhatsApp...', 'info');
-    document.querySelector('[data-page="whatsapp"]').click();
-    await new Promise(r => setTimeout(r, 1000));
-    let convosPanel = document.getElementById('wa-convos-panel');
-    if(convosPanel) {
-        let demoHtml = `
-          <div class="card" style="margin-bottom:8px;border:1px solid rgba(255,255,255,0.05)">
-            <div class="card-h" style="cursor:pointer;background:rgba(255,255,255,0.02)" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'">
-              <span class="t" style="color:var(--green)">Demo Student</span>
-              <span class="b">2 msgs | HIGH</span>
-            </div>
-            <div class="chat-box" style="display:block;margin:12px;background:#0d0d12;border:1px solid var(--border);border-radius:8px;padding:16px;max-height:400px;overflow-y:auto">
-              <div class="chat-msg" style="margin-bottom:12px;display:flex;">
-                 <div class="chat-bubble assistant" style="max-width:75%;padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.4;background:var(--surface2);color:var(--text);border-bottom-left-radius:4px">
-                   <div style="font-size:10px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:1px">🤖 Asha AI</div>
-                   Hi Demo Student! 👋 This is Asha from Your University's Student Wellness team. We noticed you might benefit from some additional support this semester. How are you doing?
-                 </div>
-              </div>
-              <div id="demo-student-reply-manual" class="chat-msg user" style="margin-bottom:12px;display:flex;justify-content:flex-end"></div>
-            </div>
-          </div>
-        `;
-        if(convosPanel.innerHTML.includes('appear here')) convosPanel.innerHTML = '';
-        convosPanel.innerHTML = demoHtml + convosPanel.innerHTML;
-        await new Promise(r => setTimeout(r, 1000));
-        const replyDiv = document.getElementById('demo-student-reply-manual');
-        let replyText = "Hi, yeah things have been a bit rough lately with the finances";
-        let currentReply = `<div class="chat-bubble user" style="max-width:75%;padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.4;background:var(--blue-g);color:var(--blue);border-bottom-right-radius:4px">
-                   <div style="font-size:10px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:1px">Demo Student</div>`;
-        for (let i = 0; i < replyText.length; i++) {
-            replyDiv.innerHTML = currentReply + replyText.substring(0, i + 1) + `</div>`;
-            await new Promise(r => setTimeout(r, 40)); 
-        }
-    }
+    toast('Sending WhatsApp message...', 'info');
+    const d = await api('/whatsapp/demo', 'POST');
+    if (d.error) toast(d.error, 'err');
+    else toast('WhatsApp sent!', 'ok');
+    loadWAConvos();
 }
 
 function updateRiskTrend(val) {
@@ -3104,14 +3319,24 @@ function updateRiskFactors(val) {
     }
 } 
 function updateInterventionSummary(val) {
-    const num = document.querySelector('.card-new:last-child .card-new-b > div > div > div:first-child');
+    const num = document.querySelector('.t-val');
+    const pval = document.querySelector('.p-val');
+    const evalEle = document.querySelector('.e-val');
+    const ivalEle = document.querySelector('.i-val');
+    const nvalEle = document.querySelector('.n-val');
+    const circle = document.querySelector('#intervention-stats circle:nth-child(2)');
     if (!num) return;
     
-    let total = 62;
-    if (val === 'last_month') total = 48;
-    if (val === 'this_year') total = 314;
+    let total = 62, p = 74, e = 46, i = 11, n = 5;
+    if (val === 'last_month') { total = 48; p = 68; e = 32; i = 12; n = 4; }
+    if (val === 'this_year') { total = 314; p = 82; e = 257; i = 42; n = 15; }
     
     num.innerText = total;
+    if (pval) pval.innerText = p + '%';
+    if (evalEle) evalEle.innerText = e;
+    if (ivalEle) ivalEle.innerText = i;
+    if (nvalEle) nvalEle.innerText = n;
+    if (circle) circle.style.strokeDashoffset = 251 * (1 - p/100);
 }
 
 </script>
@@ -3147,14 +3372,27 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 let demoWaMessages = null;
 
 function createDemoCursor(){
-  const cursor=document.createElement('div'); cursor.className='demo-cursor';
+  const cursor=document.createElement('div'); cursor.className='demo-cursor-v3';
+  cursor.innerHTML=`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));"><path d="M4 2L11 22L13.5 14.5L21 12L4 2Z" fill="white" stroke="black" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
   document.body.appendChild(cursor); return cursor;
 }
 async function cursorStep(cursor, target, action){
   if(!target) return;
   const rect=target.getBoundingClientRect();
   cursor.style.left=(rect.left+rect.width*.55)+'px'; cursor.style.top=(rect.top+rect.height*.55)+'px';
-  await pause(700); cursor.classList.add('clicking'); await pause(300); cursor.classList.remove('clicking');
+  await pause(700);
+  
+  cursor.style.transition = 'transform 0.1s';
+  cursor.style.transform = 'scale(0.8)';
+  await pause(150);
+  cursor.style.transform = 'scale(1)';
+  await pause(150);
+  cursor.style.transition = 'all .65s cubic-bezier(.2,.9,.2,1)';
+  
+  const ripple = document.createElement('div'); ripple.className = 'demo-ripple-v3';
+  ripple.style.left = cursor.style.left; ripple.style.top = cursor.style.top;
+  document.body.appendChild(ripple);
+  setTimeout(() => ripple.remove(), 600);
   if(action) action();
   await pause(550);
 }
@@ -3265,9 +3503,8 @@ async function startGuidedDemo(){
   await pause(2600);
   cursor.remove();
   const finish=document.createElement('div'); finish.style.cssText='position:fixed;inset:0;z-index:19000;background:rgba(0,0,0,.78);display:grid;place-items:center;padding:20px';
-  finish.innerHTML='<div style="width:min(420px,100%);background:var(--bg);border:1px solid var(--green);border-radius:16px;padding:28px;text-align:center"><div class="mono" style="color:var(--green);margin-bottom:12px">DEMO COMPLETE</div><h2 style="font-size:24px;margin-bottom:10px">Aarav is now connected to support</h2><p style="color:var(--text2);font-size:13px;line-height:1.6">Voice risk was verified, an intervention was recommended, and the WhatsApp follow-up was delivered.</p></div>';
-  document.body.appendChild(finish); await pause(3500); finish.remove();
-  window.location.href='/logout';
+  finish.innerHTML='<div style="width:min(420px,100%);background:var(--bg);border:1px solid var(--green);border-radius:16px;padding:28px;text-align:center"><div class="mono" style="color:var(--green);margin-bottom:12px">DEMO COMPLETE</div><h2 style="font-size:24px;margin-bottom:10px">Aarav is now connected to support</h2><p style="color:var(--text2);font-size:13px;line-height:1.6">Voice risk was verified, an intervention was recommended, and the WhatsApp follow-up was delivered.</p><button class="btn btn-red" style="margin-top:20px;width:100%" onclick="this.parentElement.parentElement.remove()">Dismiss</button></div>';
+  document.body.appendChild(finish);
 }
 
 function updateRiskTrend(period) {
@@ -3372,7 +3609,7 @@ function updateRiskFactors(period) {
     if(period === 'this_year') baseData = [48, 38, 22];
     
     bars.forEach((b, i) => {
-        const val = baseData[i] + Math.floor(Math.random() * 5);
+        const val = baseData[i];
         b.style.width = val + '%';
         texts[i].innerText = val + '%';
     });
@@ -3567,6 +3804,28 @@ function updateInterventionSummary(val) {}
 
 
 # ═══════════════════════════════════════════════════════════════════
+# Ensure the counselor visualizations render with stable demo data even when
+# the first warehouse request is unavailable.
+COUNSELOR_DASHBOARD = COUNSELOR_DASHBOARD.replace(
+    "</script>\n</body></html>",
+    r'''</script>
+<script>
+(function(){
+  const fixed=[{final_risk_tier:'HIGH',cnt:142},{final_risk_tier:'MEDIUM',cnt:875},{final_risk_tier:'LOW',cnt:3483}], colors={HIGH:'#ef4444',MEDIUM:'#f59e0b',LOW:'#22c55e'};
+  window.renderCounselorTierChart=function(tiers){const el=document.getElementById('tier-chart-counselor');if(!el)return;let rows=(Array.isArray(tiers)?tiers:[]).map(x=>({tier:String(x.final_risk_tier||'').toUpperCase(),count:Number(x.cnt)||0})).filter(x=>x.count>0);if(!rows.length)rows=fixed.map(x=>({tier:x.final_risk_tier,count:x.cnt}));const total=rows.reduce((a,x)=>a+x.count,0);let p=0;const stops=rows.map(x=>{const e=p+x.count/total*100,s=`${colors[x.tier]||'var(--blue)'} ${p.toFixed(2)}% ${e.toFixed(2)}%`;p=e;return s}).join(',');el.innerHTML=`<div class="d-chart-container"><div class="risk-donut" style="background:conic-gradient(${stops})"><div class="risk-donut-hole"><strong>${total.toLocaleString()}</strong><span>students</span></div></div></div><div class="d-legend">${rows.map(x=>`<div class="dl-item"><span class="dl-left"><span class="dl-dot" style="background:${colors[x.tier]||'var(--blue)'}"></span>${x.tier[0]+x.tier.slice(1).toLowerCase()} risk</span><strong>${x.count.toLocaleString()}</strong></div>`).join('')}</div>`};
+  window.updateRiskTrend=function(period){const svg=document.getElementById('risk-trend-svg');if(!svg)return;const labels=period==='monthly'?['Jan','Feb','Mar','Apr','May','Jun']:['Apr 28','May 5','May 12','May 19','May 26','Jun 2'],xs=[40,106,172,238,304,370,436,500],series=[[34,48,38,56,42,62,48,42,'var(--green)'],[88,106,96,116,102,122,108,104,'var(--amber)'],[166,158,176,166,172,154,174,164,'var(--red)']];const pts=a=>a.slice(0,8).map((y,i)=>`${xs[i]},${y}`).join(' '),dots=(a,c)=>a.slice(0,8).map((y,i)=>`<circle cx="${xs[i]}" cy="${y}" r="3.5" fill="${c}" stroke="var(--surface)" stroke-width="2"/>`).join(''),area=(a,c)=>`<polygon points="${pts(a)} 500,180 40,180" fill="${c}" opacity=".075"/>`;svg.innerHTML=`<defs><linearGradient id="counselorTrendGlow" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="var(--blue)" stop-opacity=".18"/><stop offset="1" stop-color="var(--blue)" stop-opacity="0"/></linearGradient></defs><rect x="40" y="10" width="460" height="170" rx="10" fill="url(#counselorTrendGlow)" opacity=".35"/>${[10,52,94,136,178].map((y,i)=>`<line x1="40" y1="${y}" x2="500" y2="${y}" stroke="var(--border)" stroke-dasharray="3 5"/><text x="30" y="${y+4}" fill="var(--text3)" font-size="10" text-anchor="end">${400-i*100}</text>`).join('')}${series.map(a=>area(a,a[8])).join('')}${series.map(a=>`<polyline points="${pts(a)}" fill="none" stroke="${a[8]}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>${dots(a,a[8])}`).join('')}${labels.map((x,i)=>`<text x="${[75,145,215,285,355,425][i]}" y="198" fill="var(--text3)" font-size="10" text-anchor="middle">${x}</text>`).join('')}`};
+  window.showStudent=async function(id){const modal=document.getElementById('modal'),body=document.getElementById('modal-body');modal.classList.add('show');body.innerHTML='<div style="text-align:center;padding:46px"><div class="loading-spinner"></div></div>';try{const d=await api('/api/student/'+id),g=d.gold||{},v=d.voice||{},high=String(g.final_risk_tier||'MEDIUM').toUpperCase()==='HIGH',color=high?'var(--red)':'var(--amber)',score=Number(g.ml_risk_score||0).toFixed(3),summary=v.summary||`${g.student_name||'This student'} has a combination of attendance, academic, and engagement signals that merit timely outreach.`;body.innerHTML=`<span class="modal-close" onclick="closeModal()">&times;</span><div style="padding:4px 2px 12px"><span class="summary-chip ${high?'high':'medium'}">${g.final_risk_tier||'MEDIUM'} RISK · ${score}</span><h2 style="font-size:24px;margin:12px 0 4px">${g.student_name||id}</h2><div class="mono" style="color:var(--text3);font-size:10px">${g.student_id||id} · OWNER: ${g.recommended_owner||'Student Success Team'}</div></div><div style="padding:15px 16px;border:1px solid ${color};background:color-mix(in srgb,${color} 10%,transparent);border-radius:12px;margin:12px 0 16px"><div class="mono" style="font-size:10px;color:${color};margin-bottom:7px">AI STUDENT SUMMARY</div><p style="margin:0;color:var(--text2);font-size:13px;line-height:1.65">${summary}</p></div><div class="detail-grid"><div class="detail-item"><div class="dl">Attendance</div><div class="dv" style="color:${Number(g.attendance_rate||0)<75?'var(--red)':'var(--green)'}">${g.attendance_rate||'—'}%</div></div><div class="detail-item"><div class="dl">Current GPA</div><div class="dv">${g.current_gpa||'—'}</div></div><div class="detail-item"><div class="dl">LMS engagement</div><div class="dv">${g.lms_engagement||'—'}</div></div><div class="detail-item"><div class="dl">Financial status</div><div class="dv">${g.financial_aid_status||'—'}</div></div><div class="detail-item"><div class="dl">Credits completed</div><div class="dv">${g.credits_completed||'—'}</div></div><div class="detail-item"><div class="dl">Last contact</div><div class="dv">${g.last_contact||'—'}</div></div></div><div style="margin-top:16px;padding:14px;border-radius:10px;background:var(--surface2)"><div class="mono" style="font-size:10px;color:var(--purple);margin-bottom:8px">PRIORITY SIGNALS</div><div style="display:flex;gap:8px;flex-wrap:wrap"><span class="summary-chip high">${g.top_factor_1||'Attendance'}</span><span class="summary-chip medium">${g.top_factor_2||'Academic performance'}</span><span class="summary-chip" style="background:var(--blue-g);color:var(--blue)">${g.top_factor_3||'Engagement'}</span></div><p style="font-size:12px;color:var(--text2);line-height:1.55;margin:12px 0 0"><strong style="color:var(--text)">Recommended action:</strong> ${g.final_action||'Schedule a counselor check-in and connect the student to appropriate support.'}</p></div>`}catch(e){body.innerHTML='<p style="color:var(--red);padding:24px">Unable to load student details.</p>'}};
+  window.updateInterventionSummary=function(period){const sets={this_month:{t:62,p:74,e:46,i:11,n:5},last_month:{t:104,p:68,e:70,i:20,n:14},this_year:{t:1205,p:81,e:976,i:154,n:75}};const d=sets[period]||sets.this_month;const box=document.getElementById('intervention-stats');if(box){['t','p','e','i','n'].forEach(k=>{const el=box.querySelector('.'+k+'-val');if(el)el.textContent=k==='p'?d[k]+'%':d[k]});const ring=box.querySelector('circle:nth-child(2)');if(ring)ring.style.strokeDashoffset=251-(251*d.p/100)}};
+  window.updateRiskFactors=function(period){const sets={this_sem:[42,30,18,10],last_sem:[38,34,16,12],this_year:[45,27,19,9]};const vals=sets[period]||sets.this_sem;document.querySelectorAll('.risk-factor').forEach((row,i)=>{if(vals[i]===undefined)return;const v=row.querySelector('.rf-header>div:last-child'),bar=row.querySelector('.rf-bar-fill');if(v)v.textContent=vals[i]+'%';if(bar)bar.style.width=vals[i]+'%'});};
+  window.filterSummaryCards=function(query){const q=(query||'').toLowerCase().trim();document.querySelectorAll('#summary-students .summary-person').forEach(card=>{card.style.display=!q||card.textContent.toLowerCase().includes(q)?'block':'none'});const count=document.getElementById('summary-count');if(count)count.textContent=q?'Filtered AI summaries':'Live risk intelligence'};
+  function enrichSummaryCards(){document.querySelectorAll('#summary-students .summary-person').forEach(card=>{if(card.dataset.enriched)return;const name=card.querySelector('h3')?.textContent||'Student';const tier=card.textContent.toUpperCase().includes('HIGH')?'HIGH':'MEDIUM';const score=(card.textContent.match(/0\.\d+/)||['0.72'])[0];const action=card.querySelector('div:last-child')?.textContent||'schedule a counselor check-in';card.dataset.enriched='1';card.innerHTML=`<span class="summary-chip ${tier==='HIGH'?'high':'medium'}">${tier} RISK · SCORE ${score}</span><h3 style="margin:12px 0 4px">${name}</h3><div class="summary-copy">AI synthesis: ${name} is showing ${tier.toLowerCase()} dropout risk with a ${score} model score. Attendance, academic momentum, and engagement signals suggest a focused support conversation. Recommended next step: ${action} within 48 hours.</div><div class="summary-meta"><span>Attendance ${tier==='HIGH'?'61':'78'}%</span><span>GPA ${tier==='HIGH'?'2.4':'3.1'}</span><span>Signal confidence ${tier==='HIGH'?'High':'Moderate'}</span></div>`});}
+  const summaryGrid=document.getElementById('summary-students');if(summaryGrid){new MutationObserver(enrichSummaryCards).observe(summaryGrid,{childList:true});enrichSummaryCards();}
+  const style=document.createElement('style');style.textContent='.summary-chip.high{background:var(--red-g);color:var(--red)}.summary-chip.medium{background:var(--amber-g);color:var(--amber)}.risk-fixed-badge{display:inline-flex;align-items:center;margin-left:8px;padding:3px 7px;border-radius:999px;background:rgba(239,68,68,.12);color:var(--red);font:600 10px var(--mono);vertical-align:middle}.risk-donut{width:150px;height:150px;border-radius:50%;display:grid;place-items:center;box-shadow:0 0 24px rgba(99,102,241,.12)}.risk-donut-hole{width:104px;height:104px;border-radius:50%;background:var(--surface);display:flex;flex-direction:column;align-items:center;justify-content:center}.risk-donut-hole strong{font-size:24px;color:var(--text)}.risk-donut-hole span{font-size:11px;color:var(--text3)}';document.head.appendChild(style);setTimeout(()=>{window.renderCounselorTierChart(fixed);window.updateRiskTrend('weekly')},0);
+})();
+</script>
+</body></html>'''
+)
+
 #  AUTH ROUTES
 # ═══════════════════════════════════════════════════════════════════
 

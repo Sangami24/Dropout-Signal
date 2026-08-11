@@ -312,6 +312,100 @@ else:
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 def _start_call(student_id, student_name, phone, ml_risk):
     """Initiate a single Twilio call to a student."""
     if not twilio_ready:
@@ -1731,7 +1825,7 @@ def _auto_whatsapp_outreach(results):
 DEMO_STUDENTS = {
     DEMO_PHONE: {
         "student_id": "2847",
-        "student_name": "Rahul Kumar",
+        "student_name": "Demo Student",
         "ml_risk_score": 0.87,
         "dropout_intent": "HIGH",
         "primary_root_cause": "financial",
@@ -1786,15 +1880,25 @@ How has your semester been going? Anything on your mind? 💬"""
 def _get_student_profile(phone):
     """Look up student by phone number. Falls back to a generic profile."""
     clean_phone = phone.replace("whatsapp:", "")
+    
+    spoken = ""
+    for r in analyzed_results:
+        if r.get("phone", "").replace("whatsapp:", "") == clean_phone:
+            spoken = r.get("spoken_name", "")
+            break
+
     if clean_phone in DEMO_STUDENTS:
-        return DEMO_STUDENTS[clean_phone]
+        p = dict(DEMO_STUDENTS[clean_phone])
+        if spoken:
+            p["student_name"] = spoken.title()
+        return p
 
     # Check analyzed voice results
     for r in analyzed_results:
         if r.get("phone", "").replace("whatsapp:", "") == clean_phone:
             return {
                 "student_id": r.get("student_id", "unknown"),
-                "student_name": r.get("student_name", "Student"),
+                "student_name": r.get("spoken_name") or r.get("student_name", "Student"),
                 "ml_risk_score": r.get("ml_risk_score", 0.5),
                 "dropout_intent": r.get("dropout_intent", "MEDIUM"),
                 "primary_root_cause": r.get("primary_root_cause", "academic"),
@@ -1840,11 +1944,6 @@ def _wa_llm_reply(phone, user_msg):
     for m in history[-20:]:
         messages.append(m)
     messages.append({"role": "user", "content": user_msg})
-
-    # Append user message immediately so UI sees it while LLM thinks
-    if phone not in wa_sessions:
-        wa_sessions[phone] = {"messages": [], "started_at": datetime.now().isoformat(), "profile": profile}
-    wa_sessions[phone]["messages"].append({"role": "user", "content": user_msg})
 
     try:
         if Groq:
@@ -1905,13 +2004,27 @@ def whatsapp_webhook():
             print(f"   → Sent welcome to {name}")
             return str(resp), 200, {"Content-Type": "text/xml"}
 
-    # Generate LLM counselor reply
-    reply = _wa_llm_reply(phone_clean, incoming_msg)
+    # Append user message immediately so UI sees it before the AI replies
+    wa_sessions[phone_clean]["messages"].append({"role": "user", "content": incoming_msg})
+
+    def process_and_send(phone, user_msg, to_number):
+        import time
+        time.sleep(2.5)  # Give UI time to poll and show the user message first
+        reply = _wa_llm_reply(phone, user_msg)
+        print(f"   → Reply: \"{reply[:80]}{'...' if len(reply) > 80 else ''}\"")
+        try:
+            twilio_client.messages.create(
+                body=reply,
+                from_=TWILIO_WHATSAPP_NUMBER,
+                to=to_number
+            )
+        except Exception as e:
+            print(f"Async WA send failed: {e}")
+
+    import threading
+    threading.Thread(target=process_and_send, args=(phone_clean, incoming_msg, from_number)).start()
 
     resp = MessagingResponse()
-    resp.message(reply)
-    print(f"   → Reply: \"{reply[:80]}{'...' if len(reply) > 80 else ''}\"")
-
     return str(resp), 200, {"Content-Type": "text/xml"}
 
 
