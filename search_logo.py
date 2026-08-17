@@ -1,9 +1,12 @@
-with open('app.py', encoding='utf-8') as f:
+import re
+with open('app.py', 'r', encoding='utf-8') as f:
     text = f.read()
-    import re
-    with open('logo_search.txt', 'w', encoding='utf-8') as out:
-        for m in re.finditer(r'Dropout Signal', text, re.IGNORECASE):
-            start = max(0, m.start() - 30)
-            end = min(len(text), m.end() + 30)
-            line_num = text.count(chr(10), 0, m.start()) + 1
-            out.write(f'{line_num}: {text[start:end]}\n')
+
+idx1 = text.find('<div class="login-icon">')
+if idx1 != -1: print('LOGIN:', text[idx1:idx1+200])
+
+idx2 = text.find('<div class="sb-icon"')
+if idx2 != -1: print('ADMIN:', text[idx2:idx2+400])
+
+idx3 = text.find('<div class="sb-icon"', idx2 + 100)
+if idx3 != -1: print('COUNSELOR:', text[idx3:idx3+400])

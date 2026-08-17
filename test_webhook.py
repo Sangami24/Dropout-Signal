@@ -1,10 +1,8 @@
-import urllib.request
-import urllib.parse
-data = urllib.parse.urlencode({'CallSid': 'CA123'}).encode('ascii')
-req = urllib.request.Request('http://localhost:5000/voice/welcome?student_id=2847&student_name=Demo', data=data)
+import requests
 try:
-    with urllib.request.urlopen(req) as response:
-        print("Status:", response.status)
-        print("Body:", response.read().decode('utf-8'))
+    res = requests.post("http://127.0.0.1:5000/voice/welcome", data={"CallSid":"12345", "To":"+123456"}, params={"student_id":"STU-123", "student_name":"Aarav", "ml_risk":"0.87"})
+    with open("test_out.txt", "w", encoding="utf-8") as f:
+        f.write(str(res.status_code) + "\n" + res.text)
 except Exception as e:
-    print("Error:", e)
+    with open("test_out.txt", "w", encoding="utf-8") as f:
+        f.write(str(e))

@@ -24,6 +24,7 @@ import os
 import sys
 import json
 import csv
+import re
 import time
 import threading
 import urllib.parse
@@ -406,6 +407,185 @@ else:
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 def _start_call(student_id, student_name, phone, ml_risk):
     """Initiate a single Twilio call to a student."""
     if not twilio_ready:
@@ -581,12 +761,12 @@ def voice_name():
 
     if not no_speech:
         spoken_name = request.form.get("SpeechResult", "").strip()
-        lower_name = spoken_name.lower()
-        for prefix in ["my name is ", "i am ", "this is ", "i'm ", "it's "]:
-            if lower_name.startswith(prefix):
-                spoken_name = spoken_name[len(prefix):].strip()
-                break
-        spoken_name = spoken_name.strip(".!?, ")
+        # Speech recognition often includes a natural lead-in such as
+        # "hello, my name is...". Keep the name itself for the transcript.
+        spoken_name = re.sub(r"^(?:hello[,. ]+)?(?:my name is|i am|this is|i'm|it is|it's)\s+", "", spoken_name, flags=re.I)
+        spoken_name = re.sub(r"\s+", " ", spoken_name).strip(".!?, ")
+        if len(spoken_name.split()) > 4:
+            spoken_name = " ".join(spoken_name.split()[:4])
         session["spoken_name"] = spoken_name
         print(f"   Name: \"{spoken_name}\"")
 
