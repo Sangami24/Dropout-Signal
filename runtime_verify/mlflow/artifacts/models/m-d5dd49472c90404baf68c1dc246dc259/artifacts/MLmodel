@@ -1,0 +1,70 @@
+artifact_path: file:///C:/Users/achal/Documents/Projects/Dropout%20Signal/runtime_verify/mlflow/artifacts/models/m-d5dd49472c90404baf68c1dc246dc259/artifacts
+flavors:
+  python_function:
+    data: model.ubj
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.xgboost
+    python_version: 3.14.0
+  xgboost:
+    code: null
+    data: model.ubj
+    model_class: xgboost.sklearn.XGBClassifier
+    model_format: ubj
+    xgb_version: 3.4.1
+is_signature_from_type_hint: false
+mlflow_version: 3.15.1
+model_id: m-d5dd49472c90404baf68c1dc246dc259
+model_size_bytes: 606053
+model_uuid: m-d5dd49472c90404baf68c1dc246dc259
+prompts: null
+run_id: 02fcda8baf5e4340a0b72218fd388622
+saved_input_example_info:
+  artifact_path: input_example.json
+  pandas_orient: split
+  serving_input_path: serving_input_example.json
+  type: dataframe
+signature:
+  inputs: '[{"type": "double", "name": "Marital Status", "required": true}, {"type":
+    "double", "name": "Application mode", "required": true}, {"type": "double", "name":
+    "Application order", "required": true}, {"type": "double", "name": "Course", "required":
+    true}, {"type": "double", "name": "Daytime/evening attendance", "required": true},
+    {"type": "double", "name": "Previous qualification", "required": true}, {"type":
+    "double", "name": "Previous qualification (grade)", "required": true}, {"type":
+    "double", "name": "Nacionality", "required": true}, {"type": "double", "name":
+    "Mother''s qualification", "required": true}, {"type": "double", "name": "Father''s
+    qualification", "required": true}, {"type": "double", "name": "Mother''s occupation",
+    "required": true}, {"type": "double", "name": "Father''s occupation", "required":
+    true}, {"type": "double", "name": "Admission grade", "required": true}, {"type":
+    "double", "name": "Displaced", "required": true}, {"type": "double", "name": "Educational
+    special needs", "required": true}, {"type": "double", "name": "Debtor", "required":
+    true}, {"type": "double", "name": "Tuition fees up to date", "required": true},
+    {"type": "double", "name": "Gender", "required": true}, {"type": "double", "name":
+    "Scholarship holder", "required": true}, {"type": "double", "name": "Age at enrollment",
+    "required": true}, {"type": "double", "name": "International", "required": true},
+    {"type": "double", "name": "Curricular units 1st sem (credited)", "required":
+    true}, {"type": "double", "name": "Curricular units 1st sem (enrolled)", "required":
+    true}, {"type": "double", "name": "Curricular units 1st sem (evaluations)", "required":
+    true}, {"type": "double", "name": "Curricular units 1st sem (approved)", "required":
+    true}, {"type": "double", "name": "Curricular units 1st sem (grade)", "required":
+    true}, {"type": "double", "name": "Curricular units 1st sem (without evaluations)",
+    "required": true}, {"type": "double", "name": "Curricular units 2nd sem (credited)",
+    "required": true}, {"type": "double", "name": "Curricular units 2nd sem (enrolled)",
+    "required": true}, {"type": "double", "name": "Curricular units 2nd sem (evaluations)",
+    "required": true}, {"type": "double", "name": "Curricular units 2nd sem (approved)",
+    "required": true}, {"type": "double", "name": "Curricular units 2nd sem (grade)",
+    "required": true}, {"type": "double", "name": "Curricular units 2nd sem (without
+    evaluations)", "required": true}, {"type": "double", "name": "Unemployment rate",
+    "required": true}, {"type": "double", "name": "Inflation rate", "required": true},
+    {"type": "double", "name": "GDP", "required": true}, {"type": "double", "name":
+    "grade_trajectory", "required": true}, {"type": "double", "name": "financial_stress_index",
+    "required": true}, {"type": "double", "name": "curricular_engagement_sem1", "required":
+    true}, {"type": "double", "name": "curricular_engagement_sem2", "required": true},
+    {"type": "double", "name": "semester_grade_delta", "required": true}, {"type":
+    "double", "name": "economic_pressure_index", "required": true}, {"type": "double",
+    "name": "age_risk_flag", "required": true}]'
+  outputs: '[{"type": "long", "required": true}]'
+  params: null
+type_hint_from_example: false
+utc_time_created: '2026-08-17 08:32:46.945589'

@@ -1,0 +1,44 @@
+feature,mean_abs_shap,rank
+curricular_engagement_sem2,0.90468466,1
+financial_stress_index,0.49609673,2
+curricular_engagement_sem1,0.4109386,3
+Course,0.332786,4
+Curricular units 2nd sem (approved),0.29969656,5
+Previous qualification (grade),0.21077564,6
+Age at enrollment,0.20343542,7
+Curricular units 2nd sem (grade),0.20293134,8
+Unemployment rate,0.19692503,9
+Admission grade,0.18449654,10
+Application mode,0.16207653,11
+Curricular units 2nd sem (evaluations),0.15858293,12
+grade_trajectory,0.14710705,13
+Father's occupation,0.13701046,14
+Curricular units 1st sem (grade),0.13513315,15
+Mother's qualification,0.12199789,16
+Gender,0.12006334,17
+Mother's occupation,0.11271261,18
+Inflation rate,0.10546897,19
+Father's qualification,0.09076307,20
+Application order,0.09052087,21
+GDP,0.08991859,22
+Curricular units 1st sem (enrolled),0.08818125,23
+economic_pressure_index,0.084466435,24
+Curricular units 1st sem (approved),0.0819303,25
+Tuition fees up to date,0.07511512,26
+Curricular units 2nd sem (enrolled),0.07024705,27
+Curricular units 2nd sem (credited),0.061896898,28
+Curricular units 1st sem (evaluations),0.059965674,29
+semester_grade_delta,0.058458023,30
+Curricular units 1st sem (without evaluations),0.04538977,31
+Curricular units 1st sem (credited),0.032531835,32
+Debtor,0.030442705,33
+Previous qualification,0.026418023,34
+Nacionality,0.022464273,35
+Displaced,0.021763725,36
+Scholarship holder,0.014891535,37
+age_risk_flag,0.009971079,38
+Curricular units 2nd sem (without evaluations),0.009724011,39
+Daytime/evening attendance,0.008652291,40
+Marital Status,0.008315778,41
+International,0.0042094258,42
+Educational special needs,0.0018110297,43

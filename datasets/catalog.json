@@ -1,0 +1,45 @@
+{
+  "generated_at": "2026-08-17T08:54:00.317101+00:00",
+  "datasets": [
+    {
+      "number": 1,
+      "filename": "dropout_dataset_01_baseline_4424.csv",
+      "label": "Dropout Dataset 01 Baseline 4424",
+      "student_count": 4424,
+      "dropout_rate": 0.4109,
+      "schema": "UCI 36 predictors + Target + Student Name metadata"
+    },
+    {
+      "number": 2,
+      "filename": "dropout_dataset_02_urban_4600.csv",
+      "label": "Dropout Dataset 02 Urban 4600",
+      "student_count": 4600,
+      "dropout_rate": 0.4748,
+      "schema": "UCI 36 predictors + Target + Student Name metadata"
+    },
+    {
+      "number": 3,
+      "filename": "dropout_dataset_03_financial_pressure_4850.csv",
+      "label": "Dropout Dataset 03 Financial Pressure 4850",
+      "student_count": 4850,
+      "dropout_rate": 0.5107,
+      "schema": "UCI 36 predictors + Target + Student Name metadata"
+    },
+    {
+      "number": 4,
+      "filename": "dropout_dataset_04_academic_recovery_5100.csv",
+      "label": "Dropout Dataset 04 Academic Recovery 5100",
+      "student_count": 5100,
+      "dropout_rate": 0.2965,
+      "schema": "UCI 36 predictors + Target + Student Name metadata"
+    },
+    {
+      "number": 5,
+      "filename": "dropout_dataset_05_diverse_cohort_5500.csv",
+      "label": "Dropout Dataset 05 Diverse Cohort 5500",
+      "student_count": 5500,
+      "dropout_rate": 0.5022,
+      "schema": "UCI 36 predictors + Target + Student Name metadata"
+    }
+  ]
+}

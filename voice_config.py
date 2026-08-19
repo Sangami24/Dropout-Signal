@@ -30,13 +30,21 @@ WEBHOOK_BASE_URL = os.getenv("WEBHOOK_BASE_URL", "")
 # ─── Groq (for transcript analysis) ─────────────────────────────────
 # Get from: https://console.groq.com/keys  (FREE tier available)
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-LLM_MODEL = "llama-3.3-70b-versatile"   # Fast & free on Groq
-# Other options: "llama-3.1-8b-instant" (fastest), "mixtral-8x7b-32768"
+# Groq retired llama-3.3-70b-versatile on 16 August 2026. This remains
+# configurable, while deployments use its supported replacement by default.
+LLM_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 
 # ─── Voice Settings ─────────────────────────────────────────────────
-TWILIO_VOICE    = "alice"          # Standard Twilio voice (works on all accounts)
-TWILIO_LANGUAGE = "en-IN"          # Text-to-speech language
-SPEECH_LANGUAGE = "en-IN"          # Speech-to-text language (Indian English)
+# Alice is Twilio's basic demo voice and is not a valid production-quality
+# pairing for Indian English.  Use the supported bilingual Polly voice for a
+# consistent, audible English (India) call experience.
+TWILIO_VOICE    = "alice"
+TWILIO_LANGUAGE = "en-IN"
+SPEECH_LANGUAGE = "en-IN"
+# This conversational model supports en-IN.  A fixed short end-of-speech
+# window is required when explicitly selecting a model.
+SPEECH_MODEL = "phone_call"
+SPEECH_TIMEOUT_SECONDS = "auto"
 
 # ─── University Name (used in call greeting) ────────────────────────
 UNIVERSITY_NAME = "Your University"

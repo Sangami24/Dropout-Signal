@@ -22,3 +22,5 @@ venv/
 # Temp and extraneous directories
 _temp_pages/
 *.html
+runtime_data/
+.matplotlib_cache/

@@ -1,0 +1,3 @@
+protected_attribute,group_a,group_b,group_a_count,group_b_count,flag_rate_a,flag_rate_b,demographic_parity_ratio,dp_is_fair,tpr_a,tpr_b,equal_opportunity_ratio,eo_is_fair,precision_a,precision_b,predictive_parity_ratio,pp_is_fair,model
+gender,0,1,579,306,0.2176,0.4673,0.4657,NO,0.5896,0.7961,0.7406,NO,0.8095,0.8462,0.9567,YES,XGBoost
+socioeconomic,disadvantaged,advantaged,355,530,0.3099,0.3,1.0329,YES,0.7368,0.651,1.1318,YES,0.8909,0.7862,1.1332,YES,XGBoost

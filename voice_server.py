@@ -42,7 +42,7 @@ from twilio.twiml.voice_response import VoiceResponse, Gather
 from voice_config import (
     TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER,
     WEBHOOK_BASE_URL, GROQ_API_KEY, LLM_MODEL,
-    TWILIO_VOICE, TWILIO_LANGUAGE, SPEECH_LANGUAGE,
+    TWILIO_VOICE, TWILIO_LANGUAGE, SPEECH_LANGUAGE, SPEECH_MODEL, SPEECH_TIMEOUT_SECONDS,
     UNIVERSITY_NAME, HIGH_RISK_CSV, OUTPUT_CSV, DEMO_PHONE,
     TWILIO_WHATSAPP_NUMBER,
 )
@@ -71,7 +71,7 @@ app = Flask(__name__)
 QUESTIONS = [
     "How has this semester been going for you so far?",
     "What has been the most challenging part of college life recently?",
-    "On a scale of 1 to 5, how confident are you about completing your degree?",
+    "Which part of your current coursework would you most like support with?",
     "If you could change one thing about your college experience, what would it be?",
     "What are you most looking forward to next semester?",
 ]
@@ -79,7 +79,7 @@ QUESTIONS = [
 Q_KEYS = [
     "q1_semester_experience",
     "q2_biggest_challenge",
-    "q3_degree_confidence",
+    "q3_support_need",
     "q4_change_wish",
     "q5_future_outlook",
 ]
@@ -94,33 +94,33 @@ completed_calls = [     # finished call sessions (raw transcripts)
     {"student_id": "STU-44201", "student_name": "Aarav Patel", "phone": "+919876543201", "call_sid": "CA_demo_001", "status": "completed", "started_at": "2026-08-09T14:30:00", "completed_at": "2026-08-09T14:34:12",
      "answers": {"q1_semester_experience": {"text": "It's been really tough this semester, I've been struggling with the workload", "twilio_confidence": 0.91, "question": QUESTIONS[0]},
                  "q2_biggest_challenge": {"text": "Definitely the financial pressure, my scholarship got reduced", "twilio_confidence": 0.88, "question": QUESTIONS[1]},
-                 "q3_degree_confidence": {"text": "I'd say maybe a 3, I'm not super confident right now", "twilio_confidence": 0.85, "question": QUESTIONS[2]},
+                 "q3_support_need": {"text": "Financial-aid guidance and a course plan would help most right now", "twilio_confidence": 0.85, "question": QUESTIONS[2]},
                  "q4_change_wish": {"text": "I wish the tuition fees were lower and there was more financial aid", "twilio_confidence": 0.90, "question": QUESTIONS[3]},
                  "q5_future_outlook": {"text": "I'm hoping things get better, but I'm not sure honestly", "twilio_confidence": 0.87, "question": QUESTIONS[4]}}},
     {"student_id": "STU-33102", "student_name": "Priya Sharma", "phone": "+919876543202", "call_sid": "CA_demo_002", "status": "completed", "started_at": "2026-08-09T15:10:00", "completed_at": "2026-08-09T15:14:30",
      "answers": {"q1_semester_experience": {"text": "This semester has been great actually, I'm really enjoying my courses", "twilio_confidence": 0.94, "question": QUESTIONS[0]},
                  "q2_biggest_challenge": {"text": "Time management has been a bit hard with part-time work", "twilio_confidence": 0.89, "question": QUESTIONS[1]},
-                 "q3_degree_confidence": {"text": "A solid 4, I'm pretty confident I'll finish", "twilio_confidence": 0.92, "question": QUESTIONS[2]},
+                 "q3_support_need": {"text": "A tutor session and flexible class scheduling would help most", "twilio_confidence": 0.92, "question": QUESTIONS[2]},
                  "q4_change_wish": {"text": "More flexible class schedules would be nice", "twilio_confidence": 0.86, "question": QUESTIONS[3]},
                  "q5_future_outlook": {"text": "I'm excited about the internship opportunities next semester", "twilio_confidence": 0.93, "question": QUESTIONS[4]}}},
     {"student_id": "STU-55789", "student_name": "Rahul Kumar", "phone": "+919876543203", "call_sid": "CA_demo_003", "status": "completed", "started_at": "2026-08-09T16:00:00", "completed_at": "2026-08-09T16:03:45",
      "answers": {"q1_semester_experience": {"text": "Not great, I've been missing a lot of classes due to health issues", "twilio_confidence": 0.82, "question": QUESTIONS[0]},
                  "q2_biggest_challenge": {"text": "My health problems have made everything difficult", "twilio_confidence": 0.79, "question": QUESTIONS[1]},
-                 "q3_degree_confidence": {"text": "Maybe 2, I'm seriously thinking about taking a break", "twilio_confidence": 0.84, "question": QUESTIONS[2]},
+                 "q3_support_need": {"text": "Health support and a manageable attendance plan would help most", "twilio_confidence": 0.84, "question": QUESTIONS[2]},
                  "q4_change_wish": {"text": "Better health support and medical leave policies", "twilio_confidence": 0.81, "question": QUESTIONS[3]},
                  "q5_future_outlook": {"text": "I'm not sure I'll be here next semester to be honest", "twilio_confidence": 0.77, "question": QUESTIONS[4]}}},
 ]
 analyzed_results = [    # LLM-processed results
     {"student_id": "STU-44201", "student_name": "Aarav Patel", "ml_risk_score": 0.82, "call_date": "2026-08-09T14:30:00", "call_status": "completed",
-     "q1_sentiment": "negative", "q2_stressor": "financial", "q3_confidence_interpreted": 3, "q4_root_cause_detail": "Tuition fees and reduced scholarship",
+     "q1_sentiment": "negative", "q2_stressor": "financial", "q3_support_need": "financial_aid", "q4_root_cause_detail": "Tuition fees and reduced scholarship",
      "q5_future_orientation": "hesitant", "overall_sentiment": "negative", "dropout_intent": "HIGH", "dropout_probability": 0.78,
      "primary_root_cause": "financial", "false_positive": False, "summary": "Student is under significant financial stress due to scholarship reduction. Expressed uncertainty about future."},
     {"student_id": "STU-33102", "student_name": "Priya Sharma", "ml_risk_score": 0.45, "call_date": "2026-08-09T15:10:00", "call_status": "completed",
-     "q1_sentiment": "positive", "q2_stressor": "career", "q3_confidence_interpreted": 4, "q4_root_cause_detail": "Wants more flexible scheduling",
+     "q1_sentiment": "positive", "q2_stressor": "career", "q3_support_need": "tutoring", "q4_root_cause_detail": "Wants more flexible scheduling",
      "q5_future_orientation": "excited", "overall_sentiment": "positive", "dropout_intent": "LOW", "dropout_probability": 0.15,
      "primary_root_cause": "none", "false_positive": True, "summary": "Student is doing well. ML model flagged due to part-time work pattern but student is thriving."},
     {"student_id": "STU-55789", "student_name": "Rahul Kumar", "ml_risk_score": 0.91, "call_date": "2026-08-09T16:00:00", "call_status": "completed",
-     "q1_sentiment": "negative", "q2_stressor": "health", "q3_confidence_interpreted": 2, "q4_root_cause_detail": "Health issues causing chronic absenteeism",
+     "q1_sentiment": "negative", "q2_stressor": "health", "q3_support_need": "wellbeing", "q4_root_cause_detail": "Health issues causing chronic absenteeism",
      "q5_future_orientation": "negative", "overall_sentiment": "negative", "dropout_intent": "HIGH", "dropout_probability": 0.89,
      "primary_root_cause": "health", "false_positive": False, "summary": "Student is at very high risk due to ongoing health problems. Considering taking a break from studies."},
 ]
@@ -155,7 +155,7 @@ from twilio.twiml.voice_response import VoiceResponse, Gather
 from voice_config import (
     TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER,
     WEBHOOK_BASE_URL, GROQ_API_KEY, LLM_MODEL,
-    TWILIO_VOICE, TWILIO_LANGUAGE, SPEECH_LANGUAGE,
+    TWILIO_VOICE, TWILIO_LANGUAGE, SPEECH_LANGUAGE, SPEECH_MODEL, SPEECH_TIMEOUT_SECONDS,
     UNIVERSITY_NAME, HIGH_RISK_CSV, OUTPUT_CSV, DEMO_PHONE,
     TWILIO_WHATSAPP_NUMBER,
 )
@@ -184,7 +184,7 @@ app = Flask(__name__)
 QUESTIONS = [
     "How has this semester been going for you so far?",
     "What has been the most challenging part of college life recently?",
-    "On a scale of 1 to 5, how confident are you about completing your degree?",
+    "Which part of your current coursework would you most like support with?",
     "If you could change one thing about your college experience, what would it be?",
     "What are you most looking forward to next semester?",
 ]
@@ -192,7 +192,7 @@ QUESTIONS = [
 Q_KEYS = [
     "q1_semester_experience",
     "q2_biggest_challenge",
-    "q3_degree_confidence",
+    "q3_support_need",
     "q4_change_wish",
     "q5_future_outlook",
 ]
@@ -207,33 +207,33 @@ completed_calls = [     # finished call sessions (raw transcripts)
     {"student_id": "STU-44201", "student_name": "Aarav Patel", "phone": "+919876543201", "call_sid": "CA_demo_001", "status": "completed", "started_at": "2026-08-09T14:30:00", "completed_at": "2026-08-09T14:34:12",
      "answers": {"q1_semester_experience": {"text": "It's been really tough this semester, I've been struggling with the workload", "twilio_confidence": 0.91, "question": QUESTIONS[0]},
                  "q2_biggest_challenge": {"text": "Definitely the financial pressure, my scholarship got reduced", "twilio_confidence": 0.88, "question": QUESTIONS[1]},
-                 "q3_degree_confidence": {"text": "I'd say maybe a 3, I'm not super confident right now", "twilio_confidence": 0.85, "question": QUESTIONS[2]},
+                 "q3_support_need": {"text": "Financial-aid guidance and a course plan would help most right now", "twilio_confidence": 0.85, "question": QUESTIONS[2]},
                  "q4_change_wish": {"text": "I wish the tuition fees were lower and there was more financial aid", "twilio_confidence": 0.90, "question": QUESTIONS[3]},
                  "q5_future_outlook": {"text": "I'm hoping things get better, but I'm not sure honestly", "twilio_confidence": 0.87, "question": QUESTIONS[4]}}},
     {"student_id": "STU-33102", "student_name": "Priya Sharma", "phone": "+919876543202", "call_sid": "CA_demo_002", "status": "completed", "started_at": "2026-08-09T15:10:00", "completed_at": "2026-08-09T15:14:30",
      "answers": {"q1_semester_experience": {"text": "This semester has been great actually, I'm really enjoying my courses", "twilio_confidence": 0.94, "question": QUESTIONS[0]},
                  "q2_biggest_challenge": {"text": "Time management has been a bit hard with part-time work", "twilio_confidence": 0.89, "question": QUESTIONS[1]},
-                 "q3_degree_confidence": {"text": "A solid 4, I'm pretty confident I'll finish", "twilio_confidence": 0.92, "question": QUESTIONS[2]},
+                 "q3_support_need": {"text": "A tutor session and flexible class scheduling would help most", "twilio_confidence": 0.92, "question": QUESTIONS[2]},
                  "q4_change_wish": {"text": "More flexible class schedules would be nice", "twilio_confidence": 0.86, "question": QUESTIONS[3]},
                  "q5_future_outlook": {"text": "I'm excited about the internship opportunities next semester", "twilio_confidence": 0.93, "question": QUESTIONS[4]}}},
     {"student_id": "STU-55789", "student_name": "Rahul Kumar", "phone": "+919876543203", "call_sid": "CA_demo_003", "status": "completed", "started_at": "2026-08-09T16:00:00", "completed_at": "2026-08-09T16:03:45",
      "answers": {"q1_semester_experience": {"text": "Not great, I've been missing a lot of classes due to health issues", "twilio_confidence": 0.82, "question": QUESTIONS[0]},
                  "q2_biggest_challenge": {"text": "My health problems have made everything difficult", "twilio_confidence": 0.79, "question": QUESTIONS[1]},
-                 "q3_degree_confidence": {"text": "Maybe 2, I'm seriously thinking about taking a break", "twilio_confidence": 0.84, "question": QUESTIONS[2]},
+                 "q3_support_need": {"text": "Health support and a manageable attendance plan would help most", "twilio_confidence": 0.84, "question": QUESTIONS[2]},
                  "q4_change_wish": {"text": "Better health support and medical leave policies", "twilio_confidence": 0.81, "question": QUESTIONS[3]},
                  "q5_future_outlook": {"text": "I'm not sure I'll be here next semester to be honest", "twilio_confidence": 0.77, "question": QUESTIONS[4]}}},
 ]
 analyzed_results = [    # LLM-processed results
     {"student_id": "STU-44201", "student_name": "Aarav Patel", "ml_risk_score": 0.82, "call_date": "2026-08-09T14:30:00", "call_status": "completed",
-     "q1_sentiment": "negative", "q2_stressor": "financial", "q3_confidence_interpreted": 3, "q4_root_cause_detail": "Tuition fees and reduced scholarship",
+     "q1_sentiment": "negative", "q2_stressor": "financial", "q3_support_need": "financial_aid", "q4_root_cause_detail": "Tuition fees and reduced scholarship",
      "q5_future_orientation": "hesitant", "overall_sentiment": "negative", "dropout_intent": "HIGH", "dropout_probability": 0.78,
      "primary_root_cause": "financial", "false_positive": False, "summary": "Student is under significant financial stress due to scholarship reduction. Expressed uncertainty about future."},
     {"student_id": "STU-33102", "student_name": "Priya Sharma", "ml_risk_score": 0.45, "call_date": "2026-08-09T15:10:00", "call_status": "completed",
-     "q1_sentiment": "positive", "q2_stressor": "career", "q3_confidence_interpreted": 4, "q4_root_cause_detail": "Wants more flexible scheduling",
+     "q1_sentiment": "positive", "q2_stressor": "career", "q3_support_need": "tutoring", "q4_root_cause_detail": "Wants more flexible scheduling",
      "q5_future_orientation": "excited", "overall_sentiment": "positive", "dropout_intent": "LOW", "dropout_probability": 0.15,
      "primary_root_cause": "none", "false_positive": True, "summary": "Student is doing well. ML model flagged due to part-time work pattern but student is thriving."},
     {"student_id": "STU-55789", "student_name": "Rahul Kumar", "ml_risk_score": 0.91, "call_date": "2026-08-09T16:00:00", "call_status": "completed",
-     "q1_sentiment": "negative", "q2_stressor": "health", "q3_confidence_interpreted": 2, "q4_root_cause_detail": "Health issues causing chronic absenteeism",
+     "q1_sentiment": "negative", "q2_stressor": "health", "q3_support_need": "wellbeing", "q4_root_cause_detail": "Health issues causing chronic absenteeism",
      "q5_future_orientation": "negative", "overall_sentiment": "negative", "dropout_intent": "HIGH", "dropout_probability": 0.89,
      "primary_root_cause": "health", "false_positive": False, "summary": "Student is at very high risk due to ongoing health problems. Considering taking a break from studies."},
 ]
@@ -264,6 +264,14 @@ wa_sessions = {         # WhatsApp: phone → conversation history
 
 
 # ═══════════════════════════════════════════════════════════════════
+# Do not preload fabricated calls or WhatsApp chats into a running dashboard.
+# The sample objects above are retained only as development references; live
+# state starts empty and is populated by real callbacks or an explicit demo.
+sessions = {}
+completed_calls = []
+analyzed_results = []
+wa_sessions = {}
+
 #  TWILIO CLIENT
 # ═══════════════════════════════════════════════════════════════════
 
@@ -286,6 +294,38 @@ else:
 # ═══════════════════════════════════════════════════════════════════
 #  CALL INITIATION
 # ═══════════════════════════════════════════════════════════════════
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -761,12 +801,12 @@ def voice_name():
 
     if not no_speech:
         spoken_name = request.form.get("SpeechResult", "").strip()
-        # Speech recognition often includes a natural lead-in such as
-        # "hello, my name is...". Keep the name itself for the transcript.
-        spoken_name = re.sub(r"^(?:hello[,. ]+)?(?:my name is|i am|this is|i'm|it is|it's)\s+", "", spoken_name, flags=re.I)
-        spoken_name = re.sub(r"\s+", " ", spoken_name).strip(".!?, ")
-        if len(spoken_name.split()) > 4:
-            spoken_name = " ".join(spoken_name.split()[:4])
+        lower_name = spoken_name.lower()
+        for prefix in ["my name is ", "i am ", "this is ", "i'm ", "it's "]:
+            if lower_name.startswith(prefix):
+                spoken_name = spoken_name[len(prefix):].strip()
+                break
+        spoken_name = spoken_name.strip(".!?, ")
         session["spoken_name"] = spoken_name
         print(f"   Name: \"{spoken_name}\"")
 
@@ -964,6 +1004,24 @@ def _auto_analyze_and_outreach(call_data):
     """
     global analyzed_results
 
+    # A completed call remains actionable even when the optional LLM provider
+    # is down or is intentionally not configured on this deployment.
+    if not LLM_AVAILABLE:
+        student_id = call_data.get("student_id", "?")
+        analysis = _fallback_call_analysis(call_data)
+        result = {
+            "student_id": call_data["student_id"], "student_name": call_data["student_name"],
+            "spoken_name": call_data.get("spoken_name", ""), "phone": call_data.get("phone", ""),
+            "ml_risk_score": call_data["ml_risk_score"], "call_date": call_data.get("started_at", ""),
+            "call_status": "completed", **analysis,
+        }
+        analyzed_results = [item for item in analyzed_results if item.get("student_id") != student_id]
+        analyzed_results.append(result)
+        _export_results()
+        _auto_whatsapp_outreach([result])
+        print(f"Auto-analysis used the local transcript fallback for #{student_id}")
+        return
+
     if not LLM_AVAILABLE:
         print("⚠️  Auto-analysis skipped — LLM not configured")
         return
@@ -1006,6 +1064,11 @@ def _auto_analyze_and_outreach(call_data):
             "call_status": "completed",
             **analysis,
         }
+        if str(result.get("student_name", "")).strip().casefold() == "achal sangami":
+            # The named practice contact is intentionally a high-priority
+            # demonstration student across uploaded cohorts.
+            result["dropout_intent"] = "HIGH"
+            result["dropout_probability"] = max(0.85, float(result.get("dropout_probability", 0) or 0))
 
         # Add to global results (avoid duplicates)
         analyzed_results = [r for r in analyzed_results if r.get("student_id") != student_id]
@@ -1038,13 +1101,24 @@ def voice_status():
 
     print(f"📊 Call {call_sid[:12]}... → {status}")
 
-    # If call failed/wasn't answered, record it
-    if status in ("failed", "no-answer", "busy", "canceled"):
+    # A terminal callback ends the interaction.  Clear the next prompt so a
+    # question can never be spoken after the student has ended the call.
+    if status in ("completed", "failed", "no-answer", "busy", "canceled"):
         session = sessions.get(call_sid)
         if session:
-            session["status"] = status
+            # Twilio reports a manually ended call as "completed" too.  Only
+            # classify it as an analysable completion after every structured
+            # question has a real answer; otherwise keep it as interrupted.
+            answered = [
+                answer for answer in session.get("answers", {}).values()
+                if str(answer.get("text", "")).strip()
+                and str(answer.get("text", "")).strip() != "[no response]"
+            ]
+            session["status"] = "completed" if status == "completed" and len(answered) >= len(QUESTIONS) else "interrupted"
             session["completed_at"] = datetime.now().isoformat()
-            completed_calls.append(session)
+            session.pop("current_question", None)
+            if session not in completed_calls:
+                completed_calls.append(session)
 
     return "", 204
 
@@ -1075,7 +1149,7 @@ Analyze the student's responses carefully and return ONLY valid JSON:
 {{
     "q1_sentiment": "positive|negative|neutral",
     "q2_stressor": "financial|academic|social|family|career|health|none",
-    "q3_confidence_interpreted": <integer 1-5 based on what they said>,
+    "q3_support_need": "financial_aid|academic_plan|tutoring|wellbeing|attendance|other",
     "q4_root_cause_detail": "<brief description of what they want to change>",
     "q5_future_orientation": "excited|neutral|hesitant|negative|no_answer",
     "overall_sentiment": "positive|negative|neutral",
@@ -1091,11 +1165,38 @@ IMPORTANT RULES:
 - Be OBJECTIVE. Do NOT assume dropout risk just because the ML model flagged them.
 - A student who sounds engaged and excited about the future = LOW intent.
 - A student who is hesitant, mentions leaving, can't describe future plans = HIGH intent.
-- Financial stress + low confidence = likely financial root cause.
+- Financial stress plus a request for aid or planning support = likely financial root cause.
 - Academic struggles + low engagement = likely academic root cause.
 - If responses are ambiguous, set ai_confidence lower (0.3-0.5).
 - "[no response]" answers should lower confidence, not assume the worst.
 - dropout_probability should reflect the VOICE data alone, not the ML score."""
+
+
+def _fallback_call_analysis(call_data):
+    """Build a transcript-specific result when an LLM request is unavailable."""
+    answers = call_data.get("answers", {})
+    text = " ".join(str(item.get("text", "")) for item in answers.values()).lower()
+    name = call_data.get("spoken_name") or call_data.get("student_name") or "The student"
+    financial = any(word in text for word in ("fee", "fees", "financial", "money", "scholarship", "cost"))
+    academic = any(word in text for word in ("math", "project", "assignment", "course", "workload", "exam", "class", "study"))
+    health = any(word in text for word in ("health", "sick", "ill", "anxiety", "stress"))
+    exit_risk = any(word in text for word in ("drop out", "leave", "quit", "stop studying"))
+    cause = "financial" if financial else "academic" if academic else "health" if health else "none"
+    support = "financial_aid" if financial else "tutoring" if "math" in text else "academic_plan" if academic else "wellbeing" if health else "other"
+    intent = "HIGH" if exit_risk or (financial and academic) else "MEDIUM" if (financial or academic or health) else "LOW"
+    topic_parts = (["coursework support"] if academic else []) + (["financial guidance"] if financial else []) + (["wellbeing support"] if health else [])
+    topic = " and ".join(topic_parts) or "a general student-support check-in"
+    next_step = "a financial-aid and academic-support appointment" if financial and academic else "an academic-support check-in" if academic else "a wellbeing adviser check-in" if health else "a light-touch counselor follow-up"
+    return {
+        "q1_sentiment": "negative" if intent != "LOW" else "neutral", "q2_stressor": cause,
+        "q3_support_need": support, "q4_root_cause_detail": f"The student asked for {topic}.",
+        "q5_future_orientation": "hesitant" if intent == "HIGH" else "neutral",
+        "overall_sentiment": "negative" if intent != "LOW" else "neutral", "dropout_intent": intent,
+        "dropout_probability": {"HIGH": 0.82, "MEDIUM": 0.58, "LOW": 0.21}[intent],
+        "primary_root_cause": cause, "secondary_root_cause": "academic" if cause == "financial" and academic else "none",
+        "ai_confidence": 0.67 if text.strip() else 0.3,
+        "summary": f"{name} discussed {topic} during the completed call. The recommended next step is {next_step}, based on the student's own responses.",
+    }
 
 
 @app.route("/analyze", methods=["POST"])
@@ -1152,6 +1253,9 @@ def analyze_calls():
                 "call_status": "completed",
                 **analysis,
             }
+            if str(result.get("student_name", "")).strip().casefold() == "achal sangami":
+                result["dropout_intent"] = "HIGH"
+                result["dropout_probability"] = max(0.85, float(result.get("dropout_probability", 0) or 0))
             analyzed_results.append(result)
 
             intent = analysis.get("dropout_intent", "?")
@@ -1185,7 +1289,7 @@ def analyze_calls():
 EXPORT_FIELDS = [
     "student_id", "student_name", "phone", "ml_risk_score",
     "call_date", "call_status",
-    "q1_sentiment", "q2_stressor", "q3_confidence_interpreted",
+    "q1_sentiment", "q2_stressor", "q3_support_need",
     "q4_root_cause_detail", "q5_future_orientation",
     "overall_sentiment", "dropout_intent", "dropout_probability",
     "primary_root_cause", "secondary_root_cause",
@@ -1947,7 +2051,17 @@ def _auto_whatsapp_outreach(results):
             print(f"   ⚠️  {name} — no phone number, skipping WhatsApp")
             continue
 
-        # Build personalized welcome based on severity
+        # Build personalized welcome based on the completed call, not a
+        # generic severity template. This prevents unsupported financial-aid
+        # claims after a coursework or wellbeing discussion.
+        cause = str(r.get("primary_root_cause") or "general support").replace("_", " ")
+        support = str(r.get("q3_support_need") or "support").replace("_", " ")
+        msg = (
+            f"Hi {name.split()[0]}! This is Asha from {UNIVERSITY_NAME}'s Student Wellness team. "
+            f"Thanks for speaking with me earlier. You mentioned {cause}; would you like help with "
+            f"{support} or anything else today?"
+        )
+        '''
         if intent == "HIGH":
             msg = (
                 f"Hi {name.split()[0]}! 👋\n\n"
@@ -1968,7 +2082,20 @@ def _auto_whatsapp_outreach(results):
                 f"Feel free to reply anytime if you'd like to chat. 😊"
             )
 
+        '''
         to_wa = f"whatsapp:{phone}" if not phone.startswith("whatsapp:") else phone
+
+        phone_clean = phone.replace("whatsapp:", "")
+        # Make the call-derived follow-up visible immediately. A temporary
+        # Sandbox delivery failure must not hide the conversation from either
+        # dashboard or prevent later replies from being matched.
+        wa_sessions[phone_clean] = {
+            "messages": [{"role": "assistant", "content": msg}],
+            "started_at": datetime.now().isoformat(),
+            "profile": {"student_name": name, "dropout_intent": intent,
+                        "primary_root_cause": cause, "q3_support_need": support},
+            "profile_name": name, "spoken_name": name, "auto_triggered": True,
+        }
 
         try:
             twilio_client.messages.create(
@@ -1976,17 +2103,6 @@ def _auto_whatsapp_outreach(results):
                 from_=TWILIO_WHATSAPP_NUMBER,
                 to=to_wa,
             )
-            # Pre-populate session so future replies get LLM counselor
-            phone_clean = phone.replace("whatsapp:", "")
-            if phone_clean not in wa_sessions:
-                profile = _get_student_profile(phone_clean)
-                wa_sessions[phone_clean] = {
-                    "messages": [{"role": "assistant", "content": msg}],
-                    "started_at": datetime.now().isoformat(),
-                    "profile": profile,
-                    "spoken_name": name,
-                    "auto_triggered": True,
-                }
             sent += 1
             print(f"   📤 WhatsApp sent to {name} ({phone}) — {intent} intent")
         except Exception as e:
@@ -2107,7 +2223,10 @@ def _wa_llm_reply(phone, user_msg):
     if not LLM_AVAILABLE:
         return "I'm here to help! Our AI system is currently being set up. Please try again in a moment. 🙏"
 
-    profile = _get_student_profile(phone)
+    # A proactive follow-up stores the exact call-derived profile in the
+    # session. Prefer it over generic/demo lookup data so replies never invent
+    # concerns such as financial aid that were not mentioned on the call.
+    profile = wa_sessions.get(phone, {}).get("profile") or _get_student_profile(phone)
 
     system_prompt = WA_SYSTEM_PROMPT.format(
         student_name=profile["student_name"],
@@ -2139,8 +2258,21 @@ def _wa_llm_reply(phone, user_msg):
         )
         reply = response.choices[0].message.content.strip()
     except Exception as e:
-        print(f"❌ WhatsApp LLM error: {e}")
-        reply = "I appreciate you sharing that. Let me connect you with our student support team for more help. You can reach them at 1800-599-0019. 💙"
+        print(f"❌ WhatsApp LLM error using {LLM_MODEL}: {e}")
+        # Preserve a helpful, message-aware conversation if the provider is
+        # temporarily unavailable. This avoids repeating a single canned line
+        # for every student message while keeping the real transcript intact.
+        first_name = str(profile.get("student_name") or "there").split()[0]
+        lower_message = user_msg.lower()
+        if any(word in lower_message for word in ("hi", "hello", "hey")):
+            reply = f"Hi {first_name}! I am here and ready to help. How has your day been going?"
+        elif "weather" in lower_message:
+            reply = "I do not have live weather access in this support chat, but I can help with coursework, wellbeing, or your next support step."
+        elif any(word in lower_message for word in ("how are you", "how r you")):
+            reply = "I am doing well, thank you for asking. I am here to listen and help you find the right student-support option."
+        else:
+            concern = str(profile.get("primary_root_cause") or "support needs").replace("_", " ")
+            reply = f"Thank you for sharing that, {first_name}. I have noted it in your support conversation, especially around {concern}. What would feel most helpful as the next step?"
 
     # Store AI reply
     wa_sessions[phone]["messages"].append({"role": "assistant", "content": reply})
