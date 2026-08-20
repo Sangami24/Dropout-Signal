@@ -1,7 +1,12 @@
 # Gunicorn configuration file
 
 # Increase timeout to handle slow ML training tasks during dataset upload
-timeout = 120
+# Render free tier CPU is very slow — XGBoost + SHAP can take 2-4 minutes
+timeout = 300
 
-# Use a specific number of workers or let Render set WEB_CONCURRENCY
-# workers = 2
+# Single worker to stay within Render free tier's 512MB RAM limit
+workers = 1
+
+# Bind to the port Render expects
+import os
+bind = f"0.0.0.0:{os.environ.get('PORT', '10000')}"
