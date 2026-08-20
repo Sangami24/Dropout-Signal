@@ -418,13 +418,20 @@ def _name_for(index: int, signature: str) -> str:
 
 
 def _shap_values(model: XGBClassifier, features: pd.DataFrame) -> np.ndarray:
-    explainer = shap.TreeExplainer(model)
-    values = explainer.shap_values(features)
-    values = np.asarray(values)
-    if values.ndim == 3:
-        values = values[:, :, 1]
-    return values
+    # Process in chunks to prevent OOM on Render
+    return _batched_shap_values(model, features)
 
+def _batched_shap_values(model, features, chunk_size=250):
+    explainer = shap.TreeExplainer(model)
+    all_values = []
+    for i in range(0, len(features), chunk_size):
+        chunk = features.iloc[i:i+chunk_size]
+        v = explainer.shap_values(chunk, check_additivity=False)
+        v = np.asarray(v)
+        if v.ndim == 3:
+            v = v[:, :, 1]
+        all_values.append(v)
+    return np.vstack(all_values)
 
 def _gold_table(
     source: pd.DataFrame,
@@ -498,6 +505,9 @@ def _log_mlflow_run(
     champion_name: str,
 ) -> dict[str, Any]:
     """Create a local, inspectable MLflow tracking and registry record."""
+    if os.environ.get("RENDER"):
+        return {"skipped": True, "reason": "MLflow disabled on Render to conserve RAM."}
+        
     tracking_dir = RUNTIME_DIR / "mlflow"
     tracking_dir.mkdir(parents=True, exist_ok=True)
     database_path = tracking_dir / "tracking.db"
