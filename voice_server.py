@@ -708,6 +708,14 @@ else:
 
 
 
+
+
+
+
+
+
+
+
 def _start_call(student_id, student_name, phone, ml_risk):
     """Initiate a single Twilio call to a student."""
     if not twilio_ready:
@@ -804,14 +812,12 @@ def demo_call():
 
 @app.route("/voice/welcome", methods=["POST"])
 def voice_welcome():
-    """
-    Twilio webhook: the student picked up the phone.
-    We introduce the agent and ask for their name.
-    """
     call_sid = request.form.get("CallSid", "")
     student_id = request.args.get("student_id", "unknown")
     student_name = request.args.get("student_name", "Student")
     ml_risk = request.args.get("ml_risk", "0.0")
+
+    first_name = student_name.split()[0] if student_name else "Student"
 
     # Create session for this call
     sessions[call_sid] = {
@@ -821,18 +827,18 @@ def voice_welcome():
         "phone": request.form.get("To", ""),
         "call_sid": call_sid,
         "answers": {},
-        "current_question": "Before we begin, could you please tell me your name?",
+        "current_question": QUESTIONS[0],
         "started_at": datetime.now().isoformat(),
+        "spoken_name": first_name
     }
 
     print(f"🎙️  Call answered: {student_name} (#{student_id})")
 
     resp = VoiceResponse()
 
-    # Welcome — positioned as routine wellness check-in
     resp.say(
-        f"Hello! This is {UNIVERSITY_NAME}'s Student Wellness team. "
-        f"We're doing a quick 3 minute check-in with students this semester.",
+        f"Hello {first_name}, I am your AI agent from the Student Wellness team. "
+        f"I have a few questions for you today.",
         voice=TWILIO_VOICE,
         language=TWILIO_LANGUAGE,
     )
@@ -840,7 +846,7 @@ def voice_welcome():
     resp.pause(length=1)
 
     resp.say(
-        "Before we begin, could you please tell me your name?",
+        f"{QUESTIONS[0]}",
         voice=TWILIO_VOICE,
         language=TWILIO_LANGUAGE,
     )
@@ -849,14 +855,14 @@ def voice_welcome():
         language=SPEECH_LANGUAGE,
         speech_timeout="auto",
         timeout=10,
-        action=f"{WEBHOOK_BASE_URL}/voice/name?sid={call_sid}",
+        action=f"{WEBHOOK_BASE_URL}/voice/respond?q=0&sid={call_sid}",
         method="POST",
     )
     resp.append(gather)
 
     # Fallback if no speech detected
     resp.redirect(
-        f"{WEBHOOK_BASE_URL}/voice/name?sid={call_sid}&nospeech=1",
+        f"{WEBHOOK_BASE_URL}/voice/respond?q=0&sid={call_sid}&nospeech=1",
         method="POST",
     )
 
@@ -1013,7 +1019,7 @@ def voice_respond():
 
         # Say the question OUTSIDE gather so it can't be interrupted
         resp.say(
-            f"Question {next_q + 1}. {QUESTIONS[next_q]}",
+            f"{QUESTIONS[next_q]}",
             voice=TWILIO_VOICE,
             language=TWILIO_LANGUAGE,
         )
