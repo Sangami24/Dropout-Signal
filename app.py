@@ -6634,16 +6634,6 @@ def api_call_result(student_id):
     if result is None:
         return jsonify({"error": "The call is not complete yet."}), 409
     return jsonify({"call": _native_json(call), "result": _native_json(result)})
-
-
-def _local_api_fairness():
-    return jsonify({"dataset_loaded": bool(active_metadata()), "fairness": _native_json(active_fairness())})
-
-
-def _local_api_model_metrics():
-    status = _dataset_status_payload()
-    if not status["dataset_loaded"]:
-        return jsonify({"dataset_loaded": False, "tiers": [], "models": {}, "shap": []})
     return jsonify({
         "dataset_loaded": True,
         "run_id": status.get("run_id"),
@@ -6706,26 +6696,6 @@ def api_dataset_cancel():
     with _DATASET_UPLOAD_CANCEL_LOCK:
         _CANCELED_DATASET_UPLOADS.add(upload_id)
     return jsonify({"ok": True, "canceled": True})
-
-
-@app.route("/api/dataset/reset", methods=["POST"])
-def api_dataset_reset():
-    reset_active_dataset()
-    return jsonify({"ok": True, "status": _dataset_status_payload()})
-
-
-# Replace legacy endpoints after the Flask decorators above have registered
-# them. The route paths stay stable for both dashboard templates.
-app.view_functions["api_stats"] = _local_api_stats
-app.view_functions["api_students"] = _local_api_students
-app.view_functions["api_all_students"] = _local_api_all_students
-app.view_functions["api_student_detail"] = _local_api_student_detail
-app.view_functions["api_fairness"] = _local_api_fairness
-app.view_functions["api_model_metrics"] = _local_api_model_metrics
-
-@app.route("/")
-def index():
-    if "role" in session:
         return redirect(url_for("admin_dashboard" if session["role"] == "admin" else "counselor_dashboard"))
     return render_template_string(LANDING_HTML)
 
