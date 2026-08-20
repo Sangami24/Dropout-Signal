@@ -6612,6 +6612,9 @@ def _local_api_student_detail(student_id):
     if voice is None:
         name = str(row.get("student_name") or "This student")
         factor = str(row.get("primary_root_cause") or row.get("top_factor_1") or "current engagement signals")
+    if voice is None:
+        name = str(row.get("student_name") or "This student")
+        factor = str(row.get("primary_root_cause") or row.get("top_factor_1") or "current engagement signals")
         action = str(row.get("final_action") or "Schedule a counselor check-in")
         voice = {
             "student_id": str(student_id), "student_name": name,
@@ -6634,7 +6637,6 @@ def api_call_result(student_id):
     if result is None:
         return jsonify({"error": "The call is not complete yet."}), 409
     return jsonify({"call": _native_json(call), "result": _native_json(result)})
-    return jsonify({
         "dataset_loaded": True,
         "run_id": status.get("run_id"),
         "dataset_name": status.get("dataset_name"),
