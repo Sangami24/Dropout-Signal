@@ -227,30 +227,15 @@ LIVE_UI_SCRIPT = r'''
     if (backgroundUploadPoller) clearInterval(backgroundUploadPoller);
     if (backgroundUploadVisualTimer) clearInterval(backgroundUploadVisualTimer);
     backgroundUploadVisualTimer = setInterval(() => updateBackgroundPercentage(job), 260);
-    const poll = async () => {
-      try {
-        const response = await fetch(`/api/dataset/upload-status?job_id=${encodeURIComponent(job.id)}`, {cache: 'no-store'});
-        if (!response.ok) return;
-        const next = await response.json();
-        const state = {...job, ...next};
-        localStorage.setItem(BACKGROUND_UPLOAD_KEY, JSON.stringify(state));
-        updateBackgroundUpload(state);
-        if (state.state === 'complete') {
-          clearInterval(backgroundUploadPoller); backgroundUploadPoller = null;
-          clearInterval(backgroundUploadVisualTimer); backgroundUploadVisualTimer = null;
-          localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
-          setTimeout(() => window.location.reload(), 700);
-        } else if (state.state === 'failed') {
-          clearInterval(backgroundUploadPoller); backgroundUploadPoller = null;
-          clearInterval(backgroundUploadVisualTimer); backgroundUploadVisualTimer = null;
-          localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
-          document.getElementById('dataset-training-overlay')?.remove();
-          toast(state.error || 'Dataset upload failed.', 'err');
-        }
-      } catch (_) {}
-    };
-    await poll();
-    if (!backgroundUploadPoller) backgroundUploadPoller = setInterval(poll, 1200);
+    // This is the still-open, real upload request. Browser tab switching
+    // leaves it running; do not replace it with a synthetic job poll.
+    if (job.state === 'uploading') return;
+    // Clear the stale state left by the retired worker implementation. It
+    // never represented an activated dataset and must not show a false 100%.
+    localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
+    clearInterval(backgroundUploadVisualTimer); backgroundUploadVisualTimer = null;
+    document.getElementById('dataset-training-overlay')?.remove();
+    toast('The previous upload did not complete. Please upload the CSV again.', 'err');
   }
 
   async function beginBackgroundUpload(file) {
@@ -259,13 +244,25 @@ LIVE_UI_SCRIPT = r'''
     const job = { id: globalThis.crypto?.randomUUID?.() || `upload-${Date.now()}`, filename: file.name, state: 'uploading', started_at_ms: Date.now() };
     localStorage.setItem(BACKGROUND_UPLOAD_KEY, JSON.stringify(job));
     showBackgroundUpload(job);
+    updateBackgroundPercentage(job);
+    if (backgroundUploadVisualTimer) clearInterval(backgroundUploadVisualTimer);
+    backgroundUploadVisualTimer = setInterval(() => updateBackgroundPercentage(job), 260);
     try {
       const response = await fetch('/api/dataset/upload', { method: 'POST', body: form, headers: { 'X-Dataset-Upload-Id': job.id } });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Dataset upload failed');
-      localStorage.setItem(BACKGROUND_UPLOAD_KEY, JSON.stringify({...job, ...payload, state: payload.state || 'queued'}));
-      resumeBackgroundUpload();
+      // Success only means the original endpoint has fully trained, scored,
+      // and activated the dataset. Do not display 100% before this response.
+      if (!payload.ok || !payload.status?.dataset_loaded) throw new Error(payload.error || 'Dataset was not activated.');
+      const complete = {...job, state: 'complete', message: 'Dataset trained, scored, and activated.'};
+      updateBackgroundUpload(complete);
+      if (backgroundUploadVisualTimer) clearInterval(backgroundUploadVisualTimer);
+      backgroundUploadVisualTimer = null;
+      localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
+      setTimeout(() => window.location.reload(), 700);
     } catch (error) {
+      if (backgroundUploadVisualTimer) clearInterval(backgroundUploadVisualTimer);
+      backgroundUploadVisualTimer = null;
       localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
       document.getElementById('dataset-training-overlay')?.remove();
       toast(error.message || 'Dataset upload failed.', 'err');
@@ -305,10 +302,6 @@ LIVE_UI_SCRIPT = r'''
 '''
 
 
-_BACKGROUND_UPLOADS = {}
-_BACKGROUND_UPLOAD_LOCK = threading.RLock()
-
-
 def _dataset_ready() -> bool:
     try:
         return bool(active_metadata()) and not active_records().empty
@@ -340,91 +333,6 @@ def _manual_call_payload():
 
 def install(app, namespace):
     """Install call gating, a real manual-call endpoint, and live UI sync."""
-
-    # The legacy upload route trains synchronously inside the browser request.
-    # Wrap it in a server worker after receiving the file so a tab switch does
-    # not cancel scoring or leave an upload modal frozen in another dashboard.
-    upload_rule = next((rule for rule in app.url_map.iter_rules() if rule.rule == "/api/dataset/upload"), None)
-    if upload_rule:
-        original_upload = app.view_functions[upload_rule.endpoint]
-
-        def background_dataset_upload():
-            upload = request.files.get("file")
-            if upload is None or not upload.filename:
-                return jsonify({"error": "Choose a CSV file to upload."}), 400
-            file_bytes = upload.read()
-            if not file_bytes:
-                return jsonify({"error": "The selected CSV is empty."}), 400
-            job_id = request.headers.get("X-Dataset-Upload-Id") or str(uuid.uuid4())
-            filename = upload.filename
-            with _BACKGROUND_UPLOAD_LOCK:
-                _BACKGROUND_UPLOADS[job_id] = {
-                    "id": job_id,
-                    "filename": filename,
-                    "state": "queued",
-                    "message": "Dataset received. Starting background analysis…",
-                    "created_at": time.time(),
-                }
-
-            def run_upload_job():
-                with _BACKGROUND_UPLOAD_LOCK:
-                    _BACKGROUND_UPLOADS[job_id].update({
-                        "state": "processing",
-                        "message": "Training and scoring in the background…",
-                    })
-                try:
-                    with app.test_request_context(
-                        "/api/dataset/upload",
-                        method="POST",
-                        data={"file": (BytesIO(file_bytes), filename)},
-                        headers={"X-Dataset-Upload-Id": job_id},
-                    ):
-                        response = app.make_response(original_upload())
-                    payload = response.get_json(silent=True) or {}
-                    if response.status_code >= 400:
-                        raise RuntimeError(payload.get("error") or "Dataset analysis failed.")
-                    with _BACKGROUND_UPLOAD_LOCK:
-                        _BACKGROUND_UPLOADS[job_id].update({
-                            "state": "complete",
-                            "message": "Dataset trained, scored, and activated.",
-                            "status": payload.get("status"),
-                            "completed_at": time.time(),
-                        })
-                except Exception as exc:
-                    app.logger.exception("Background dataset upload failed")
-                    with _BACKGROUND_UPLOAD_LOCK:
-                        _BACKGROUND_UPLOADS[job_id].update({
-                            "state": "failed",
-                            "error": str(exc),
-                            "message": "Background dataset processing failed.",
-                            "completed_at": time.time(),
-                        })
-
-            threading.Thread(target=run_upload_job, name=f"dataset-upload-{job_id[:8]}", daemon=True).start()
-            return jsonify({
-                "ok": True,
-                "id": job_id,
-                "state": "queued",
-                "filename": filename,
-                "message": "Dataset received and processing in the background.",
-            }), 202
-
-        def background_dataset_upload_status():
-            job_id = request.args.get("job_id", "")
-            with _BACKGROUND_UPLOAD_LOCK:
-                job = dict(_BACKGROUND_UPLOADS.get(job_id, {}))
-            if not job:
-                return jsonify({"error": "Upload job not found."}), 404
-            return jsonify(job)
-
-        app.view_functions[upload_rule.endpoint] = background_dataset_upload
-        if not any(rule.rule == "/api/dataset/upload-status" for rule in app.url_map.iter_rules()):
-            app.add_url_rule(
-                "/api/dataset/upload-status",
-                "background_dataset_upload_status",
-                background_dataset_upload_status,
-                methods=["GET"],
-            )
 
     def manual_call():
         if not _dataset_ready():
