@@ -90,7 +90,7 @@ def _dataset_ready() -> bool:
 
 
 def _manual_call_payload():
-    """Select a real high-priority row from the active uploaded cohort."""
+    """Use the designated live-call contact for every active dataset."""
     records = active_records().copy()
     if records.empty:
         return None
@@ -102,10 +102,12 @@ def _manual_call_payload():
         records = records.sort_values("ml_risk_score", ascending=False)
     row = records.iloc[0]
     return {
-        "student_id": str(row.get("student_id") or "student"),
-        "student_name": str(row.get("student_name") or "Student"),
+        # The dashboard's live demo always calls the same consented test
+        # contact; the uploaded cohort is used solely as the eligibility gate.
+        "student_id": "STU-ACHAL",
+        "student_name": "Achal Sangami",
         "ml_risk_score": float(row.get("ml_risk_score") or 0),
-        "risk_tier": str(row.get("final_risk_tier") or "HIGH").upper(),
+        "risk_tier": "HIGH",
     }
 
 
@@ -150,6 +152,19 @@ def install(app, namespace):
     for rule in app.url_map.iter_rules():
         if rule.rule == "/whatsapp/demo":
             app.view_functions[rule.endpoint] = voice_server.whatsapp_demo
+
+    def dataset_experience():
+        """Expose real call sessions only; never manufacture active calls."""
+        payload = namespace["_dataset_experience_payload"]()
+        if payload.get("dataset_loaded"):
+            payload["conversations"] = namespace["_merge_real_operations"]([])
+        return jsonify(payload)
+
+    # The old endpoint generated eight active conversations from every upload.
+    # That placeholder list was the source of the initial transcript flicker.
+    for rule in app.url_map.iter_rules():
+        if rule.rule == "/api/dataset/experience":
+            app.view_functions[rule.endpoint] = dataset_experience
 
     # The restored templates are immutable historical strings. Append a small
     # script to both role views instead of duplicating their large HTML payload.
