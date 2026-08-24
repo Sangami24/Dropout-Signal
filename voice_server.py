@@ -284,6 +284,41 @@ def _valid_twilio_config():
     )
 
 
+def _dataset_is_ready():
+    """Return whether a scored dataset is active without coupling startup to ML."""
+    try:
+        from ml_pipeline import active_metadata, active_records
+        return bool(active_metadata()) and not active_records().empty
+    except Exception as exc:
+        # A failed/unavailable dataset must never allow outreach by accident.
+        app.logger.warning("Unable to verify active dataset before outreach: %s", exc)
+        return False
+
+
+def _dataset_required_error():
+    return (
+        "Upload and score a dataset before starting student calls. "
+        "Calls are enabled only for an active scored cohort."
+    )
+
+
+def _append_call_event(session, speaker, side, text):
+    """Keep one ordered, UI-ready transcript alongside structured answers."""
+    text = str(text or "").strip()
+    if not text:
+        return
+    events = session.setdefault("transcript_events", [])
+    # Twilio can retry a webhook. Avoid rendering a retry as a duplicate turn.
+    if events and events[-1].get("speaker") == speaker and events[-1].get("text") == text:
+        return
+    events.append({
+        "speaker": speaker,
+        "side": side,
+        "text": text,
+        "at": datetime.now().isoformat(),
+    })
+
+
 twilio_ready = _valid_twilio_config()
 if twilio_ready:
     twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
@@ -718,6 +753,8 @@ else:
 
 def _start_call(student_id, student_name, phone, ml_risk):
     """Initiate a single Twilio call to a student."""
+    if not _dataset_is_ready():
+        return {"error": _dataset_required_error(), "code": "dataset_required"}
     if not twilio_ready:
         return {"error": "Voice calling is not ready. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, and a public HTTPS WEBHOOK_BASE_URL in .env, then restart the app."}
 
@@ -750,6 +787,9 @@ def initiate_calls():
       student_id,student_name,phone,ml_risk_score
       2847,Rahul Kumar,+919876543210,0.87
     """
+    if not _dataset_is_ready():
+        return jsonify({"error": _dataset_required_error(), "code": "dataset_required"}), 409
+
     students = []
 
     # Source 1: JSON body
@@ -791,6 +831,8 @@ def demo_call():
     Demo mode: call a team member's phone with a fake student profile.
     For live hackathon demonstration.
     """
+    if not _dataset_is_ready():
+        return jsonify({"error": _dataset_required_error(), "code": "dataset_required"}), 409
     if "YOUR_" in DEMO_PHONE or not DEMO_PHONE.startswith("+"):
         return jsonify({"error": "Set DEMO_PHONE in voice_config.py first"}), 400
 
@@ -829,8 +871,11 @@ def voice_welcome():
         "answers": {},
         "current_question": QUESTIONS[0],
         "started_at": datetime.now().isoformat(),
-        "spoken_name": first_name
+        "spoken_name": first_name,
+        "status": "active",
+        "transcript_events": [],
     }
+    _append_call_event(sessions[call_sid], "Asha AI", "ai", QUESTIONS[0])
 
     print(f"🎙️  Call answered: {student_name} (#{student_id})")
 
@@ -976,6 +1021,12 @@ def voice_respond():
         "twilio_confidence": speech_conf,
         "question": QUESTIONS[q_index],
     }
+    _append_call_event(
+        session,
+        session.get("spoken_name") or session.get("student_name") or "Student",
+        "student",
+        speech_text if not no_speech else "[no response]",
+    )
     print(f"   Q{q_index + 1}: \"{speech_text[:80]}{'...' if len(speech_text) > 80 else ''}\" (conf: {speech_conf:.2f})")
 
     # Friendly acknowledgment lines — one per question
@@ -1016,6 +1067,7 @@ def voice_respond():
         resp.pause(length=1)
 
         session["current_question"] = QUESTIONS[next_q]
+        _append_call_event(session, "Asha AI", "ai", QUESTIONS[next_q])
 
         # Say the question OUTSIDE gather so it can't be interrupted
         resp.say(
@@ -1068,6 +1120,11 @@ def voice_respond():
             voice=TWILIO_VOICE,
             language=TWILIO_LANGUAGE,
         )
+        session["closing_message"] = (
+            f"That was the last question, {spoken_name}. Thank you so much for taking the time "
+            "to speak with us today. Take care."
+        )
+        _append_call_event(session, "Asha AI", "ai", session["closing_message"])
         resp.hangup()
 
         # Move to completed
@@ -2330,7 +2387,10 @@ def _wa_llm_reply(phone, user_msg):
     # Keep last 20 messages for context window
     for m in history[-20:]:
         messages.append(m)
-    messages.append({"role": "user", "content": user_msg})
+    # The webhook stores the inbound turn before asking for a reply so the
+    # dashboard can display it immediately. Do not send that turn twice.
+    if not history or history[-1].get("role") != "user" or history[-1].get("content") != user_msg:
+        messages.append({"role": "user", "content": user_msg})
 
     try:
         if Groq:
@@ -2391,7 +2451,7 @@ def whatsapp_webhook():
         welcome = WA_WELCOME_MSG.format(name=name, university=UNIVERSITY_NAME)
 
         wa_sessions[phone_clean] = {
-            "messages": [],
+            "messages": [{"role": "assistant", "content": welcome}],
             "started_at": datetime.now().isoformat(),
             "profile": profile,
             "profile_name": profile_name,
@@ -2422,7 +2482,11 @@ def whatsapp_webhook():
             print(f"Async WA send failed: {e}")
 
     import threading
-    threading.Thread(target=process_and_send, args=(phone_clean, incoming_msg, from_number)).start()
+    threading.Thread(
+        target=process_and_send,
+        args=(phone_clean, incoming_msg, from_number),
+        daemon=True,
+    ).start()
 
     resp = MessagingResponse()
     return str(resp), 200, {"Content-Type": "text/xml"}
@@ -2468,10 +2532,27 @@ def whatsapp_demo():
     if not twilio_ready:
         return jsonify({"error": "Twilio not configured"}), 500
 
-    profile = _get_student_profile(DEMO_PHONE)
-    welcome = WA_WELCOME_MSG.format(name=profile["student_name"], university=UNIVERSITY_NAME)
+    payload = request.get_json(silent=True) or {}
+    phone = str(payload.get("phone") or DEMO_PHONE).strip()
+    if "YOUR_" in phone or not phone.startswith("+"):
+        return jsonify({"error": "Set DEMO_PHONE or provide a valid E.164 phone number."}), 400
 
-    to_wa = f"whatsapp:{DEMO_PHONE}"
+    profile = _get_student_profile(phone)
+    student_name = str(payload.get("student_name") or profile.get("student_name") or "Student").strip()
+    profile["student_name"] = student_name
+    welcome = WA_WELCOME_MSG.format(name=student_name, university=UNIVERSITY_NAME)
+    phone_clean = phone.replace("whatsapp:", "")
+    # Make the outbound greeting a real conversation event before delivery,
+    # which lets the dashboard update without waiting for a reply webhook.
+    wa_sessions[phone_clean] = {
+        "messages": [{"role": "assistant", "content": welcome}],
+        "started_at": datetime.now().isoformat(),
+        "profile": profile,
+        "profile_name": student_name,
+        "spoken_name": student_name,
+        "auto_triggered": False,
+    }
+    to_wa = f"whatsapp:{phone_clean}"
 
     try:
         msg = twilio_client.messages.create(
@@ -2480,7 +2561,8 @@ def whatsapp_demo():
             to=to_wa,
         )
         print(f"📤 WhatsApp demo sent to {DEMO_PHONE}")
-        return jsonify({"status": "sent", "sid": msg.sid, "to": DEMO_PHONE, "demo": True})
+        return jsonify({"status": "sent", "sid": msg.sid, "to": phone_clean, "demo": True,
+                        "conversation": wa_sessions[phone_clean]})
     except Exception as e:
         print(f"❌ WhatsApp demo failed: {e}")
         return jsonify({"error": str(e)}), 500
@@ -2510,7 +2592,9 @@ def whatsapp_conversations():
 @app.route("/api/transcripts", methods=["GET"])
 def api_transcripts():
     """Return all active voice call transcripts."""
-    return jsonify({"sessions": sessions})
+    # `transcript_events` is an ordered source of truth for live rendering;
+    # `answers` remains for analysis and older clients.
+    return jsonify({"sessions": sessions, "updated_at": datetime.now().isoformat()})
 
 
 # ═══════════════════════════════════════════════════════════════════
