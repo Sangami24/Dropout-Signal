@@ -6,6 +6,8 @@ webhook state to the existing counselor and administrator screens.
 
 from __future__ import annotations
 
+import time
+
 from flask import jsonify
 
 from ml_pipeline import active_metadata, active_records
@@ -21,6 +23,7 @@ LIVE_UI_SCRIPT = r'''
     return `<article class="dataset-message ${student ? 'student' : 'asha'}"><span>${escapeHtml(event.speaker)}</span><p>${escapeHtml(event.text)}</p></article>`;
   }).join('');
   let liveSessions = {};
+  let liveWhatsApp = [];
 
   function ensureLiveRows(session) {
     const studentId = String(session.student_id || '');
@@ -83,16 +86,98 @@ LIVE_UI_SCRIPT = r'''
     } catch (_) {}
   }
 
+  function whatsappMarkup(messages) {
+    return messages.map(message => {
+      const student = message.role === 'user';
+      return `<article class="dataset-message ${student ? 'student' : 'asha'}"><span>${student ? 'ACHAL' : 'ASHA AI'}</span><p>${escapeHtml(message.content)}</p></article>`;
+    }).join('');
+  }
+
+  function ensureLiveWhatsAppRows(conversation) {
+    const studentId = 'STU-ACHAL';
+    ['wa-convos-panel', 'admin-wa-panel'].forEach(panelId => {
+      const panel = document.getElementById(panelId);
+      if (!panel) return;
+      let row = panel.querySelector(`[data-student-id="${studentId}"]`);
+      if (!row) {
+        row = document.createElement('details');
+        row.className = 'operation-row dataset-conversation high manual-call';
+        row.dataset.studentId = studentId;
+        row.open = true;
+        row.innerHTML = `<summary><strong>${escapeHtml(conversation.student_name || 'Achal Sangami')}</strong><span class="dataset-live">ACTIVE</span><span class="dataset-presence high"></span><em>HIGH RISK</em></summary><div class="dataset-thread whatsapp"></div>`;
+        panel.prepend(row);
+      }
+    });
+  }
+
+  function renderLiveWhatsApp() {
+    liveWhatsApp.forEach(conversation => {
+      const messages = conversation.messages || [];
+      if (!messages.length) return;
+      ensureLiveWhatsAppRows(conversation);
+      document.querySelectorAll('[data-student-id="STU-ACHAL"]').forEach(row => {
+        const thread = row.querySelector('.dataset-thread.whatsapp');
+        if (!thread) return;
+        const signature = messages.map(message => `${message.role}:${message.content}`).join('\u001f');
+        if (thread.dataset.liveSignature === signature) return;
+        thread.innerHTML = whatsappMarkup(messages);
+        thread.dataset.liveSignature = signature;
+        if (row.open) thread.scrollTop = thread.scrollHeight;
+      });
+    });
+  }
+
+  async function refreshLiveWhatsApp() {
+    try {
+      const response = await fetch('/whatsapp/conversations', {cache: 'no-store'});
+      const payload = await response.json();
+      liveWhatsApp = (payload.conversations || []).filter(conversation =>
+        /achal/i.test(String(conversation.student_name || conversation.profile_name || ''))
+      );
+      renderLiveWhatsApp();
+    } catch (_) {}
+  }
+
+  function installTranscriptSearch() {
+    [
+      ['page-transcript', ['full-transcript-panel', 'transcript-panel']],
+      ['page-admin-transcript', ['admin-transcript-panel']],
+    ].forEach(([pageId, panelIds]) => {
+      const page = document.getElementById(pageId);
+      const panel = panelIds.map(id => document.getElementById(id)).find(Boolean);
+      if (!page || !panel || page.querySelector('.runtime-transcript-search')) return;
+      const toolbar = document.createElement('div');
+      toolbar.className = 'operation-toolbar runtime-transcript-search';
+      toolbar.innerHTML = '<input aria-label="Search call transcripts" placeholder="Search call transcripts..."><button type="button">Search</button><button type="button" class="danger">Reset</button>';
+      const input = toolbar.querySelector('input');
+      const filter = () => {
+        const query = input.value.trim().toLowerCase();
+        panel.querySelectorAll('.dataset-conversation').forEach(row => {
+          row.hidden = Boolean(query) && !row.textContent.toLowerCase().includes(query);
+        });
+      };
+      toolbar.querySelector('button').addEventListener('click', filter);
+      toolbar.querySelector('.danger').addEventListener('click', () => { input.value = ''; filter(); });
+      input.addEventListener('input', filter);
+      const header = page.querySelector('.page-hdr');
+      if (header) header.insertAdjacentElement('afterend', toolbar);
+    });
+  }
+
   document.addEventListener('DOMContentLoaded', () => {
     refreshCallGate();
     refreshLiveTranscripts();
+    refreshLiveWhatsApp();
+    installTranscriptSearch();
     // The legacy dashboard still repaints its call cards. Re-apply the latest
     // webhook transcript in the same turn so it cannot alternate between the
     // greeting variant and the question variant.
-    new MutationObserver(() => queueMicrotask(renderLiveTranscripts))
+    new MutationObserver(() => queueMicrotask(() => { renderLiveTranscripts(); renderLiveWhatsApp(); installTranscriptSearch(); }))
       .observe(document.body, {childList: true, subtree: true});
     setInterval(refreshCallGate, 3000);
     setInterval(refreshLiveTranscripts, 650);
+    setInterval(refreshLiveWhatsApp, 900);
+    setInterval(installTranscriptSearch, 1500);
   });
 })();
 </script>
@@ -171,7 +256,7 @@ def install(app, namespace):
             app.view_functions[rule.endpoint] = voice_server.whatsapp_demo
 
     def dataset_experience():
-        """Combine real live calls with clearly labelled static demo history."""
+        """Combine real webhook activity with synchronized active demo streams."""
         payload = namespace["_dataset_experience_payload"]()
         if payload.get("dataset_loaded"):
             real_calls = namespace["_merge_real_operations"]([])
@@ -183,8 +268,17 @@ def install(app, namespace):
                 dummy = namespace["_experience_conversation"](student, index)
                 dummy["student_id"] = f"DEMO-{student.get('student_id', index)}"
                 dummy["student_name"] = f"{student.get('student_name', 'Student')} (Demo)"
-                dummy["status"] = "completed"
+                # Every dashboard reads the same time-sliced stream from this
+                # endpoint. It is visually live, but it is kept separate from
+                # the real Achal webhook transcript.
+                elapsed_steps = int(time.time() // 2) + index
+                call_turns = list(dummy.get("call", []))
+                wa_turns = list(dummy.get("whatsapp", []))
+                dummy["call"] = call_turns[:min(len(call_turns), 2 + elapsed_steps % max(1, len(call_turns)))]
+                dummy["whatsapp"] = wa_turns[:min(len(wa_turns), 2 + elapsed_steps % max(1, len(wa_turns)))]
+                dummy["status"] = "active"
                 dummy["summary"] = "Saved demonstration transcript — not an active phone call."
+                dummy["summary"] = "Live synchronized demonstration stream."
                 dummy_calls.append(dummy)
                 if len(dummy_calls) == 7:
                     break

@@ -86,6 +86,42 @@ Q_KEYS = [
 ]
 
 
+# These phrases bias the telephone recognizer toward the vocabulary expected
+# after each question. They are hints only: they do not replace what a student
+# says or fabricate a transcript.
+QUESTION_SPEECH_HINTS = [
+    "this semester, has been going, going well, going badly, classes, stressful, workload",
+    "college life, challenging, workload, financial pressure, time management, attendance",
+    "coursework, computer networks, tutoring, study group, office hours, assignments",
+    "college experience, timetable, fees, support, classes, campus",
+    "next semester, internship, courses, graduation, looking forward",
+]
+
+
+def _speech_gather(question_index, call_sid):
+    """Create a consistently tuned Gather for each answer turn."""
+    hints = ", ".join(("Achal Sangami", QUESTION_SPEECH_HINTS[question_index]))
+    return Gather(
+        input="speech",
+        language=SPEECH_LANGUAGE,
+        speech_model=SPEECH_MODEL,
+        hints=hints,
+        speech_timeout="auto",
+        timeout=12,
+        action=f"{WEBHOOK_BASE_URL}/voice/respond?q={question_index}&sid={call_sid}",
+        method="POST",
+    )
+
+
+def _clean_speech_result(text, question_index):
+    """Correct only an observed, unambiguous telephone-ASR split-word error."""
+    cleaned = " ".join(str(text or "").split())
+    if question_index == 0:
+        cleaned = re.sub(r"\b(?:first|this) semester husband\b", "This semester has been", cleaned, flags=re.I)
+        cleaned = re.sub(r"\bsemester husband\b", "semester has been", cleaned, flags=re.I)
+    return cleaned
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  IN-MEMORY STATE
 # ═══════════════════════════════════════════════════════════════════
@@ -952,16 +988,7 @@ def voice_welcome():
         voice=TWILIO_VOICE,
         language=TWILIO_LANGUAGE,
     )
-    gather = Gather(
-        input="speech",
-        language=SPEECH_LANGUAGE,
-        speech_model=SPEECH_MODEL,
-        hints="Achal Sangami, semester, coursework, college, student support",
-        speech_timeout="auto",
-        timeout=10,
-        action=f"{WEBHOOK_BASE_URL}/voice/respond?q=0&sid={call_sid}",
-        method="POST",
-    )
+    gather = _speech_gather(0, call_sid)
     resp.append(gather)
 
     # Fallback if no speech detected
@@ -1032,16 +1059,7 @@ def voice_name():
     resp.pause(length=1)
 
     # Now listen for the answer
-    gather = Gather(
-        input="speech",
-        language=SPEECH_LANGUAGE,
-        speech_model=SPEECH_MODEL,
-        hints="Achal Sangami, semester, coursework, college, student support",
-        speech_timeout="auto",
-        timeout=10,
-        action=f"{WEBHOOK_BASE_URL}/voice/respond?q=0&sid={call_sid}",
-        method="POST",
-    )
+    gather = _speech_gather(0, call_sid)
     resp.append(gather)
 
     # Fallback if no speech detected
@@ -1073,14 +1091,37 @@ def voice_respond():
 
     # Store the answer
     if not no_speech:
-        speech_text = request.form.get("SpeechResult", "")
+        raw_speech_text = request.form.get("SpeechResult", "")
+        speech_text = _clean_speech_result(raw_speech_text, q_index)
         speech_conf = float(request.form.get("Confidence", "0.0"))
     else:
+        raw_speech_text = ""
         speech_text = "[no response]"
         speech_conf = 0.0
 
+    # Do not put a clearly unreliable telephone-ASR guess in the permanent
+    # transcript. Ask for the same answer again instead of advancing and
+    # presenting a mangled phrase as the student's response.
+    if not no_speech and (not speech_text or speech_conf < 0.45):
+        session["current_question"] = QUESTIONS[q_index]
+        _append_call_event(session, "Asha AI", "ai", "I did not catch that clearly. Please say it once more.")
+        retry = VoiceResponse()
+        retry.say(
+            "I did not catch that clearly. Please say it once more.",
+            voice=TWILIO_VOICE,
+            language=TWILIO_LANGUAGE,
+        )
+        retry.append(_speech_gather(q_index, call_sid))
+        retry.redirect(
+            f"{WEBHOOK_BASE_URL}/voice/respond?q={q_index}&sid={call_sid}&nospeech=1",
+            method="POST",
+        )
+        _persist_live_state()
+        return str(retry), 200, {"Content-Type": "text/xml"}
+
     session["answers"][Q_KEYS[q_index]] = {
         "text": speech_text,
+        "raw_speech_text": raw_speech_text,
         "twilio_confidence": speech_conf,
         "question": QUESTIONS[q_index],
     }
@@ -1141,16 +1182,7 @@ def voice_respond():
         resp.pause(length=1)
 
         # Now listen for the answer
-        gather = Gather(
-            input="speech",
-            language=SPEECH_LANGUAGE,
-            speech_model=SPEECH_MODEL,
-            hints="Achal Sangami, semester, coursework, college, student support",
-            speech_timeout="auto",
-            timeout=10,
-            action=f"{WEBHOOK_BASE_URL}/voice/respond?q={next_q}&sid={call_sid}",
-            method="POST",
-        )
+        gather = _speech_gather(next_q, call_sid)
         resp.append(gather)
 
         # Fallback
