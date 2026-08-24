@@ -22,10 +22,27 @@ LIVE_UI_SCRIPT = r'''
   }).join('');
   let liveSessions = {};
 
+  function ensureLiveRows(session) {
+    const studentId = String(session.student_id || '');
+    if (!studentId) return;
+    const selector = `[data-student-id="${CSS.escape(studentId)}"]`;
+    ['full-transcript-panel', 'transcript-panel', 'admin-transcript-panel'].forEach(panelId => {
+      const panel = document.getElementById(panelId);
+      if (!panel || panel.querySelector(selector)) return;
+      const row = document.createElement('details');
+      row.className = 'operation-row dataset-conversation high manual-call';
+      row.dataset.studentId = studentId;
+      row.open = true;
+      row.innerHTML = `<summary><strong>${escapeHtml(session.student_name || 'Achal Sangami')}</strong><span class="dataset-live">ACTIVE</span><span class="dataset-presence high"></span><em>HIGH RISK</em></summary><div class="dataset-thread call"></div>`;
+      panel.prepend(row);
+    });
+  }
+
   function renderLiveTranscripts() {
     Object.values(liveSessions).forEach(session => {
       const events = session.transcript_events || [];
       if (!events.length || !session.student_id) return;
+      ensureLiveRows(session);
       const selector = `[data-student-id="${CSS.escape(String(session.student_id))}"]`;
       document.querySelectorAll(selector).forEach(row => {
         const thread = row.querySelector('.dataset-thread.call');
@@ -154,14 +171,29 @@ def install(app, namespace):
             app.view_functions[rule.endpoint] = voice_server.whatsapp_demo
 
     def dataset_experience():
-        """Expose real call sessions only; never manufacture active calls."""
+        """Combine real live calls with clearly labelled static demo history."""
         payload = namespace["_dataset_experience_payload"]()
         if payload.get("dataset_loaded"):
-            payload["conversations"] = namespace["_merge_real_operations"]([])
+            real_calls = namespace["_merge_real_operations"]([])
+            real_ids = {str(call.get("student_id")) for call in real_calls}
+            dummy_calls = []
+            for index, student in enumerate(namespace["_dataset_records"](limit=7)):
+                if str(student.get("student_id")) in real_ids:
+                    continue
+                dummy = namespace["_experience_conversation"](student, index)
+                dummy["student_id"] = f"DEMO-{student.get('student_id', index)}"
+                dummy["student_name"] = f"{student.get('student_name', 'Student')} (Demo)"
+                dummy["status"] = "completed"
+                dummy["summary"] = "Saved demonstration transcript — not an active phone call."
+                dummy_calls.append(dummy)
+                if len(dummy_calls) == 7:
+                    break
+            payload["conversations"] = real_calls + dummy_calls
         return jsonify(payload)
 
     # The old endpoint generated eight active conversations from every upload.
-    # That placeholder list was the source of the initial transcript flicker.
+    # These restored samples are completed history, so they cannot replace or
+    # interfere with Achal's real, webhook-backed call.
     for rule in app.url_map.iter_rules():
         if rule.rule == "/api/dataset/experience":
             app.view_functions[rule.endpoint] = dataset_experience

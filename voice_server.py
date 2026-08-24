@@ -29,6 +29,7 @@ import time
 import threading
 import urllib.parse
 from datetime import datetime
+from pathlib import Path
 from flask import Flask, request, jsonify, render_template_string
 
 # Flask webhook handlers must never fail merely because a Windows terminal
@@ -271,6 +272,61 @@ sessions = {}
 completed_calls = []
 analyzed_results = []
 wa_sessions = {}
+
+# Twilio webhooks and the two dashboard roles can arrive on different HTTP
+# requests. Persisting the active session prevents a restart/reload from
+# turning a valid in-progress call into the generic "technical issue" message.
+_LIVE_STATE_FILE = Path(os.getenv(
+    "DROPOUT_SIGNAL_LIVE_STATE_FILE",
+    "/tmp/dropout_signal_live_state.json" if os.getenv("VERCEL") else str(
+        Path(__file__).resolve().parent / "runtime_data" / "live_call_state.json"
+    ),
+))
+_LIVE_STATE_LOCK = threading.RLock()
+
+
+def _persist_live_state():
+    with _LIVE_STATE_LOCK:
+        try:
+            _LIVE_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "sessions": sessions,
+                "completed_call_sids": [call.get("call_sid") for call in completed_calls],
+            }
+            temporary = _LIVE_STATE_FILE.with_suffix(".tmp")
+            temporary.write_text(json.dumps(payload), encoding="utf-8")
+            temporary.replace(_LIVE_STATE_FILE)
+        except Exception as exc:
+            app.logger.warning("Unable to persist live call state: %s", exc)
+
+
+def _restore_live_state():
+    with _LIVE_STATE_LOCK:
+        if not _LIVE_STATE_FILE.exists():
+            return
+        try:
+            payload = json.loads(_LIVE_STATE_FILE.read_text(encoding="utf-8"))
+            restored = payload.get("sessions", {})
+            if isinstance(restored, dict):
+                sessions.update(restored)
+            completed_sids = set(payload.get("completed_call_sids", []))
+            completed_calls[:] = [
+                call for call in sessions.values()
+                if call.get("call_sid") in completed_sids
+            ]
+        except Exception as exc:
+            app.logger.warning("Unable to restore live call state: %s", exc)
+
+
+def _get_live_session(call_sid):
+    session = sessions.get(call_sid)
+    if session is None:
+        _restore_live_state()
+        session = sessions.get(call_sid)
+    return session
+
+
+_restore_live_state()
 
 #  TWILIO CLIENT
 # ═══════════════════════════════════════════════════════════════════
@@ -876,6 +932,7 @@ def voice_welcome():
         "transcript_events": [],
     }
     _append_call_event(sessions[call_sid], "Asha AI", "ai", QUESTIONS[0])
+    _persist_live_state()
 
     print(f"🎙️  Call answered: {student_name} (#{student_id})")
 
@@ -898,6 +955,8 @@ def voice_welcome():
     gather = Gather(
         input="speech",
         language=SPEECH_LANGUAGE,
+        speech_model=SPEECH_MODEL,
+        hints="Achal Sangami, semester, coursework, college, student support",
         speech_timeout="auto",
         timeout=10,
         action=f"{WEBHOOK_BASE_URL}/voice/respond?q=0&sid={call_sid}",
@@ -923,7 +982,7 @@ def voice_name():
     call_sid = request.args.get("sid", request.form.get("CallSid", ""))
     no_speech = request.args.get("nospeech", "0") == "1"
 
-    session = sessions.get(call_sid)
+    session = _get_live_session(call_sid)
     if not session:
         resp = VoiceResponse()
         resp.say("Sorry, there was a technical issue. Goodbye.", voice=TWILIO_VOICE)
@@ -941,6 +1000,7 @@ def voice_name():
                 break
         spoken_name = spoken_name.strip(".!?, ")
         session["spoken_name"] = spoken_name
+        _persist_live_state()
         print(f"   Name: \"{spoken_name}\"")
 
         resp.say(
@@ -975,6 +1035,8 @@ def voice_name():
     gather = Gather(
         input="speech",
         language=SPEECH_LANGUAGE,
+        speech_model=SPEECH_MODEL,
+        hints="Achal Sangami, semester, coursework, college, student support",
         speech_timeout="auto",
         timeout=10,
         action=f"{WEBHOOK_BASE_URL}/voice/respond?q=0&sid={call_sid}",
@@ -988,6 +1050,7 @@ def voice_name():
         method="POST",
     )
 
+    _persist_live_state()
     return str(resp), 200, {"Content-Type": "text/xml"}
 
 
@@ -1001,7 +1064,7 @@ def voice_respond():
     q_index = int(request.args.get("q", "0"))
     no_speech = request.args.get("nospeech", "0") == "1"
 
-    session = sessions.get(call_sid)
+    session = _get_live_session(call_sid)
     if not session:
         resp = VoiceResponse()
         resp.say("Sorry, there was a technical issue. Goodbye.", voice=TWILIO_VOICE)
@@ -1081,6 +1144,8 @@ def voice_respond():
         gather = Gather(
             input="speech",
             language=SPEECH_LANGUAGE,
+            speech_model=SPEECH_MODEL,
+            hints="Achal Sangami, semester, coursework, college, student support",
             speech_timeout="auto",
             timeout=10,
             action=f"{WEBHOOK_BASE_URL}/voice/respond?q={next_q}&sid={call_sid}",
@@ -1133,11 +1198,13 @@ def voice_respond():
         session["completed_at"] = datetime.now().isoformat()
         session["status"] = "completed"
         completed_calls.append(session)
+        _persist_live_state()
         print(f"✅ Call complete: {session['student_name']} (#{session['student_id']}) — {len(session['answers'])} answers")
 
         # Auto-analyze + auto-WhatsApp in background (non-blocking)
         threading.Thread(target=_auto_analyze_and_outreach, args=(session,), daemon=True).start()
 
+    _persist_live_state()
     return str(resp), 200, {"Content-Type": "text/xml"}
 
 
@@ -1249,7 +1316,7 @@ def voice_status():
     # A terminal callback ends the interaction.  Clear the next prompt so a
     # question can never be spoken after the student has ended the call.
     if status in ("completed", "failed", "no-answer", "busy", "canceled"):
-        session = sessions.get(call_sid)
+        session = _get_live_session(call_sid)
         if session:
             # Twilio reports a manually ended call as "completed" too.  Only
             # classify it as an analysable completion after every structured
@@ -1264,6 +1331,7 @@ def voice_status():
             session.pop("current_question", None)
             if session not in completed_calls:
                 completed_calls.append(session)
+            _persist_live_state()
 
     return "", 204
 
