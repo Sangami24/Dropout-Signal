@@ -612,6 +612,8 @@ FINAL_UI_SCRIPT = r'''
   let operationalSignature = '';
   let fairnessRequest = 0;
   let latestCall = null;
+  const openedConversations = new Set();
+  const sampleCursors = new Map();
 
   const messageMarkup = (message, studentName) => {
     const student = message.side === 'student' || message.role === 'user';
@@ -620,14 +622,31 @@ FINAL_UI_SCRIPT = r'''
     return `<article class="dataset-message ${student ? 'student' : 'asha'}"><span>${escapeHtml(speaker)}</span><p>${escapeHtml(text)}</p></article>`;
   };
 
+  function completedSummary(item) {
+    return item.summary || `${item.student_name || 'The student'} completed the ${channelLabel(item)} check-in. Review the transcript and follow the recommended support action.`;
+  }
+
+  function channelLabel(item) { return item.whatsapp?.length && !item.call?.length ? 'WhatsApp' : 'phone'; }
+
+  function progressiveMessages(item, channel) {
+    const messages = channel === 'call' ? item.call : item.whatsapp;
+    if (!item.is_sample || String(item.status).toLowerCase() === 'completed') return messages;
+    const key = `${item.student_id}:${channel}`;
+    const next = Math.min(messages.length, (sampleCursors.get(key) || 1) + 1);
+    sampleCursors.set(key, next);
+    return messages.slice(0, next);
+  }
+
   function panelMarkup(items, channel) {
     if (!items.length) return `<div class="dataset-empty-live">No ${channel === 'call' ? 'call transcripts' : 'WhatsApp conversations'} yet. New activity will appear here automatically.</div>`;
-    return items.map((item, index) => {
-      const messages = channel === 'call' ? item.call : item.whatsapp;
+    return items.map(item => {
+      const messages = progressiveMessages(item, channel);
       if (!messages?.length) return '';
       const active = !['completed', 'failed', 'canceled'].includes(String(item.status || '').toLowerCase());
       const tone = String(item.tier || 'MEDIUM').toLowerCase() === 'high' ? 'high' : 'medium';
-      return `<details class="operation-row dataset-conversation ${tone}" ${active || index === 0 ? 'open' : ''}><summary><strong>${escapeHtml(item.student_name || 'Student')}</strong><span class="${active ? 'dataset-live' : 'dataset-completed'}">${active ? 'ACTIVE' : 'COMPLETED'}</span>${active ? `<span class="dataset-presence ${tone}"></span>` : ''}<em>${escapeHtml(item.tier || 'MEDIUM')} RISK</em></summary><div class="dataset-thread ${channel}">${messages.map(m => messageMarkup(m, item.student_name || 'Student')).join('')}</div></details>`;
+      const key = `${item.student_id}:${channel}`;
+      const summary = active ? '' : `<footer class="dataset-contact-summary"><b>AI Summary</b><p>${escapeHtml(completedSummary(item))}</p></footer>`;
+      return `<details class="operation-row dataset-conversation ${tone}" data-conversation-key="${escapeHtml(key)}" ${openedConversations.has(key) ? 'open' : ''}><summary><strong>${escapeHtml(item.student_name || 'Student')}</strong><span class="${active ? 'dataset-live' : 'dataset-completed'}">${active ? 'ACTIVE' : 'COMPLETED'}</span>${active ? `<span class="dataset-presence ${tone}"></span>` : ''}<em>${escapeHtml(item.tier || 'MEDIUM')} RISK</em></summary><div class="dataset-thread ${channel}">${messages.map(m => messageMarkup(m, item.student_name || 'Student')).join('')}${summary}</div></details>`;
     }).join('') || `<div class="dataset-empty-live">No ${channel === 'call' ? 'call transcripts' : 'WhatsApp conversations'} yet. New activity will appear here automatically.</div>`;
   }
 
@@ -668,6 +687,18 @@ FINAL_UI_SCRIPT = r'''
     const callHtml = panelMarkup(items, 'call'), waHtml = panelMarkup(items, 'whatsapp');
     ['full-transcript-panel', 'transcript-panel', 'admin-transcript-panel'].forEach(id => { const panel = document.getElementById(id); if (panel) panel.innerHTML = callHtml; });
     ['wa-convos-panel', 'admin-wa-panel'].forEach(id => { const panel = document.getElementById(id); if (panel) panel.innerHTML = waHtml; });
+    document.querySelectorAll('details[data-conversation-key]').forEach(row => {
+      const key = row.dataset.conversationKey;
+      row.addEventListener('toggle', () => {
+        if (!row.open) { openedConversations.delete(key); return; }
+        openedConversations.add(key);
+        if (row.querySelector('.dataset-live')) { const thread = row.querySelector('.dataset-thread'); if (thread) requestAnimationFrame(() => { thread.scrollTop = thread.scrollHeight; }); }
+      });
+      if (row.open && row.querySelector('.dataset-live')) {
+        const thread = row.querySelector('.dataset-thread');
+        if (thread) requestAnimationFrame(() => { thread.scrollTop = thread.scrollHeight; });
+      }
+    });
     const active = items.filter(item => !['completed', 'failed', 'canceled'].includes(String(item.status).toLowerCase())).length;
     [['ts-count', `${active} active`], ['admin-ts-count', `${active} active`], ['wa-count-badge', `${items.filter(i => i.whatsapp.length).length} conversations`], ['admin-wa-badge', `${items.filter(i => i.whatsapp.length).length} conversations`]].forEach(([id, value]) => { const node = document.getElementById(id); if (node) node.textContent = value; });
   }
@@ -1134,9 +1165,6 @@ def install(app, namespace):
                 sample["is_sample"] = True
                 sample["status"] = "active" if index < 4 else "completed"
                 sample["student_name"] = student.get("student_name") or "Student"
-                if sample["status"] == "active":
-                    sample["call"] = list(sample.get("call", []))[:3]
-                    sample["whatsapp"] = list(sample.get("whatsapp", []))[:3]
                 real_calls.append(sample)
         active_states = {"active", "ringing", "in-progress", "in_progress"}
         payload["conversations"] = sorted(
