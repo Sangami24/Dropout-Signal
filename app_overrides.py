@@ -252,6 +252,121 @@ LIVE_UI_SCRIPT = r'''
     input.value = '';
   }, true);
 
+  // Server-authoritative upload UI. These declarations intentionally replace
+  // the earlier compatibility versions in this same scope.
+  function showBackgroundUpload(job) {
+    document.getElementById('dataset-training-overlay')?.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'dataset-training-overlay';
+    const progress = Number(job.progress || 0);
+    overlay.innerHTML = `<section class="dataset-training-card" role="status" aria-live="polite"><div class="dataset-progress-ring"><span>${progress.toFixed(1)}%</span></div><div><b>Uploading Dataset</b><p>${escapeHtml(job.filename || 'Your dataset')} is processing on the server. You can switch dashboards or browser tabs.</p><small>Uploading file...</small></div><button type="button" class="btn dataset-cancel-upload">Cancel Upload</button></section>`;
+    overlay.querySelector('.dataset-cancel-upload').addEventListener('click', () => window.cancelDatasetUpload());
+    document.body.appendChild(overlay);
+    return overlay;
+  }
+
+  function updateBackgroundUpload(job) {
+    const overlay = document.getElementById('dataset-training-overlay') || showBackgroundUpload(job);
+    const ring = overlay.querySelector('.dataset-progress-ring');
+    const percentage = ring?.querySelector('span');
+    const stage = overlay.querySelector('small');
+    const title = overlay.querySelector('b');
+    const detail = overlay.querySelector('p');
+    const progress = Math.max(0, Math.min(100, Number(job.progress || 0)));
+    if (ring) ring.style.setProperty('--dataset-progress', `${progress * 3.6}deg`);
+    if (percentage) percentage.textContent = `${progress.toFixed(1)}%`;
+    if (stage) stage.textContent = job.message || 'Processing on the server...';
+    if (title && job.state === 'uploading') title.textContent = 'Uploading Dataset';
+    if (title && ['queued', 'processing'].includes(job.state)) title.textContent = 'Finalizing Dataset';
+    if (title && job.state === 'complete') title.textContent = 'Dataset processing complete';
+    if (detail && ['queued', 'processing'].includes(job.state)) detail.textContent = 'Training, scoring, and saving the active cohort. Safe to switch dashboards or browser tabs.';
+    if (detail && job.state === 'complete') detail.textContent = 'The scored cohort is active. Refreshing this dashboard...';
+  }
+
+  window.cancelDatasetUpload = async () => {
+    const raw = localStorage.getItem(BACKGROUND_UPLOAD_KEY);
+    if (!raw) { document.getElementById('dataset-training-overlay')?.remove(); return; }
+    let job;
+    try { job = JSON.parse(raw); } catch (_) { localStorage.removeItem(BACKGROUND_UPLOAD_KEY); return; }
+    const button = document.querySelector('#dataset-training-overlay .dataset-cancel-upload');
+    if (button) { button.disabled = true; button.textContent = 'Canceling...'; }
+    try {
+      await fetch('/api/dataset/cancel', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({upload_id: job.id}), keepalive: true,
+      });
+    } finally {
+      if (backgroundUploadPoller) clearInterval(backgroundUploadPoller);
+      backgroundUploadPoller = null;
+      localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
+      document.getElementById('dataset-training-overlay')?.remove();
+      toast('Dataset upload canceled.', 'info');
+    }
+  };
+
+  async function resumeBackgroundUpload() {
+    const raw = localStorage.getItem(BACKGROUND_UPLOAD_KEY);
+    if (!raw) return;
+    let job;
+    try { job = JSON.parse(raw); } catch (_) { localStorage.removeItem(BACKGROUND_UPLOAD_KEY); return; }
+    updateBackgroundUpload(job);
+    if (backgroundUploadPoller) clearInterval(backgroundUploadPoller);
+    const poll = async () => {
+      try {
+        const response = await fetch(`/api/dataset/upload-status?job_id=${encodeURIComponent(job.id)}`, {cache: 'no-store'});
+        if (!response.ok) {
+          if (response.status === 404) {
+            clearInterval(backgroundUploadPoller); backgroundUploadPoller = null;
+            localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
+            document.getElementById('dataset-training-overlay')?.remove();
+            toast('The upload job is no longer available. Please upload the CSV again.', 'err');
+          }
+          return;
+        }
+        job = {...job, ...await response.json()};
+        localStorage.setItem(BACKGROUND_UPLOAD_KEY, JSON.stringify(job));
+        updateBackgroundUpload(job);
+        if (job.state === 'complete') {
+          clearInterval(backgroundUploadPoller); backgroundUploadPoller = null;
+          localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
+          setTimeout(() => window.location.reload(), 700);
+        } else if (['failed', 'canceled'].includes(job.state)) {
+          clearInterval(backgroundUploadPoller); backgroundUploadPoller = null;
+          localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
+          document.getElementById('dataset-training-overlay')?.remove();
+          toast(job.state === 'canceled' ? 'Dataset upload canceled.' : (job.error || 'Dataset upload failed.'), job.state === 'canceled' ? 'info' : 'err');
+        }
+      } catch (_) {}
+    };
+    await poll();
+    if (!backgroundUploadPoller && !['complete', 'failed', 'canceled'].includes(job.state)) backgroundUploadPoller = setInterval(poll, 800);
+  }
+
+  async function beginBackgroundUpload(file) {
+    if (!file) return;
+    const form = new FormData(); form.append('file', file);
+    const job = {id: globalThis.crypto?.randomUUID?.() || `upload-${Date.now()}`, filename: file.name, state: 'uploading', progress: 0};
+    localStorage.setItem(BACKGROUND_UPLOAD_KEY, JSON.stringify(job));
+    updateBackgroundUpload(job);
+    try {
+      const response = await fetch('/api/dataset/upload', {method: 'POST', body: form, headers: {'X-Dataset-Upload-Id': job.id}});
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Dataset upload failed');
+      localStorage.setItem(BACKGROUND_UPLOAD_KEY, JSON.stringify({...job, ...payload}));
+      await resumeBackgroundUpload();
+    } catch (error) {
+      localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
+      document.getElementById('dataset-training-overlay')?.remove();
+      toast(error.message || 'Dataset upload failed.', 'err');
+    }
+  }
+
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) resumeBackgroundUpload(); });
+  window.addEventListener('focus', resumeBackgroundUpload);
+  window.addEventListener('storage', event => {
+    if (event.key === BACKGROUND_UPLOAD_KEY && event.newValue) resumeBackgroundUpload();
+  });
+
   document.addEventListener('DOMContentLoaded', () => {
     refreshCallGate();
     refreshLiveTranscripts();
@@ -275,6 +390,27 @@ LIVE_UI_SCRIPT = r'''
 
 _BACKGROUND_UPLOADS = {}
 _BACKGROUND_UPLOAD_LOCK = threading.RLock()
+
+
+def _background_upload_snapshot(job):
+    """Return a job with monotonic progress that reaches 100 only on success."""
+    snapshot = dict(job)
+    state = snapshot.get("state")
+    if state == "complete":
+        snapshot["progress"] = 100.0
+    elif state in {"failed", "canceled"}:
+        snapshot["progress"] = float(snapshot.get("progress") or 0.0)
+    elif state == "queued":
+        snapshot["progress"] = max(2.0, float(snapshot.get("progress") or 0.0))
+    else:
+        started = float(snapshot.get("processing_at") or snapshot.get("created_at") or time.time())
+        elapsed = max(0.0, time.time() - started)
+        # Asymptotically approach 99.4 while training. The display therefore
+        # keeps advancing after a tab switch but cannot claim completion before
+        # the original upload route confirms that the dataset was activated.
+        estimated = 5.0 + 94.4 * (elapsed / (elapsed + 45.0))
+        snapshot["progress"] = min(99.4, max(float(snapshot.get("progress") or 0.0), estimated))
+    return snapshot
 
 
 def _dataset_ready() -> bool:
@@ -315,6 +451,8 @@ def install(app, namespace):
     upload_rule = next((rule for rule in app.url_map.iter_rules() if rule.rule == "/api/dataset/upload"), None)
     if upload_rule:
         original_upload = app.view_functions[upload_rule.endpoint]
+        cancel_rule = next((rule for rule in app.url_map.iter_rules() if rule.rule == "/api/dataset/cancel"), None)
+        original_cancel = app.view_functions[cancel_rule.endpoint] if cancel_rule else None
 
         def background_dataset_upload():
             upload = request.files.get("file")
@@ -338,6 +476,8 @@ def install(app, namespace):
                 with _BACKGROUND_UPLOAD_LOCK:
                     _BACKGROUND_UPLOADS[job_id].update({
                         "state": "processing",
+                        "processing_at": time.time(),
+                        "progress": 5.0,
                         "message": "Training and scoring in the background…",
                     })
                 try:
@@ -351,16 +491,24 @@ def install(app, namespace):
                     payload = response.get_json(silent=True) or {}
                     if response.status_code >= 400:
                         raise RuntimeError(payload.get("error") or "Dataset analysis failed.")
+                    status = payload.get("status") or {}
+                    if not payload.get("ok") or not status.get("dataset_loaded"):
+                        raise RuntimeError("Dataset processing finished without activating the uploaded cohort.")
                     with _BACKGROUND_UPLOAD_LOCK:
+                        if _BACKGROUND_UPLOADS[job_id].get("state") == "canceled":
+                            return
                         _BACKGROUND_UPLOADS[job_id].update({
                             "state": "complete",
                             "message": "Dataset trained, scored, and activated.",
-                            "status": payload.get("status"),
+                            "status": status,
+                            "progress": 100.0,
                             "completed_at": time.time(),
                         })
                 except Exception as exc:
                     app.logger.exception("Background dataset upload failed")
                     with _BACKGROUND_UPLOAD_LOCK:
+                        if _BACKGROUND_UPLOADS[job_id].get("state") == "canceled":
+                            return
                         _BACKGROUND_UPLOADS[job_id].update({
                             "state": "failed",
                             "error": str(exc),
@@ -380,10 +528,26 @@ def install(app, namespace):
         def background_dataset_upload_status():
             job_id = request.args.get("job_id", "")
             with _BACKGROUND_UPLOAD_LOCK:
-                job = dict(_BACKGROUND_UPLOADS.get(job_id, {}))
+                job = _background_upload_snapshot(_BACKGROUND_UPLOADS[job_id]) if job_id in _BACKGROUND_UPLOADS else {}
             if not job:
                 return jsonify({"error": "Upload job not found."}), 404
             return jsonify(job)
+
+        def background_dataset_cancel():
+            payload = request.get_json(silent=True) or {}
+            job_id = str(payload.get("upload_id") or "").strip()
+            response = app.make_response(original_cancel()) if original_cancel else jsonify({"ok": True, "canceled": True})
+            with _BACKGROUND_UPLOAD_LOCK:
+                job = _BACKGROUND_UPLOADS.get(job_id)
+                if job and job.get("state") != "complete":
+                    snapshot = _background_upload_snapshot(job)
+                    job.update({
+                        "state": "canceled",
+                        "message": "Dataset upload canceled.",
+                        "progress": snapshot.get("progress", 0.0),
+                        "completed_at": time.time(),
+                    })
+            return response
 
         app.view_functions[upload_rule.endpoint] = background_dataset_upload
         if not any(rule.rule == "/api/dataset/upload-status" for rule in app.url_map.iter_rules()):
@@ -393,6 +557,8 @@ def install(app, namespace):
                 background_dataset_upload_status,
                 methods=["GET"],
             )
+        if cancel_rule and original_cancel:
+            app.view_functions[cancel_rule.endpoint] = background_dataset_cancel
 
     def manual_call():
         if not _dataset_ready():
@@ -439,8 +605,9 @@ def install(app, namespace):
         if payload.get("dataset_loaded"):
             real_calls = namespace["_merge_real_operations"]([])
             real_ids = {str(call.get("student_id")) for call in real_calls}
-            dummy_calls = []
-            for index, student in enumerate(namespace["_dataset_records"](limit=7)):
+            active_dummies = []
+            completed_dummies = []
+            for index, student in enumerate(namespace["_dataset_records"](limit=14)):
                 if str(student.get("student_id")) in real_ids:
                     continue
                 dummy = namespace["_experience_conversation"](student, index)
@@ -457,10 +624,20 @@ def install(app, namespace):
                 dummy["status"] = "active"
                 dummy["summary"] = "Saved demonstration transcript — not an active phone call."
                 dummy["summary"] = "Live synchronized demonstration stream."
-                dummy_calls.append(dummy)
-                if len(dummy_calls) == 7:
+                if len(active_dummies) < 7:
+                    active_dummies.append(dummy)
+                else:
+                    dummy["call"] = call_turns
+                    dummy["whatsapp"] = wa_turns
+                    dummy["status"] = "completed"
+                    dummy["summary"] = "Completed demonstration transcript."
+                    completed_dummies.append(dummy)
+                if len(active_dummies) == 7 and len(completed_dummies) == 7:
                     break
-            payload["conversations"] = real_calls + dummy_calls
+            active_states = {"active", "ringing", "in-progress", "in_progress"}
+            real_active = [call for call in real_calls if str(call.get("status", "")).lower() in active_states]
+            real_completed = [call for call in real_calls if call not in real_active]
+            payload["conversations"] = real_active + active_dummies + real_completed + completed_dummies
         return jsonify(payload)
 
     # The old endpoint generated eight active conversations from every upload.
