@@ -1,0 +1,14 @@
+        "call_sid": call_sid,
+        "answers": {},
+        "current_question": "Before we begin, could you please tell me your name?",
+        "started_at": datetime.now().isoformat(),
+    }
+
+---
+
+    resp.say(
+        "Before we begin, could you please tell me your name?",
+        voice=TWILIO_VOICE,
+        language=TWILIO_LANGUAGE,
+
+---

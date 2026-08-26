@@ -143,6 +143,27 @@ if demo_js_start != -1:
     toast('Call completed. Generating AI insights...', 'info');
     await new Promise(r => setTimeout(r, 1500));
     
+    // Final Summary popup FIRST
+    const summaryPop = document.createElement('div');
+    summaryPop.innerHTML = `
+      <div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:32px;z-index:10000;box-shadow:0 0 64px rgba(0,0,0,0.8);text-align:center;width:400px">
+        <h2 style="font-size:24px;margin-bottom:16px;color:var(--text)">Live Demo Ended</h2>
+        <div style="background:var(--surface2);border-radius:8px;padding:16px;text-align:left;margin-bottom:24px">
+            <h4 style="font-size:12px;color:var(--text3);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">AI Final Summary</h4>
+            <p style="font-size:14px;color:var(--text);line-height:1.5">Demo Student is experiencing high financial stress due to a reduced scholarship, leading to low confidence in degree completion. Recommended action: Fast-track financial aid advising.</p>
+        </div>
+        <p style="font-size:13px;color:var(--text2);margin-bottom:24px">Switching to WhatsApp follow-up in 5 seconds...</p>
+      </div>
+      <div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);z-index:9999" id="summary-backdrop"></div>
+    `;
+    document.body.appendChild(summaryPop);
+    
+    // Wait exactly 5 seconds
+    await new Promise(r => setTimeout(r, 5000));
+    
+    // Remove the popup
+    summaryPop.remove();
+
     toast('Following up via WhatsApp...', 'info');
     document.querySelector('[data-page="whatsapp"]').click();
     
@@ -182,26 +203,6 @@ if demo_js_start != -1:
             await new Promise(r => setTimeout(r, 20)); // FAST FORWARD
         }
     }
-    
-    await new Promise(r => setTimeout(r, 1000));
-    
-    // Final Summary popup
-    const summaryPop = document.createElement('div');
-    summaryPop.innerHTML = `
-      <div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:32px;z-index:10000;box-shadow:0 0 64px rgba(0,0,0,0.8);text-align:center;width:400px">
-        <h2 style="font-size:24px;margin-bottom:16px;color:var(--text)">Live Demo Ended</h2>
-        <div style="background:var(--surface2);border-radius:8px;padding:16px;text-align:left;margin-bottom:24px">
-            <h4 style="font-size:12px;color:var(--text3);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">AI Final Summary</h4>
-            <p style="font-size:14px;color:var(--text);line-height:1.5">Demo Student is experiencing high financial stress due to a reduced scholarship, leading to low confidence in degree completion. Recommended action: Fast-track financial aid advising.</p>
-        </div>
-        <p style="font-size:13px;color:var(--text2);margin-bottom:24px">Returning to homepage...</p>
-      </div>
-      <div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);z-index:9999"></div>
-    `;
-    document.body.appendChild(summaryPop);
-    
-    await new Promise(r => setTimeout(r, 4000));
-    window.location.href = '/';
 }"""
     content = content.replace(old_demo_js, new_demo_js)
 else:

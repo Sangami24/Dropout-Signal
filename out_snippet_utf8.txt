@@ -1,0 +1,15 @@
+        "student_name": student_name,
+        "ml_risk_score": float(ml_risk),
+        "phone": request.form.get("To", ""),
+        "call_sid": call_sid,
+        "answers": {},
+        "current_question": "Before we begin, could you please tell me your name?",
+        "started_at": datetime.now().isoformat(),
+    }
+
+    print(f"🎙️  Call answered: {student_name} (#{student_id})")
+
+    resp = VoiceResponse()
+
+    # Welcome — positioned as routine wellness check-in
+    resp.say(
