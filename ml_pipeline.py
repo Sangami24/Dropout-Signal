@@ -701,7 +701,9 @@ def train_and_score(source_path: str | Path, activate: bool = True, source_label
     }
     total_weight = sum(raw_weights.values())
     ensemble_weights = {name: round(value / total_weight, 6) for name, value in raw_weights.items()}
-    ensemble_name = "4-Model Validation-Weighted Ensemble"
+    # This is a four-model validation result shown consistently throughout the
+    # product; the weighting remains implementation detail in the metadata.
+    ensemble_name = "4-Model Validation"
 
     all_scaled = pd.DataFrame(scaler.transform(x), columns=x.columns, index=x.index)
     all_logistic = logistic.predict_proba(all_scaled)[:, 1]

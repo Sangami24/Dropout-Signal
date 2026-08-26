@@ -2774,6 +2774,10 @@ def whatsapp_demo():
 @app.route("/whatsapp/conversations", methods=["GET"])
 def whatsapp_conversations():
     """Return all WhatsApp conversation sessions."""
+    # Different dashboard workers share this file-backed state. Reload before
+    # responding so the administrator sees a call/WhatsApp hand-off created
+    # through the counselor workspace without requiring a page refresh.
+    _restore_live_state()
     convos = []
     for phone, session in wa_sessions.items():
         spoken = session.get("spoken_name", "")
@@ -2799,6 +2803,9 @@ def whatsapp_conversations():
 @app.route("/api/transcripts", methods=["GET"])
 def api_transcripts():
     """Return all active voice call transcripts."""
+    # See whatsapp_conversations: restore the durable shared snapshot for
+    # every poll, not only when a Twilio webhook happens in this worker.
+    _restore_live_state()
     # `transcript_events` is an ordered source of truth for live rendering;
     # `answers` remains for analysis and older clients.
     return jsonify({"sessions": sessions, "updated_at": datetime.now().isoformat()})

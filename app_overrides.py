@@ -20,6 +20,12 @@ from ml_pipeline import active_metadata, active_records, restore_latest_run
 import voice_server
 
 
+def _visible_model_name(value):
+    """Keep historical runs and new runs on the same concise UI label."""
+    text = str(value or "").strip()
+    return "4-Model Validation" if "4-Model Validation" in text else (text or "4-Model Validation")
+
+
 LIVE_UI_SCRIPT = r'''
 <style id="dataset-runtime-ui">
   /* Runtime transcript controls must inherit the dark dashboard theme on
@@ -66,6 +72,11 @@ LIVE_UI_SCRIPT = r'''
   }
 
   function renderLiveTranscripts() {
+    // `FINAL_UI_SCRIPT` below is the sole transcript renderer.  Keeping this
+    // retired renderer passive prevents it from injecting a second Achal row
+    // or reopening a conversation after the user has selected another one.
+    return;
+    /*
     Object.values(liveSessions).forEach(session => {
       const events = session.transcript_events || [];
       if (!events.length || !session.student_id) return;
@@ -81,6 +92,7 @@ LIVE_UI_SCRIPT = r'''
         if (row.open) thread.scrollTop = thread.scrollHeight;
       });
     });
+    */
   }
 
   function applyCallGate(status) {
@@ -135,6 +147,10 @@ LIVE_UI_SCRIPT = r'''
   }
 
   function renderLiveWhatsApp() {
+    // See renderLiveTranscripts: do not let the legacy renderer create a
+    // parallel WhatsApp entry for the same shared student conversation.
+    return;
+    /*
     liveWhatsApp.forEach(conversation => {
       const messages = conversation.messages || [];
       if (!messages.length) return;
@@ -149,6 +165,7 @@ LIVE_UI_SCRIPT = r'''
         if (row.open) thread.scrollTop = thread.scrollHeight;
       });
     });
+    */
   }
 
   async function refreshLiveWhatsApp() {
@@ -627,7 +644,10 @@ FINAL_UI_SCRIPT = r'''
   let fairnessRequest = 0;
   let latestCall = null;
   let activeDatasetRunId = null;
-  const openedConversationByChannel = {call: null, whatsapp: null};
+  // One open conversation across both channels.  A call and WhatsApp thread
+  // represent the same student journey, so opening either must close every
+  // other thread in both workspaces.
+  let openedConversationKey = null;
   const visibleMessageCounts = new Map();
   let allowAchalAutofocus = true;
   const sampleCursors = new Map();
@@ -650,8 +670,12 @@ FINAL_UI_SCRIPT = r'''
     if (!item.is_sample || String(item.status).toLowerCase() === 'completed') return messages;
     const key = `${item.student_id}:${channel}`;
     const isAchal = String(item.student_name || '').trim().toLowerCase() === 'achal sangami';
-    const streamIsOpen = openedConversationByChannel[channel] === key || (isAchal && allowAchalAutofocus);
-    const current = sampleCursors.get(key) || 1;
+    const streamIsOpen = openedConversationKey === key || (isAchal && allowAchalAutofocus && !openedConversationKey);
+    // Begin sample conversations part-way through their history.  The whole
+    // thread remains scrollable, while later turns arrive every refresh.
+    const seed = [...key].reduce((total, char) => total + char.charCodeAt(0), 0);
+    const initial = Math.min(messages.length, Math.max(2, Math.floor(messages.length * 0.45) + (seed % 2)));
+    const current = sampleCursors.get(key) || initial;
     if (!streamIsOpen) return messages.slice(0, current);
     const next = Math.min(messages.length, current + 1);
     sampleCursors.set(key, next);
@@ -670,7 +694,7 @@ FINAL_UI_SCRIPT = r'''
       const isAchal = String(item.student_name || '').trim().toLowerCase() === 'achal sangami';
       const summaryText = channel === 'call' ? (item.call_summary || item.summary) : (item.whatsapp_summary || item.summary);
       const summary = active ? '' : `<footer class="dataset-contact-summary"><b>AI Summary</b><p>${escapeHtml(summaryText || completedSummary({...item, status: channelStatus}))}</p></footer>`;
-      const open = openedConversationByChannel[channel] === key || (isAchal && active && allowAchalAutofocus && !openedConversationByChannel[channel]);
+      const open = openedConversationKey === key || (isAchal && active && allowAchalAutofocus && !openedConversationKey);
       return `<details class="operation-row dataset-conversation ${tone}" data-conversation-key="${escapeHtml(key)}" data-channel="${channel}" data-message-count="${messages.length}" ${open ? 'open' : ''}><summary><strong>${escapeHtml(item.student_name || 'Student')}</strong><span class="${active ? 'dataset-live' : 'dataset-completed'}">${active ? 'ACTIVE' : 'COMPLETED'}</span>${active ? `<span class="dataset-presence ${tone}"></span>` : ''}<em>${escapeHtml(item.tier || 'MEDIUM')} RISK</em></summary><div class="dataset-thread ${channel}">${messages.map(m => messageMarkup(m, item.student_name || 'Student')).join('')}${summary}</div></details>`;
     }).join('') || `<div class="dataset-empty-live">No ${channel === 'call' ? 'call transcripts' : 'WhatsApp conversations'} yet. New activity will appear here automatically.</div>`;
   }
@@ -693,7 +717,8 @@ FINAL_UI_SCRIPT = r'''
       const name = conversation.student_name || conversation.profile_name || 'Student';
       const messages = conversation.messages || [];
       if (!messages.length) return;
-      let target = byStudent.get(String(conversation.student_id || '')) || [...byStudent.values()].find(item => String(item.student_name).toLowerCase() === String(name).toLowerCase());
+      const normalizedName = String(name).trim().toLowerCase().replace(/\s+/g, ' ');
+      let target = byStudent.get(String(conversation.student_id || '')) || [...byStudent.values()].find(item => String(item.student_name).trim().toLowerCase().replace(/\s+/g, ' ') === normalizedName);
       if (!target) {
         target = { student_id: conversation.student_id || `wa-${conversation.phone || name}`, student_name: name, tier: conversation.risk_level || 'MEDIUM', status: 'active', call_status: 'active', whatsapp_status: 'active', call: [], whatsapp: [] };
         byStudent.set(target.student_id, target);
@@ -720,8 +745,14 @@ FINAL_UI_SCRIPT = r'''
     // active thread expanded and following new turns, without expanding any
     // other student automatically.
     const achal = items.find(item => String(item.student_name || '').trim().toLowerCase() === 'achal sangami');
-    if (allowAchalAutofocus && achal && isActive(achal) && achal.call?.length && !openedConversationByChannel.call) openedConversationByChannel.call = `${achal.student_id}:call`;
-    if (allowAchalAutofocus && achal && String(achal.whatsapp_status || '').toLowerCase() === 'active' && achal.whatsapp?.length && !openedConversationByChannel.whatsapp) openedConversationByChannel.whatsapp = `${achal.student_id}:whatsapp`;
+    if (allowAchalAutofocus && achal && !openedConversationKey) {
+      // When a call completes, the active WhatsApp follow-up is the one
+      // operational thread to surface. Otherwise keep the live call focused.
+      if (String(achal.call_status || '').toLowerCase() === 'completed' && String(achal.whatsapp_status || '').toLowerCase() === 'active' && achal.whatsapp?.length) openedConversationKey = `${achal.student_id}:whatsapp`;
+      else if (isActive(achal) && achal.call?.length) openedConversationKey = `${achal.student_id}:call`;
+      else if (achal.whatsapp?.length) openedConversationKey = `${achal.student_id}:whatsapp`;
+    }
+    if (achal && String(achal.call_status || '').toLowerCase() === 'completed' && String(achal.whatsapp_status || '').toLowerCase() === 'active' && openedConversationKey === `${achal.student_id}:call`) openedConversationKey = `${achal.student_id}:whatsapp`;
     latestCall = items.find(item => item.call.length) || latestCall;
     const signature = JSON.stringify(items.map(item => [item.student_id, item.status, item.call.length, item.whatsapp.length, item.call.at(-1)?.text, item.whatsapp.at(-1)?.content]));
     operationalSignature = signature;
@@ -732,12 +763,15 @@ FINAL_UI_SCRIPT = r'''
       const key = row.dataset.conversationKey;
       const channel = row.dataset.channel || (key.endsWith(':whatsapp') ? 'whatsapp' : 'call');
       row.addEventListener('toggle', () => {
-        if (!row.open) { if (openedConversationByChannel[channel] === key) openedConversationByChannel[channel] = null; if (String(row.querySelector('summary strong')?.textContent || '').trim().toLowerCase() === 'achal sangami') allowAchalAutofocus = false; return; }
+        if (!row.open) { if (openedConversationKey === key) openedConversationKey = null; if (String(row.querySelector('summary strong')?.textContent || '').trim().toLowerCase() === 'achal sangami') allowAchalAutofocus = false; return; }
         if (String(row.querySelector('summary strong')?.textContent || '').trim().toLowerCase() !== 'achal sangami') allowAchalAutofocus = false;
-        openedConversationByChannel[channel] = key;
-        document.querySelectorAll(`details[data-channel="${channel}"]`).forEach(other => { if (other !== row) other.open = false; });
+        openedConversationKey = key;
+        document.querySelectorAll('details[data-conversation-key]').forEach(other => { if (other !== row) other.open = false; });
         const thread = row.querySelector('.dataset-thread');
-        if (thread) requestAnimationFrame(() => { thread.scrollTop = channel === 'whatsapp' ? 0 : thread.scrollHeight; });
+        if (thread) requestAnimationFrame(() => {
+          const isAchal = String(row.querySelector('summary strong')?.textContent || '').trim().toLowerCase() === 'achal sangami';
+          thread.scrollTop = isAchal && row.querySelector('.dataset-live') ? thread.scrollHeight : Math.max(0, (thread.scrollHeight - thread.clientHeight) * 0.5);
+        });
       });
       const count = Number(row.dataset.messageCount || 0), previousCount = visibleMessageCounts.get(key);
       visibleMessageCounts.set(key, count);
@@ -834,7 +868,16 @@ FINAL_UI_SCRIPT = r'''
     const overlay = document.getElementById('dataset-training-overlay');
     if (!overlay) return;
     const percent = Number((overlay.querySelector('.dataset-progress-ring span')?.textContent || '0').replace('%', ''));
-    const stage = percent < 18 ? ['Uploading Dataset', 'Sending the CSV securely to the server.', 'Uploading dataset...'] : percent < 35 ? ['Reading Dataset', 'Checking columns and preparing the uploaded records.', 'Reading dataset...'] : percent < 88 ? ['Analyzing Dataset', 'Training models, scoring students, and preparing evidence.', 'Analyzing dataset...'] : ['Finalizing Dataset', 'Saving the active cohort and synchronizing both dashboards.', 'Finalizing dataset...'];
+    const stage = percent < 8 ? ['Uploading Dataset', 'Transferring the selected CSV to the secure workspace.', 'Verifying file transfer…']
+      : percent < 18 ? ['Reading Dataset', 'Extracting rows and checking the uploaded column headers.', 'Extracting CSV rows…']
+      : percent < 30 ? ['Reading Dataset', 'Mapping raw values into the Bronze data layer.', 'Mapping values to Bronze…']
+      : percent < 43 ? ['Analyzing Dataset', 'Cleaning values and deriving Silver-layer features.', 'Deriving Silver features…']
+      : percent < 55 ? ['Analyzing Dataset', 'Training Logistic Regression on the validated cohort.', 'Training Logistic Regression…']
+      : percent < 66 ? ['Analyzing Dataset', 'Training XGBoost and measuring hold-out quality.', 'Training XGBoost…']
+      : percent < 76 ? ['Analyzing Dataset', 'Training Random Forest on the shared feature set.', 'Training Random Forest…']
+      : percent < 86 ? ['Analyzing Dataset', 'Training HistGradientBoosting and comparing validation metrics.', 'Training HistGradientBoosting…']
+      : percent < 94 ? ['Finalizing Dataset', 'Combining all four probabilities into the validation score.', 'Building 4-model validation score…']
+      : ['Finalizing Dataset', 'Writing Gold scores, fairness evidence, and shared dashboard state.', 'Publishing Gold-layer outputs…'];
     const [title, detail, small] = [overlay.querySelector('b'), overlay.querySelector('p'), overlay.querySelector('small')];
     if (title) title.textContent = stage[0]; if (detail) detail.textContent = stage[1]; if (small) small.textContent = stage[2];
   }
@@ -845,9 +888,17 @@ FINAL_UI_SCRIPT = r'''
     const input = document.getElementById(admin ? 'admin-risk-search' : 'risk-search');
     const query = String(input?.value || '').trim().toLowerCase();
     try {
-      const payload = await fetch('/api/students?limit=6000&at_risk=1', {cache: 'no-store'}).then(r => r.json());
+      // The full cohort can contain thousands of records.  The directory only
+      // renders 100 rows, so fetch that useful page while taking the accurate
+      // risk total from the lightweight shared dataset status.
+      const [payload, status] = await Promise.all([
+        fetch('/api/students?limit=160&at_risk=1', {cache: 'no-store'}).then(r => r.json()),
+        fetch('/api/dataset/status', {cache: 'no-store'}).then(r => r.json()),
+      ]);
       const records = (payload.students || []).filter(student => ['HIGH', 'MEDIUM'].includes(String(student.final_risk_tier || '').toUpperCase())).filter(student => !query || `${student.student_name || ''} ${student.student_id || ''} ${student.top_factor_1 || ''}`.toLowerCase().includes(query));
-      const badge = document.getElementById(admin ? 'admin-risk-badge' : 'risk-count-badge'); if (badge) badge.textContent = `${records.length.toLocaleString()} students`;
+      const tiers = Object.fromEntries((status.tier_breakdown || []).map(row => [String(row.final_risk_tier || '').toUpperCase(), Number(row.cnt || 0)]));
+      const total = (tiers.HIGH || 0) + (tiers.MEDIUM || 0);
+      const badge = document.getElementById(admin ? 'admin-risk-badge' : 'risk-count-badge'); if (badge) badge.textContent = `${total.toLocaleString()} students`;
       tbody.innerHTML = records.length ? records.slice(0, 100).map(student => `<tr><td><strong>${escapeHtml(student.student_name || 'Student')}</strong> <span class="mono" style="color:var(--text3)">(${escapeHtml(student.student_id || '')})</span></td><td><span class="mono">${Number(student.ml_risk_score || 0).toFixed(3)}</span></td><td><span class="tag ${String(student.final_risk_tier).toUpperCase() === 'HIGH' ? 'tag-t1' : 'tag-t2'}">${escapeHtml(student.final_risk_tier || 'MEDIUM')}</span></td><td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(student.primary_root_cause || student.top_factor_1 || 'Engagement review')}</td><td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(student.final_action || 'Schedule counselor follow-up')}</td><td></td></tr>`).join('') : '<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text3)">No at-risk students found</td></tr>';
     } catch (_) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--red)">Unable to load students.</td></tr>'; }
   }
@@ -868,6 +919,21 @@ FINAL_UI_SCRIPT = r'''
   function removeDemoUi() {
     document.querySelectorAll('.operation-row,.summary-person').forEach(node => { if (/\bdemo\b/i.test(node.textContent || '')) node.remove(); });
     document.querySelectorAll('button').forEach(button => { if (/\bdemo\b/i.test(button.textContent || '')) button.textContent = button.textContent.replace(/\bdemo\b\s*/ig, '').replace(/\s{2,}/g, ' ').trim(); });
+  }
+
+  function normalizeModelPresentation() {
+    // The interface describes validation evidence, not a single winning
+    // "champion".  Keep labels short and consistent across both roles.
+    document.querySelectorAll('h1,h2,h3,h4,p,span,div,strong,li').forEach(node => {
+      if (node.children.length) return;
+      const value = String(node.textContent || '').trim();
+      if (value === 'Champion Model') node.textContent = '4-Model Validation';
+      else if (value === '4-Model Validation-Weighted Ensemble') node.textContent = '4-Model Validation';
+      else if (/^Logistic Regression and XGBoost train on an 80% stratified split\./.test(value)) {
+        node.textContent = 'Logistic Regression, XGBoost, Random Forest, and HistGradientBoosting train on the same 80% stratified split. Held-out validation evaluates all four models before their combined 4-Model Validation score is applied.';
+      } else if (/both candidate models/i.test(value)) node.textContent = value.replace(/both candidate models/ig, 'all four candidate models');
+      else if (/two candidates/i.test(value)) node.textContent = value.replace(/two candidates/ig, 'four candidate models');
+    });
   }
 
   async function augmentModelEvidence() {
@@ -931,13 +997,13 @@ FINAL_UI_SCRIPT = r'''
   const legacyWorkspaceActivation = window.activateWorkspacePage;
   if (typeof legacyWorkspaceActivation === 'function') {
     window.activateWorkspacePage = (...args) => {
-      openedConversationByChannel.call = null; openedConversationByChannel.whatsapp = null; allowAchalAutofocus = false;
+      openedConversationKey = null; allowAchalAutofocus = false;
       return legacyWorkspaceActivation(...args);
     };
   }
   document.addEventListener('click', event => {
     if (event.target.closest('.sb-item[data-page], [data-workspace-page]')) {
-      openedConversationByChannel.call = null; openedConversationByChannel.whatsapp = null; allowAchalAutofocus = false;
+      openedConversationKey = null; allowAchalAutofocus = false;
     }
   });
   window.runAnalysis = analyzeCallsWithModal;
@@ -958,8 +1024,8 @@ FINAL_UI_SCRIPT = r'''
   window.waDemo = sendCallFollowUp;
   window.adminWaDemo = sendCallFollowUp;
   document.addEventListener('DOMContentLoaded', () => {
-    renderCohortPulse(); renderCohortBrief(); removeDuplicateTranscriptSearch(); normalizeUploadStages(); removeDemoUi(); refreshOperations(); renderAtRisk(false); renderAtRisk(true); refreshFairness(); augmentModelEvidence(); syncActiveDatasetScope();
-    setInterval(refreshOperations, 700); setInterval(normalizeUploadStages, 160); setInterval(removeDemoUi, 800); setInterval(refreshFairness, 1800); setInterval(renderCohortPulse, 8000); setInterval(renderCohortBrief, 3000); setInterval(removeDuplicateTranscriptSearch, 1000); setInterval(augmentModelEvidence, 900); setInterval(syncActiveDatasetScope, 2000);
+    renderCohortPulse(); renderCohortBrief(); removeDuplicateTranscriptSearch(); normalizeUploadStages(); normalizeModelPresentation(); removeDemoUi(); refreshOperations(); renderAtRisk(false); renderAtRisk(true); refreshFairness(); augmentModelEvidence(); syncActiveDatasetScope();
+    setInterval(refreshOperations, 2000); setInterval(normalizeUploadStages, 160); setInterval(normalizeModelPresentation, 900); setInterval(removeDemoUi, 800); setInterval(refreshFairness, 1800); setInterval(renderCohortPulse, 8000); setInterval(renderCohortBrief, 3000); setInterval(removeDuplicateTranscriptSearch, 1000); setInterval(augmentModelEvidence, 900); setInterval(syncActiveDatasetScope, 2000);
   });
 })();
 </script>
@@ -1079,7 +1145,12 @@ def install(app, namespace):
         def recovered_dataset_status():
             if not active_metadata():
                 restore_latest_run()
-            return original_dataset_status()
+            response = app.make_response(original_dataset_status())
+            payload = response.get_json(silent=True)
+            if isinstance(payload, dict) and payload.get("dataset_loaded"):
+                payload["champion_model"] = _visible_model_name(payload.get("champion_model"))
+                return jsonify(payload), response.status_code
+            return response
 
         app.view_functions[status_rule.endpoint] = recovered_dataset_status
 
@@ -1095,6 +1166,12 @@ def install(app, namespace):
             metadata = active_metadata() or {}
             payload["pipeline_layers"] = metadata.get("pipeline_layers", {})
             payload["ensemble"] = metadata.get("ensemble", {})
+            payload["champion_model"] = _visible_model_name(payload.get("champion_model") or metadata.get("champion_model"))
+            models = payload.get("models")
+            if isinstance(models, dict):
+                for name in list(models):
+                    if "4-Model Validation" in str(name) and name != "4-Model Validation":
+                        models["4-Model Validation"] = models.pop(name)
             return jsonify(payload), response.status_code
 
         app.view_functions[metrics_rule.endpoint] = enriched_model_metrics
@@ -1234,7 +1311,7 @@ def install(app, namespace):
             "total_students": total,
             "high_risk_students": high,
             "medium_risk_students": medium,
-            "champion_model": metadata.get("champion_model", "Validated ensemble"),
+            "champion_model": _visible_model_name(metadata.get("champion_model")),
             "ensemble": metadata.get("ensemble", {}),
             "summary": f"This uploaded dataset contains {total:,} scored students, including {high:,} high-risk and {medium:,} medium-risk students.",
         })
