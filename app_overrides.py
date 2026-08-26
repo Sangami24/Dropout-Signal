@@ -791,10 +791,11 @@ FINAL_UI_SCRIPT = r'''
           thread.scrollTop = isAchal && row.querySelector('.dataset-live') ? thread.scrollHeight : Math.max(0, (thread.scrollHeight - thread.clientHeight) * 0.5);
         });
       });
-      const count = Number(row.dataset.messageCount || 0), previousCount = visibleMessageCounts.get(key);
-      visibleMessageCounts.set(key, count);
+      const panelKey = `${row.closest('[id]')?.id || 'operations'}:${key}`;
+      const count = Number(row.dataset.messageCount || 0), previousCount = visibleMessageCounts.get(panelKey);
+      visibleMessageCounts.set(panelKey, count);
       const achalRow = String(row.querySelector('summary strong')?.textContent || '').trim().toLowerCase() === 'achal sangami';
-      if (row.open && row.querySelector('.dataset-live') && ((previousCount !== undefined && count > previousCount) || (achalRow && channel === 'call'))) {
+      if (row.open && row.querySelector('.dataset-live') && ((previousCount !== undefined && count > previousCount) || achalRow)) {
         const thread = row.querySelector('.dataset-thread');
         if (thread) requestAnimationFrame(() => { thread.scrollTop = thread.scrollHeight; });
       }
@@ -868,9 +869,13 @@ FINAL_UI_SCRIPT = r'''
       const highEnd = total ? high / total * 100 : 0, mediumEnd = total ? (high + medium) / total * 100 : 0;
       chart.innerHTML = `<div class="d-chart-container"><div class="admin-risk-donut" style="background:conic-gradient(#ef4444 0 ${highEnd}%,#f59e0b ${highEnd}% ${mediumEnd}%,#22c55e ${mediumEnd}% 100%)"><div class="admin-risk-hole"><strong>${total.toLocaleString()}</strong><span>students</span></div></div></div><div class="d-legend"><div class="dl-item"><span class="dl-left"><span class="dl-dot" style="background:#ef4444"></span>High risk</span><strong>${high.toLocaleString()}</strong></div><div class="dl-item"><span class="dl-left"><span class="dl-dot" style="background:#f59e0b"></span>Medium risk</span><strong>${medium.toLocaleString()}</strong></div><div class="dl-item"><span class="dl-left"><span class="dl-dot" style="background:#22c55e"></span>Low risk</span><strong>${low.toLocaleString()}</strong></div></div>`;
     }
-    const trendCard = [...document.querySelectorAll('.card-new')].find(card => /^Risk Trend\b/i.test(card.querySelector('h3')?.textContent || ''));
+    const trendCard = [...document.querySelectorAll('.card-new')].find(card => /^(Risk Trend|Outreach Priorities)\b/i.test(card.querySelector('h3')?.textContent || ''));
     const trendBody = trendCard?.querySelector('.card-new-b');
-    if (trendBody) trendBody.innerHTML = `<div style="display:grid;gap:14px;padding:8px 2px"><p style="margin:0;color:var(--text2);font-size:12px">Current active-dataset distribution — no fabricated historical trend.</p>${[['High', high, '#ef4444'], ['Medium', medium, '#f59e0b'], ['Low', low, '#22c55e']].map(([name, value, color]) => `<div class="risk-bar"><span>${name}</span><em><i style="width:${total ? Number(value) / total * 100 : 0}%;background:${color}"></i></em><b>${Number(value).toLocaleString()}</b></div>`).join('')}</div>`;
+    if (trendCard && trendBody) {
+      const heading = trendCard.querySelector('h3');
+      if (heading) heading.innerHTML = `Outreach Priorities <span class="risk-fixed-badge">${(high + medium).toLocaleString()} at risk</span>`;
+      trendBody.innerHTML = `<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:8px 2px"><section style="padding:13px;border:1px solid var(--border);border-radius:9px;background:var(--surface2)"><h3 style="margin:0 0 7px;color:#ef4444">${high.toLocaleString()}</h3><p style="margin:0;color:var(--text2);font-size:12px;line-height:1.5">high-risk students need immediate counselor review.</p></section><section style="padding:13px;border:1px solid var(--border);border-radius:9px;background:var(--surface2)"><h3 style="margin:0 0 7px;color:#f59e0b">${medium.toLocaleString()}</h3><p style="margin:0;color:var(--text2);font-size:12px;line-height:1.5">medium-risk students need proactive follow-up.</p></section><section style="padding:13px;border:1px solid var(--border);border-radius:9px;background:var(--surface2)"><h3 style="margin:0 0 7px;color:#22c55e">${low.toLocaleString()}</h3><p style="margin:0;color:var(--text2);font-size:12px;line-height:1.5">low-risk students remain in routine monitoring.</p></section></div>`;
+    }
   }
 
   async function syncActiveDatasetScope() {
@@ -903,16 +908,18 @@ FINAL_UI_SCRIPT = r'''
       const panel = document.getElementById(id);
       if (!panel || panel.dataset.runtimePanelProtected) return;
       panel.dataset.runtimePanelProtected = 'true';
-      const observer = new MutationObserver(() => {
-        if (panel.dataset.runtimeRendering) return;
-        if (panel.querySelector('.dataset-conversation') && !panel.querySelector('[data-conversation-key]')) {
-          panel.dataset.runtimeRendering = 'true';
-          queueMicrotask(async () => {
-            try { await refreshOperations(); } finally { delete panel.dataset.runtimeRendering; }
-          });
-        }
+      const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
+      Object.defineProperty(panel, 'innerHTML', {
+        configurable: true,
+        get() { return descriptor.get.call(this); },
+        set(markup) {
+          // Reject only the retired renderer's conversation markup. The
+          // authoritative renderer includes this shared-state key, while
+          // ordinary empty states and the final renderer remain unaffected.
+          if (typeof markup === 'string' && markup.includes('dataset-conversation') && !markup.includes('data-conversation-key')) return;
+          descriptor.set.call(this, markup);
+        },
       });
-      observer.observe(panel, {childList: true, subtree: false});
     });
   }
 
