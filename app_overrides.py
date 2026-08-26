@@ -16,17 +16,12 @@ from pathlib import Path
 
 from flask import jsonify, request
 
-from ml_pipeline import active_metadata, active_records
+from ml_pipeline import active_metadata, active_records, restore_latest_run
 import voice_server
 
 
 LIVE_UI_SCRIPT = r'''
 <style id="dataset-runtime-ui">
-  /* Never expose the template's fabricated AI insight. JavaScript reveals
-     this card only after /api/dataset/insights confirms an active cohort. */
-  .card-new:has(.card-new-h h3 span[style*="#bc8cff"]) { display: none !important; }
-  .card-new.dataset-insight-visible { display: block !important; }
-
   /* Runtime transcript controls must inherit the dark dashboard theme on
      both the counselor and administrator pages. */
   .runtime-transcript-search { display:flex; gap:8px; align-items:center; margin:16px 0; }
@@ -530,6 +525,11 @@ LIVE_UI_SCRIPT = r'''
     return [...document.querySelectorAll('.card-new')].filter(card => /AI Insights/i.test(card.querySelector('h3')?.textContent || ''));
   }
 
+  function renderEmptyInsight(card) {
+    const body = card.querySelector('.card-new-b');
+    if (body) body.innerHTML = '<p style="font-size:13px;color:var(--text2);line-height:1.6">Upload and score a dataset to generate AI insights.</p>';
+  }
+
   async function refreshDatasetInsights() {
     const cards = datasetInsightCards();
     if (!cards.length) return;
@@ -537,20 +537,17 @@ LIVE_UI_SCRIPT = r'''
       const response = await fetch('/api/dataset/insights', {cache: 'no-store'});
       const data = await response.json();
       cards.forEach(card => {
-        // Inline display wins over the legacy card CSS, which otherwise
-        // overrides the browser's [hidden] rule and leaks the fake text.
-        card.classList.toggle('dataset-insight-visible', Boolean(data.dataset_loaded));
-        card.hidden = !data.dataset_loaded;
-        card.style.display = data.dataset_loaded ? 'block' : 'none';
-        if (!data.dataset_loaded) return;
+        card.hidden = false;
+        card.style.display = '';
+        if (!data.dataset_loaded) { renderEmptyInsight(card); return; }
         const body = card.querySelector('.card-new-b');
         if (body) body.innerHTML = `<p style="font-size:13px;color:var(--text2);line-height:1.6">${escapeHtml(data.summary)}</p>`;
       });
     } catch (_) {
       cards.forEach(card => {
-        card.classList.remove('dataset-insight-visible');
-        card.hidden = true;
-        card.style.display = 'none';
+        card.hidden = false;
+        card.style.display = '';
+        renderEmptyInsight(card);
       });
     }
   }
@@ -558,8 +555,7 @@ LIVE_UI_SCRIPT = r'''
   // Do not show the template's placeholder insight while dataset status is
   // still unknown. refreshDatasetInsights reveals only active-data insight.
   datasetInsightCards().forEach(card => {
-    card.hidden = true;
-    card.style.display = 'none';
+    renderEmptyInsight(card);
   });
 
   document.addEventListener('DOMContentLoaded', () => {
@@ -685,6 +681,22 @@ def _manual_call_payload():
 
 def install(app, namespace):
     """Install call gating, a real manual-call endpoint, and live UI sync."""
+
+    # If a request or deploy lost only the small active-run marker while the
+    # scored run files remain on disk, recover the newest completed run before
+    # either dashboard reads its shared dataset status. An explicit Reset
+    # writes a disabled marker, so restore_latest_run deliberately does not
+    # resurrect a dataset the user reset.
+    status_rule = next((rule for rule in app.url_map.iter_rules() if rule.rule == "/api/dataset/status"), None)
+    if status_rule:
+        original_dataset_status = app.view_functions[status_rule.endpoint]
+
+        def recovered_dataset_status():
+            if not active_metadata():
+                restore_latest_run()
+            return original_dataset_status()
+
+        app.view_functions[status_rule.endpoint] = recovered_dataset_status
 
     # The legacy upload route trains synchronously inside the browser request.
     # Wrap it in a server worker after receiving the file so a tab switch does
