@@ -206,7 +206,7 @@ LIVE_UI_SCRIPT = r'''
     const overlay = document.createElement('div');
     overlay.id = 'dataset-training-overlay';
     const progress = Number(job.progress || 0);
-    overlay.innerHTML = `<section class="dataset-training-card" role="status" aria-live="polite"><div class="dataset-progress-ring"><span>${progress.toFixed(1)}%</span></div><div><b>Uploading Dataset</b><p>${escapeHtml(job.filename || 'Your dataset')} is processing on the server. You can switch dashboards or browser tabs.</p><small>Uploading file...</small></div><button type="button" class="btn dataset-cancel-upload">Cancel Upload</button></section>`;
+    overlay.innerHTML = `<section class="dataset-training-card" role="status" aria-live="polite"><div class="dataset-progress-ring"><span>${progress.toFixed(1)}%</span></div><div><b>Uploading Dataset</b><p>${escapeHtml(job.filename || 'Your dataset')} is processing on the server. You can switch dashboards or browser tabs.</p></div><button type="button" class="btn dataset-cancel-upload">Cancel Upload</button></section>`;
     overlay.querySelector('.dataset-cancel-upload').addEventListener('click', () => window.cancelDatasetUpload());
     document.body.appendChild(overlay);
     return overlay;
