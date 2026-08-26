@@ -2326,23 +2326,22 @@ def dashboard():
 # ═══════════════════════════════════════════════════════════════════
 
 def _call_followup_greeting(result):
-    """Build the first WhatsApp turn from the completed call's AI summary."""
+    """Build a concise WhatsApp opener from the completed call result."""
     name = str(result.get("student_name") or result.get("spoken_name") or "Student").strip()
     first_name = name.split()[0] if name else "there"
-    summary = " ".join(str(result.get("summary") or "").split())
     cause = str(result.get("primary_root_cause") or "the concern you raised").replace("_", " ")
     support = str(result.get("q3_support_need") or "the support discussed on the call").replace("_", " ")
-    if summary:
-        # The summary is intentionally first: the WhatsApp follow-up should
-        # demonstrate continuity with the completed phone conversation.
+    if result.get("summary"):
+        # Keep the summary private in the counselor record. The student sees a
+        # warm, short issue-and-solution opener instead of a pasted report.
         return (
-            f"Hi {first_name}, this is Asha from {UNIVERSITY_NAME}'s Student Wellness team. "
-            f"I’m following up on our call. My note from that conversation: {summary[:360]} "
-            f"You mentioned {cause}; would you like to continue with {support}, or discuss another next step?"
+            f"Hi {first_name}, Asha AI here 👋 I’m following up on our call. "
+            f"It sounds like {cause} has been difficult lately. I can help with {support}. "
+            f"Would you like to explore that together?"
         )
     return (
-        f"Hi {first_name}, this is Asha from {UNIVERSITY_NAME}'s Student Wellness team. "
-        f"I’m following up on our call about {cause}. Would you like to continue with {support} today?"
+        f"Hi {first_name}, Asha AI here 👋 I’m following up on our call about {cause}. "
+        f"I can help with {support}. Would you like to continue today?"
     )
 
 

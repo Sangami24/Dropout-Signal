@@ -650,6 +650,7 @@ FINAL_UI_SCRIPT = r'''
   let openedConversationKey = null;
   const visibleMessageCounts = new Map();
   let allowAchalAutofocus = true;
+  let pendingAchalCallFocus = false;
   const sampleCursors = new Map();
 
   const messageMarkup = (message, studentName) => {
@@ -669,17 +670,27 @@ FINAL_UI_SCRIPT = r'''
     const messages = channel === 'call' ? item.call : item.whatsapp;
     if (!item.is_sample || String(item.status).toLowerCase() === 'completed') return messages;
     const key = `${item.student_id}:${channel}`;
-    const isAchal = String(item.student_name || '').trim().toLowerCase() === 'achal sangami';
-    const streamIsOpen = openedConversationKey === key || (isAchal && allowAchalAutofocus && !openedConversationKey);
     // Begin sample conversations part-way through their history.  The whole
-    // thread remains scrollable, while later turns arrive every refresh.
+    // thread remains scrollable, while every active sample advances together.
     const seed = [...key].reduce((total, char) => total + char.charCodeAt(0), 0);
     const initial = Math.min(messages.length, Math.max(2, Math.floor(messages.length * 0.45) + (seed % 2)));
     const current = sampleCursors.get(key) || initial;
-    if (!streamIsOpen) return messages.slice(0, current);
-    const next = Math.min(messages.length, current + 1);
-    sampleCursors.set(key, next);
-    return messages.slice(0, next);
+    return messages.slice(0, current);
+  }
+
+  function advanceSampleStreams(items) {
+    // Both channels and every active sample gain exactly one alternating turn
+    // per two-second poll. This is independent of whether its row is open.
+    items.filter(item => item.is_sample && String(item.status).toLowerCase() !== 'completed').forEach(item => {
+      ['call', 'whatsapp'].forEach(channel => {
+        const messages = channel === 'call' ? item.call : item.whatsapp;
+        if (!messages?.length) return;
+        const key = `${item.student_id}:${channel}`;
+        const seed = [...key].reduce((total, char) => total + char.charCodeAt(0), 0);
+        const initial = Math.min(messages.length, Math.max(2, Math.floor(messages.length * 0.45) + (seed % 2)));
+        sampleCursors.set(key, Math.min(messages.length, (sampleCursors.get(key) || initial) + 1));
+      });
+    });
   }
 
   function panelMarkup(items, channel) {
@@ -741,6 +752,7 @@ FINAL_UI_SCRIPT = r'''
       if (isActive(a) !== isActive(b)) return isActive(a) ? -1 : 1;
       return String(b.started_at || '').localeCompare(String(a.started_at || ''));
     });
+    advanceSampleStreams(items);
     // The live practice contact is the current operational focus. Keep its
     // active thread expanded and following new turns, without expanding any
     // other student automatically.
@@ -753,6 +765,7 @@ FINAL_UI_SCRIPT = r'''
       else if (achal.whatsapp?.length) openedConversationKey = `${achal.student_id}:whatsapp`;
     }
     if (achal && String(achal.call_status || '').toLowerCase() === 'completed' && String(achal.whatsapp_status || '').toLowerCase() === 'active' && openedConversationKey === `${achal.student_id}:call`) openedConversationKey = `${achal.student_id}:whatsapp`;
+    if (achal && openedConversationKey) pendingAchalCallFocus = false;
     latestCall = items.find(item => item.call.length) || latestCall;
     const signature = JSON.stringify(items.map(item => [item.student_id, item.status, item.call.length, item.whatsapp.length, item.call.at(-1)?.text, item.whatsapp.at(-1)?.content]));
     operationalSignature = signature;
@@ -763,7 +776,12 @@ FINAL_UI_SCRIPT = r'''
       const key = row.dataset.conversationKey;
       const channel = row.dataset.channel || (key.endsWith(':whatsapp') ? 'whatsapp' : 'call');
       row.addEventListener('toggle', () => {
-        if (!row.open) { if (openedConversationKey === key) openedConversationKey = null; if (String(row.querySelector('summary strong')?.textContent || '').trim().toLowerCase() === 'achal sangami') allowAchalAutofocus = false; return; }
+        // A selected conversation stays expanded. It is closed only when the
+        // user selects another student or moves to another workspace tab.
+        if (!row.open) {
+          if (openedConversationKey === key) { row.open = true; return; }
+          return;
+        }
         if (String(row.querySelector('summary strong')?.textContent || '').trim().toLowerCase() !== 'achal sangami') allowAchalAutofocus = false;
         openedConversationKey = key;
         document.querySelectorAll('details[data-conversation-key]').forEach(other => { if (other !== row) other.open = false; });
@@ -838,6 +856,21 @@ FINAL_UI_SCRIPT = r'''
     document.querySelectorAll('.risk-fixed-badge').forEach(node => { node.textContent = loaded ? `${atRisk.toLocaleString()} at risk` : '– at risk'; });
     const label = document.getElementById('dataset-active-label');
     if (label) label.textContent = loaded ? `${status.dataset_name || status.source_label || 'Active dataset'} · ${display} students` : 'No dataset loaded';
+    renderAuthoritativeAdminOverview(status);
+  }
+
+  function renderAuthoritativeAdminOverview(status) {
+    if (!status?.dataset_loaded) return;
+    const tiers = Object.fromEntries((status.tier_breakdown || []).map(row => [String(row.final_risk_tier || '').toUpperCase(), Number(row.cnt || 0)]));
+    const total = Number(status.record_count || 0), high = tiers.HIGH || 0, medium = tiers.MEDIUM || 0, low = tiers.LOW || 0;
+    const chart = document.getElementById('tier-chart');
+    if (chart) {
+      const highEnd = total ? high / total * 100 : 0, mediumEnd = total ? (high + medium) / total * 100 : 0;
+      chart.innerHTML = `<div class="d-chart-container"><div class="admin-risk-donut" style="background:conic-gradient(#ef4444 0 ${highEnd}%,#f59e0b ${highEnd}% ${mediumEnd}%,#22c55e ${mediumEnd}% 100%)"><div class="admin-risk-hole"><strong>${total.toLocaleString()}</strong><span>students</span></div></div></div><div class="d-legend"><div class="dl-item"><span class="dl-left"><span class="dl-dot" style="background:#ef4444"></span>High risk</span><strong>${high.toLocaleString()}</strong></div><div class="dl-item"><span class="dl-left"><span class="dl-dot" style="background:#f59e0b"></span>Medium risk</span><strong>${medium.toLocaleString()}</strong></div><div class="dl-item"><span class="dl-left"><span class="dl-dot" style="background:#22c55e"></span>Low risk</span><strong>${low.toLocaleString()}</strong></div></div>`;
+    }
+    const trendCard = [...document.querySelectorAll('.card-new')].find(card => /^Risk Trend\b/i.test(card.querySelector('h3')?.textContent || ''));
+    const trendBody = trendCard?.querySelector('.card-new-b');
+    if (trendBody) trendBody.innerHTML = `<div style="display:grid;gap:14px;padding:8px 2px"><p style="margin:0;color:var(--text2);font-size:12px">Current active-dataset distribution — no fabricated historical trend.</p>${[['High', high, '#ef4444'], ['Medium', medium, '#f59e0b'], ['Low', low, '#22c55e']].map(([name, value, color]) => `<div class="risk-bar"><span>${name}</span><em><i style="width:${total ? Number(value) / total * 100 : 0}%;background:${color}"></i></em><b>${Number(value).toLocaleString()}</b></div>`).join('')}</div>`;
   }
 
   async function syncActiveDatasetScope() {
@@ -855,6 +888,34 @@ FINAL_UI_SCRIPT = r'''
     } catch (_) {}
   }
 
+  function closeRuntimeConversations() {
+    openedConversationKey = null;
+    document.querySelectorAll('details[data-conversation-key]').forEach(row => { row.open = false; });
+  }
+
+  function protectOperationPanels() {
+    // The recovered template still has an older demo renderer on a timer.
+    // It knows nothing about the shared live-state key and was replacing open
+    // rows with collapsed copies. Observe only those panels and immediately
+    // restore the authoritative renderer if that retired markup appears.
+    const panelIds = ['full-transcript-panel', 'transcript-panel', 'admin-transcript-panel', 'wa-convos-panel', 'admin-wa-panel'];
+    panelIds.forEach(id => {
+      const panel = document.getElementById(id);
+      if (!panel || panel.dataset.runtimePanelProtected) return;
+      panel.dataset.runtimePanelProtected = 'true';
+      const observer = new MutationObserver(() => {
+        if (panel.dataset.runtimeRendering) return;
+        if (panel.querySelector('.dataset-conversation') && !panel.querySelector('[data-conversation-key]')) {
+          panel.dataset.runtimeRendering = 'true';
+          queueMicrotask(async () => {
+            try { await refreshOperations(); } finally { delete panel.dataset.runtimeRendering; }
+          });
+        }
+      });
+      observer.observe(panel, {childList: true, subtree: false});
+    });
+  }
+
   function removeDuplicateTranscriptSearch() {
     ['page-transcript', 'page-admin-transcript'].forEach(id => {
       const page = document.getElementById(id); if (!page) return;
@@ -867,6 +928,15 @@ FINAL_UI_SCRIPT = r'''
   function normalizeUploadStages() {
     const overlay = document.getElementById('dataset-training-overlay');
     if (!overlay) return;
+    // The original uploader holds a reference to its own <small> element and
+    // rewrites it every 260 ms. Replace that node once, so our exact runtime
+    // operation message cannot flicker back to its old generic text.
+    const legacySmall = overlay.querySelector('small:not([data-runtime-stage])');
+    if (legacySmall) {
+      const runtimeSmall = document.createElement('small');
+      runtimeSmall.dataset.runtimeStage = 'true';
+      legacySmall.replaceWith(runtimeSmall);
+    }
     const percent = Number((overlay.querySelector('.dataset-progress-ring span')?.textContent || '0').replace('%', ''));
     const stage = percent < 8 ? ['Uploading Dataset', 'Transferring the selected CSV to the secure workspace.', 'Verifying file transfer…']
       : percent < 18 ? ['Reading Dataset', 'Extracting rows and checking the uploaded column headers.', 'Extracting CSV rows…']
@@ -878,7 +948,7 @@ FINAL_UI_SCRIPT = r'''
       : percent < 86 ? ['Analyzing Dataset', 'Training HistGradientBoosting and comparing validation metrics.', 'Training HistGradientBoosting…']
       : percent < 94 ? ['Finalizing Dataset', 'Combining all four probabilities into the validation score.', 'Building 4-model validation score…']
       : ['Finalizing Dataset', 'Writing Gold scores, fairness evidence, and shared dashboard state.', 'Publishing Gold-layer outputs…'];
-    const [title, detail, small] = [overlay.querySelector('b'), overlay.querySelector('p'), overlay.querySelector('small')];
+    const [title, detail, small] = [overlay.querySelector('b'), overlay.querySelector('p'), overlay.querySelector('small[data-runtime-stage]')];
     if (title) title.textContent = stage[0]; if (detail) detail.textContent = stage[1]; if (small) small.textContent = stage[2];
   }
 
@@ -933,22 +1003,20 @@ FINAL_UI_SCRIPT = r'''
         node.textContent = 'Logistic Regression, XGBoost, Random Forest, and HistGradientBoosting train on the same 80% stratified split. Held-out validation evaluates all four models before their combined 4-Model Validation score is applied.';
       } else if (/both candidate models/i.test(value)) node.textContent = value.replace(/both candidate models/ig, 'all four candidate models');
       else if (/two candidates/i.test(value)) node.textContent = value.replace(/two candidates/ig, 'four candidate models');
+      else if (/both trained models/i.test(value)) node.textContent = value.replace(/both trained models/ig, 'all four trained models');
+      else if (/registered champion/i.test(value)) node.textContent = value.replace(/registered champion/ig, 'combined 4-Model Validation result');
+      else if (/champion ML/i.test(value)) node.textContent = value.replace(/champion ML/ig, '4-Model Validation');
     });
+    const detail = document.getElementById('layer-detail');
+    if (detail && /Logistic Regression and XGBoost train on an 80% stratified split/i.test(detail.textContent || '')) {
+      detail.innerHTML = `<div class="layer-expanded model"><div><span class="layer-expanded-kicker">Held-out ML validation and explainability</span><h2>4-Model Validation layer</h2><p>Logistic Regression, XGBoost, Random Forest, and HistGradientBoosting train on the same stratified split. Their held-out metrics are combined into the operational 4-Model Validation score.</p></div><ul><li>Accuracy, precision, recall, F1, and ROC-AUC are recorded for all four models.</li><li>The four-model validation score and model metadata are retained for reproducibility.</li><li>SHAP provides global feature importance and student-level contributing factors.</li><li>Gender and socioeconomic fairness checks measure demographic parity, equal opportunity, and predictive parity.</li></ul></div>`;
+    }
   }
 
   async function augmentModelEvidence() {
-    const body = document.querySelector('#page-model-evidence .model-runtime-body');
-    if (!body || body.querySelector('.ensemble-context')) return;
-    try {
-      const payload = await fetch('/api/model-metrics', {cache:'no-store'}).then(response => response.ok ? response.json() : {});
-      if (!payload.dataset_loaded) return;
-      const models = Object.entries(payload.models || {}).filter(([name]) => name !== payload.champion_model);
-      const descriptions = models.map(([name, detail]) => `<li><b>${escapeHtml(name)}:</b> ${escapeHtml(detail.description || 'Validation candidate in the operational ensemble.')}${detail.ensemble_weight ? ` (${(Number(detail.ensemble_weight) * 100).toFixed(1)}% weight)` : ''}</li>`).join('');
-      const layers = payload.pipeline_layers || {};
-      const context = document.createElement('section'); context.className = 'ensemble-context';
-      context.innerHTML = `<section><h3>Bronze</h3><p>${escapeHtml(layers.Bronze || 'Immutable raw upload retained for lineage and audit.')}</p></section><section><h3>Silver</h3><p>${escapeHtml(layers.Silver || 'Validated feature layer shared by every candidate model.')}</p></section><section><h3>Gold</h3><p>${escapeHtml(layers.Gold || 'Operational ensemble scores, risk tiers, and intervention actions.')}</p></section><section style="grid-column:1/-1"><h3>${escapeHtml(payload.champion_model || 'Validation-weighted ensemble')}</h3><p>All four models contribute to the final score using held-out validation quality weights.</p><ul style="margin:9px 0 0;padding-left:18px;color:var(--text2);font-size:12px;line-height:1.65">${descriptions}</ul></section>`;
-      body.prepend(context);
-    } catch (_) {}
+    // ML Evidence already has one authoritative renderer. Remove the former
+    // add-on panel rather than duplicating model and layer information.
+    document.querySelectorAll('#page-model-evidence .ensemble-context').forEach(node => node.remove());
   }
 
   function showOperationModal(title, message, actionLabel, actionHref) {
@@ -997,13 +1065,24 @@ FINAL_UI_SCRIPT = r'''
   const legacyWorkspaceActivation = window.activateWorkspacePage;
   if (typeof legacyWorkspaceActivation === 'function') {
     window.activateWorkspacePage = (...args) => {
-      openedConversationKey = null; allowAchalAutofocus = false;
+      closeRuntimeConversations();
+      allowAchalAutofocus = pendingAchalCallFocus && /transcript|whatsapp/i.test(String(args[0] || ''));
       return legacyWorkspaceActivation(...args);
     };
   }
   document.addEventListener('click', event => {
     if (event.target.closest('.sb-item[data-page], [data-workspace-page]')) {
-      openedConversationKey = null; allowAchalAutofocus = false;
+      closeRuntimeConversations(); allowAchalAutofocus = pendingAchalCallFocus;
+    }
+    if (event.target.closest('button') && /call students/i.test(event.target.closest('button').textContent || '')) {
+      // The live call hand-off should take priority even if the counselor had
+      // previously browsed another conversation.
+      openedConversationKey = null;
+      allowAchalAutofocus = true;
+      pendingAchalCallFocus = true;
+      setTimeout(refreshOperations, 350);
+      setTimeout(refreshOperations, 1100);
+      setTimeout(refreshOperations, 3200);
     }
   });
   window.runAnalysis = analyzeCallsWithModal;
@@ -1024,8 +1103,8 @@ FINAL_UI_SCRIPT = r'''
   window.waDemo = sendCallFollowUp;
   window.adminWaDemo = sendCallFollowUp;
   document.addEventListener('DOMContentLoaded', () => {
-    renderCohortPulse(); renderCohortBrief(); removeDuplicateTranscriptSearch(); normalizeUploadStages(); normalizeModelPresentation(); removeDemoUi(); refreshOperations(); renderAtRisk(false); renderAtRisk(true); refreshFairness(); augmentModelEvidence(); syncActiveDatasetScope();
-    setInterval(refreshOperations, 2000); setInterval(normalizeUploadStages, 160); setInterval(normalizeModelPresentation, 900); setInterval(removeDemoUi, 800); setInterval(refreshFairness, 1800); setInterval(renderCohortPulse, 8000); setInterval(renderCohortBrief, 3000); setInterval(removeDuplicateTranscriptSearch, 1000); setInterval(augmentModelEvidence, 900); setInterval(syncActiveDatasetScope, 2000);
+    renderCohortPulse(); renderCohortBrief(); removeDuplicateTranscriptSearch(); normalizeUploadStages(); normalizeModelPresentation(); removeDemoUi(); protectOperationPanels(); refreshOperations(); renderAtRisk(false); renderAtRisk(true); refreshFairness(); augmentModelEvidence(); syncActiveDatasetScope();
+    setInterval(refreshOperations, 2000); setInterval(protectOperationPanels, 1000); setInterval(normalizeUploadStages, 160); setInterval(normalizeModelPresentation, 450); setInterval(removeDemoUi, 800); setInterval(refreshFairness, 1800); setInterval(renderCohortPulse, 8000); setInterval(renderCohortBrief, 3000); setInterval(removeDuplicateTranscriptSearch, 1000); setInterval(augmentModelEvidence, 900); setInterval(syncActiveDatasetScope, 2000);
   });
 })();
 </script>
@@ -1360,6 +1439,28 @@ def install(app, namespace):
             return jsonify({"error": str(exc)}), 502
         if result.get("error"):
             return jsonify(result), 409 if result.get("code") == "dataset_required" else 503
+        # Expose one durable ringing transcript immediately, rather than
+        # waiting for Twilio's answer webhook. Both dashboards can therefore
+        # open Achal's live call as soon as "Call Students" is pressed. The
+        # welcome webhook replaces this provisional entry using the same SID.
+        call_sid = str(result.get("call_sid") or "")
+        if call_sid:
+            provisional = {
+                "student_id": student["student_id"],
+                "student_name": student["student_name"],
+                "ml_risk_score": student["ml_risk_score"],
+                "risk_tier": student.get("risk_tier", "HIGH"),
+                "phone": phone,
+                "call_sid": call_sid,
+                "answers": {},
+                "current_question": "",
+                "started_at": voice_server.datetime.now().isoformat(),
+                "status": "ringing",
+                "transcript_events": [],
+            }
+            voice_server._append_call_event(provisional, "Asha AI", "ai", "Calling Achal now…")
+            voice_server.sessions[call_sid] = provisional
+            voice_server._persist_live_state()
         return jsonify({**student, **result})
 
     existing = [rule for rule in app.url_map.iter_rules() if rule.rule == "/api/manual-call"]
