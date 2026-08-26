@@ -169,6 +169,7 @@ LIVE_UI_SCRIPT = r'''
 
   const BACKGROUND_UPLOAD_KEY = 'dropout-signal-background-upload';
   let backgroundUploadPoller = null;
+  let backgroundUploadGeneration = 0;
 
   function showBackgroundUpload(job) {
     document.getElementById('dataset-training-overlay')?.remove();
@@ -272,6 +273,7 @@ LIVE_UI_SCRIPT = r'''
     const stage = overlay.querySelector('small');
     const title = overlay.querySelector('b');
     const detail = overlay.querySelector('p');
+    const cancelButton = overlay.querySelector('.dataset-cancel-upload');
     const progress = Math.max(0, Math.min(100, Number(job.progress || 0)));
     if (ring) ring.style.setProperty('--dataset-progress', `${progress * 3.6}deg`);
     if (percentage) percentage.textContent = `${progress.toFixed(1)}%`;
@@ -281,6 +283,7 @@ LIVE_UI_SCRIPT = r'''
     if (title && job.state === 'complete') title.textContent = 'Dataset processing complete';
     if (detail && ['queued', 'processing'].includes(job.state)) detail.textContent = 'Training, scoring, and saving the active cohort. Safe to switch dashboards or browser tabs.';
     if (detail && job.state === 'complete') detail.textContent = 'The scored cohort is active. Refreshing this dashboard...';
+    if (cancelButton) cancelButton.hidden = job.state === 'complete';
   }
 
   window.cancelDatasetUpload = async () => {
@@ -309,13 +312,20 @@ LIVE_UI_SCRIPT = r'''
     if (!raw) return;
     let job;
     try { job = JSON.parse(raw); } catch (_) { localStorage.removeItem(BACKGROUND_UPLOAD_KEY); return; }
+    // Completion/progress are authoritative only from the server. Never
+    // revive a 100% snapshot left in shared storage by another tab.
+    if (job.state === 'complete') job = {...job, state: 'queued', progress: 0};
+    const generation = ++backgroundUploadGeneration;
     updateBackgroundUpload(job);
     if (backgroundUploadPoller) clearInterval(backgroundUploadPoller);
     const poll = async () => {
       try {
         const response = await fetch(`/api/dataset/upload-status?job_id=${encodeURIComponent(job.id)}`, {cache: 'no-store'});
+        if (generation !== backgroundUploadGeneration) return;
         if (!response.ok) {
           if (response.status === 404) {
+            const age = Date.now() - Number(job.created_at_ms || 0);
+            if (job.state === 'uploading' && age < 120000) return;
             clearInterval(backgroundUploadPoller); backgroundUploadPoller = null;
             localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
             document.getElementById('dataset-training-overlay')?.remove();
@@ -324,12 +334,16 @@ LIVE_UI_SCRIPT = r'''
           return;
         }
         job = {...job, ...await response.json()};
-        localStorage.setItem(BACKGROUND_UPLOAD_KEY, JSON.stringify(job));
         updateBackgroundUpload(job);
         if (job.state === 'complete') {
           clearInterval(backgroundUploadPoller); backgroundUploadPoller = null;
-          localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
-          setTimeout(() => window.location.reload(), 700);
+          const stored = localStorage.getItem(BACKGROUND_UPLOAD_KEY);
+          if (!stored || JSON.parse(stored).id === job.id) localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
+          const completionKey = `dropout-signal-upload-complete-${job.id}`;
+          if (!sessionStorage.getItem(completionKey)) {
+            sessionStorage.setItem(completionKey, '1');
+            setTimeout(() => window.location.reload(), 700);
+          }
         } else if (['failed', 'canceled'].includes(job.state)) {
           clearInterval(backgroundUploadPoller); backgroundUploadPoller = null;
           localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
@@ -339,20 +353,20 @@ LIVE_UI_SCRIPT = r'''
       } catch (_) {}
     };
     await poll();
+    if (generation !== backgroundUploadGeneration) return;
     if (!backgroundUploadPoller && !['complete', 'failed', 'canceled'].includes(job.state)) backgroundUploadPoller = setInterval(poll, 800);
   }
 
   async function beginBackgroundUpload(file) {
     if (!file) return;
     const form = new FormData(); form.append('file', file);
-    const job = {id: globalThis.crypto?.randomUUID?.() || `upload-${Date.now()}`, filename: file.name, state: 'uploading', progress: 0};
+    const job = {id: globalThis.crypto?.randomUUID?.() || `upload-${Date.now()}`, filename: file.name, state: 'uploading', progress: 0, created_at_ms: Date.now()};
     localStorage.setItem(BACKGROUND_UPLOAD_KEY, JSON.stringify(job));
     updateBackgroundUpload(job);
     try {
       const response = await fetch('/api/dataset/upload', {method: 'POST', body: form, headers: {'X-Dataset-Upload-Id': job.id}});
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Dataset upload failed');
-      localStorage.setItem(BACKGROUND_UPLOAD_KEY, JSON.stringify({...job, ...payload}));
       await resumeBackgroundUpload();
     } catch (error) {
       localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
