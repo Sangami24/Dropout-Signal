@@ -14,7 +14,7 @@ import uuid
 from io import BytesIO
 from pathlib import Path
 
-from flask import jsonify, request
+from flask import Response, jsonify, request
 
 from ml_pipeline import active_metadata, active_records, restore_latest_run
 import voice_server
@@ -539,14 +539,20 @@ LIVE_UI_SCRIPT = r'''
     const cards = datasetInsightCards();
     if (!cards.length) return;
     try {
-      const response = await fetch('/api/dataset/insights', {cache: 'no-store'});
-      const data = await response.json();
+      const [data, metrics, calls] = await Promise.all([
+        fetch('/api/dataset/insights', {cache: 'no-store'}).then(response => response.json()),
+        fetch('/api/model-metrics', {cache: 'no-store'}).then(response => response.ok ? response.json() : {}),
+        fetch('/api/transcripts', {cache: 'no-store'}).then(response => response.ok ? response.json() : {sessions:{}}),
+      ]);
+      const modelNames = Object.keys(metrics.models || {});
+      const topFactors = (metrics.shap || []).slice(0, 3).map(row => String(row.feature || '').replaceAll('_', ' ')).filter(Boolean);
+      const activeCalls = Object.values(calls.sessions || {}).filter(session => !['completed','failed','canceled','interrupted'].includes(String(session.status || '').toLowerCase())).length;
       cards.forEach(card => {
         card.hidden = false;
         card.style.display = '';
         if (!data.dataset_loaded) { renderEmptyInsight(card); return; }
         const body = card.querySelector('.card-new-b');
-        if (body) body.innerHTML = `<p style="font-size:13px;color:var(--text2);line-height:1.6">${escapeHtml(data.summary)}</p>`;
+        if (body) body.innerHTML = `<p style="font-size:13px;color:var(--text2);line-height:1.6">${escapeHtml(data.summary)}</p><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0"><div><b style="font-size:18px">${Number(data.high_risk_students || 0).toLocaleString()}</b><small style="display:block;color:var(--text3)">priority review</small></div><div><b style="font-size:18px">${Number(data.medium_risk_students || 0).toLocaleString()}</b><small style="display:block;color:var(--text3)">proactive follow-up</small></div><div><b style="font-size:18px">${activeCalls}</b><small style="display:block;color:var(--text3)">live calls</small></div></div><p style="font-size:12px;color:var(--text2);line-height:1.6"><b>Scoring:</b> ${escapeHtml(data.champion_model || 'validated model')} ${modelNames.length ? `across ${modelNames.length} tracked model entries.` : ''}<br><b>Leading signals:</b> ${escapeHtml(topFactors.join(', ') || 'available in the model evidence panel')}.</p>`;
       });
     } catch (_) {
       cards.forEach(card => {
@@ -604,6 +610,14 @@ FINAL_UI_SCRIPT = r'''
   .dataset-empty-live { padding:28px 14px; color:var(--text3); font-size:13px; text-align:center; }
   .fairness-status { font-size:11px; font-weight:600; }
   .fairness-status.ok { color:var(--green); } .fairness-status.review { color:var(--amber); }
+  .operation-modal-backdrop { position:fixed; inset:0; z-index:10050; display:grid; place-items:center; padding:20px; background:rgba(0,0,0,.66); backdrop-filter:blur(5px); }
+  .operation-modal { width:min(500px,100%); padding:24px; border:1px solid var(--border); border-radius:14px; background:var(--surface2,#15151d); box-shadow:0 24px 70px rgba(0,0,0,.5); }
+  .operation-modal h2 { margin:0 0 9px; font-size:18px; } .operation-modal p { margin:0; color:var(--text2); line-height:1.55; }
+  .operation-modal-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:20px; }
+  .operation-modal button,.operation-modal a { border:0; border-radius:7px; padding:9px 13px; color:#fff; background:#ef4444; text-decoration:none; cursor:pointer; font:inherit; }
+  .ensemble-context { margin:14px 0; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+  .ensemble-context section { padding:13px; border:1px solid var(--border); border-radius:9px; background:var(--surface2); }
+  .ensemble-context h3 { margin:0 0 7px; font-size:12px; letter-spacing:.06em; text-transform:uppercase; } .ensemble-context p { margin:0; font-size:12px; color:var(--text2); line-height:1.55; }
   @media (max-width:800px) { .cohort-pulse { grid-template-columns:1fr; } }
 </style>
 <script>
@@ -612,7 +626,9 @@ FINAL_UI_SCRIPT = r'''
   let operationalSignature = '';
   let fairnessRequest = 0;
   let latestCall = null;
-  const openedConversations = new Set();
+  const openedConversationByChannel = {call: null, whatsapp: null};
+  const visibleMessageCounts = new Map();
+  let allowAchalAutofocus = true;
   const sampleCursors = new Map();
 
   const messageMarkup = (message, studentName) => {
@@ -632,7 +648,11 @@ FINAL_UI_SCRIPT = r'''
     const messages = channel === 'call' ? item.call : item.whatsapp;
     if (!item.is_sample || String(item.status).toLowerCase() === 'completed') return messages;
     const key = `${item.student_id}:${channel}`;
-    const next = Math.min(messages.length, (sampleCursors.get(key) || 1) + 1);
+    const isAchal = String(item.student_name || '').trim().toLowerCase() === 'achal sangami';
+    const streamIsOpen = openedConversationByChannel[channel] === key || (isAchal && allowAchalAutofocus);
+    const current = sampleCursors.get(key) || 1;
+    if (!streamIsOpen) return messages.slice(0, current);
+    const next = Math.min(messages.length, current + 1);
     sampleCursors.set(key, next);
     return messages.slice(0, next);
   }
@@ -642,11 +662,15 @@ FINAL_UI_SCRIPT = r'''
     return items.map(item => {
       const messages = progressiveMessages(item, channel);
       if (!messages?.length) return '';
-      const active = !['completed', 'failed', 'canceled'].includes(String(item.status || '').toLowerCase());
+      const channelStatus = channel === 'call' ? (item.call_status || item.status) : (item.whatsapp_status || item.status);
+      const active = !['completed', 'failed', 'canceled', 'interrupted'].includes(String(channelStatus || '').toLowerCase());
       const tone = String(item.tier || 'MEDIUM').toLowerCase() === 'high' ? 'high' : 'medium';
       const key = `${item.student_id}:${channel}`;
-      const summary = active ? '' : `<footer class="dataset-contact-summary"><b>AI Summary</b><p>${escapeHtml(completedSummary(item))}</p></footer>`;
-      return `<details class="operation-row dataset-conversation ${tone}" data-conversation-key="${escapeHtml(key)}" ${openedConversations.has(key) ? 'open' : ''}><summary><strong>${escapeHtml(item.student_name || 'Student')}</strong><span class="${active ? 'dataset-live' : 'dataset-completed'}">${active ? 'ACTIVE' : 'COMPLETED'}</span>${active ? `<span class="dataset-presence ${tone}"></span>` : ''}<em>${escapeHtml(item.tier || 'MEDIUM')} RISK</em></summary><div class="dataset-thread ${channel}">${messages.map(m => messageMarkup(m, item.student_name || 'Student')).join('')}${summary}</div></details>`;
+      const isAchal = String(item.student_name || '').trim().toLowerCase() === 'achal sangami';
+      const summaryText = channel === 'call' ? (item.call_summary || item.summary) : (item.whatsapp_summary || item.summary);
+      const summary = active ? '' : `<footer class="dataset-contact-summary"><b>AI Summary</b><p>${escapeHtml(summaryText || completedSummary({...item, status: channelStatus}))}</p></footer>`;
+      const open = openedConversationByChannel[channel] === key || (isAchal && active && allowAchalAutofocus && !openedConversationByChannel[channel]);
+      return `<details class="operation-row dataset-conversation ${tone}" data-conversation-key="${escapeHtml(key)}" data-channel="${channel}" data-message-count="${messages.length}" ${open ? 'open' : ''}><summary><strong>${escapeHtml(item.student_name || 'Student')}</strong><span class="${active ? 'dataset-live' : 'dataset-completed'}">${active ? 'ACTIVE' : 'COMPLETED'}</span>${active ? `<span class="dataset-presence ${tone}"></span>` : ''}<em>${escapeHtml(item.tier || 'MEDIUM')} RISK</em></summary><div class="dataset-thread ${channel}">${messages.map(m => messageMarkup(m, item.student_name || 'Student')).join('')}${summary}</div></details>`;
     }).join('') || `<div class="dataset-empty-live">No ${channel === 'call' ? 'call transcripts' : 'WhatsApp conversations'} yet. New activity will appear here automatically.</div>`;
   }
 
@@ -660,27 +684,43 @@ FINAL_UI_SCRIPT = r'''
       const updated = String(session.started_at || '') > String(existing?.started_at || '');
       if (!existing || updated) byStudent.set(id, {
         student_id: id, student_name: session.student_name || 'Student', tier: session.risk_tier || 'HIGH',
-        status: session.status || 'active', started_at: session.started_at, call: session.transcript_events || [], whatsapp: [],
+        status: session.status || 'active', call_status: session.status || 'active', call_summary: session.summary || '',
+        started_at: session.started_at, call: session.transcript_events || [], whatsapp: [],
       });
     });
     (whatsappPayload.conversations || []).forEach(conversation => {
       const name = conversation.student_name || conversation.profile_name || 'Student';
       const messages = conversation.messages || [];
       if (!messages.length) return;
-      let target = [...byStudent.values()].find(item => String(item.student_name).toLowerCase() === String(name).toLowerCase());
+      let target = byStudent.get(String(conversation.student_id || '')) || [...byStudent.values()].find(item => String(item.student_name).toLowerCase() === String(name).toLowerCase());
       if (!target) {
-        target = { student_id: `wa-${conversation.phone || name}`, student_name: name, tier: conversation.risk_level || 'MEDIUM', status: 'active', call: [], whatsapp: [] };
+        target = { student_id: conversation.student_id || `wa-${conversation.phone || name}`, student_name: name, tier: conversation.risk_level || 'MEDIUM', status: 'active', call_status: 'active', whatsapp_status: 'active', call: [], whatsapp: [] };
         byStudent.set(target.student_id, target);
       }
       target.student_name = name;
       target.whatsapp = messages;
+      target.whatsapp_status = conversation.status || 'active';
+      target.whatsapp_summary = conversation.summary || '';
     });
     (experiencePayload?.conversations || []).filter(item => item.is_sample).forEach(item => {
       const id = String(item.student_id || '');
       if (!id || byStudent.has(id)) return;
       byStudent.set(id, {...item, call: item.call || [], whatsapp: item.whatsapp || []});
     });
-    const items = [...byStudent.values()].sort((a, b) => String(a.status).toLowerCase() === 'completed' ? 1 : -1);
+    const isActive = item => !['completed', 'failed', 'canceled', 'interrupted'].includes(String(item.call_status || item.status || '').toLowerCase());
+    const items = [...byStudent.values()].sort((a, b) => {
+      const achalA = String(a.student_name || '').trim().toLowerCase() === 'achal sangami';
+      const achalB = String(b.student_name || '').trim().toLowerCase() === 'achal sangami';
+      if (achalA !== achalB) return achalA ? -1 : 1;
+      if (isActive(a) !== isActive(b)) return isActive(a) ? -1 : 1;
+      return String(b.started_at || '').localeCompare(String(a.started_at || ''));
+    });
+    // The live practice contact is the current operational focus. Keep its
+    // active thread expanded and following new turns, without expanding any
+    // other student automatically.
+    const achal = items.find(item => String(item.student_name || '').trim().toLowerCase() === 'achal sangami');
+    if (allowAchalAutofocus && achal && isActive(achal) && achal.call?.length && !openedConversationByChannel.call) openedConversationByChannel.call = `${achal.student_id}:call`;
+    if (allowAchalAutofocus && achal && String(achal.whatsapp_status || '').toLowerCase() === 'active' && achal.whatsapp?.length && !openedConversationByChannel.whatsapp) openedConversationByChannel.whatsapp = `${achal.student_id}:whatsapp`;
     latestCall = items.find(item => item.call.length) || latestCall;
     const signature = JSON.stringify(items.map(item => [item.student_id, item.status, item.call.length, item.whatsapp.length, item.call.at(-1)?.text, item.whatsapp.at(-1)?.content]));
     operationalSignature = signature;
@@ -689,17 +729,24 @@ FINAL_UI_SCRIPT = r'''
     ['wa-convos-panel', 'admin-wa-panel'].forEach(id => { const panel = document.getElementById(id); if (panel) panel.innerHTML = waHtml; });
     document.querySelectorAll('details[data-conversation-key]').forEach(row => {
       const key = row.dataset.conversationKey;
+      const channel = row.dataset.channel || (key.endsWith(':whatsapp') ? 'whatsapp' : 'call');
       row.addEventListener('toggle', () => {
-        if (!row.open) { openedConversations.delete(key); return; }
-        openedConversations.add(key);
-        if (row.querySelector('.dataset-live')) { const thread = row.querySelector('.dataset-thread'); if (thread) requestAnimationFrame(() => { thread.scrollTop = thread.scrollHeight; }); }
+        if (!row.open) { if (openedConversationByChannel[channel] === key) openedConversationByChannel[channel] = null; if (String(row.querySelector('summary strong')?.textContent || '').trim().toLowerCase() === 'achal sangami') allowAchalAutofocus = false; return; }
+        if (String(row.querySelector('summary strong')?.textContent || '').trim().toLowerCase() !== 'achal sangami') allowAchalAutofocus = false;
+        openedConversationByChannel[channel] = key;
+        document.querySelectorAll(`details[data-channel="${channel}"]`).forEach(other => { if (other !== row) other.open = false; });
+        const thread = row.querySelector('.dataset-thread');
+        if (thread) requestAnimationFrame(() => { thread.scrollTop = channel === 'whatsapp' ? 0 : thread.scrollHeight; });
       });
-      if (row.open && row.querySelector('.dataset-live')) {
+      const count = Number(row.dataset.messageCount || 0), previousCount = visibleMessageCounts.get(key);
+      visibleMessageCounts.set(key, count);
+      const achalRow = String(row.querySelector('summary strong')?.textContent || '').trim().toLowerCase() === 'achal sangami';
+      if (row.open && row.querySelector('.dataset-live') && ((previousCount !== undefined && count > previousCount) || (achalRow && channel === 'call'))) {
         const thread = row.querySelector('.dataset-thread');
         if (thread) requestAnimationFrame(() => { thread.scrollTop = thread.scrollHeight; });
       }
     });
-    const active = items.filter(item => !['completed', 'failed', 'canceled'].includes(String(item.status).toLowerCase())).length;
+    const active = items.filter(isActive).length;
     [['ts-count', `${active} active`], ['admin-ts-count', `${active} active`], ['wa-count-badge', `${items.filter(i => i.whatsapp.length).length} conversations`], ['admin-wa-badge', `${items.filter(i => i.whatsapp.length).length} conversations`]].forEach(([id, value]) => { const node = document.getElementById(id); if (node) node.textContent = value; });
   }
 
@@ -733,17 +780,10 @@ FINAL_UI_SCRIPT = r'''
   }
 
   async function renderCohortBrief() {
-    const grid = document.getElementById('summary-students') || document.getElementById('admin-summary-grid');
-    if (!grid || grid.querySelector('.cohort-ai-brief')) return;
-    try {
-      const [status, metrics] = await Promise.all([fetch('/api/dataset/status', {cache:'no-store'}).then(r => r.json()), fetch('/api/model-metrics', {cache:'no-store'}).then(r => r.json())]);
-      if (!status.dataset_loaded) return;
-      const tiers = Object.fromEntries((status.tier_breakdown || []).map(row => [String(row.final_risk_tier).toUpperCase(), Number(row.cnt || 0)]));
-      const factors = (metrics.shap || []).slice(0, 3).map(row => String(row.feature || '').replaceAll('_', ' ')).filter(Boolean).join(', ');
-      const brief = document.createElement('section'); brief.className = 'cohort-ai-brief';
-      brief.innerHTML = `<h2>AI Cohort Summary</h2><p>The active cohort contains <b>${Number(status.record_count || 0).toLocaleString()} students</b>, with <b>${(tiers.HIGH || 0).toLocaleString()} requiring immediate review</b> and <b>${(tiers.MEDIUM || 0).toLocaleString()} recommended for proactive support</b>. ${status.champion_model || 'The active model'} identifies ${factors ? `<b>${escapeHtml(factors)}</b> as the strongest current signals.` : 'the current model signals as the basis for prioritisation.'} This summary is cohort-level; individual cards below retain the student-specific next actions.</p>`;
-      grid.prepend(brief);
-    } catch (_) {}
+    // The useful cohort metrics belong in the single dashboard pulse and AI
+    // insights cards. Remove the duplicated summary cards created by older
+    // render loops instead of adding another copy.
+    document.querySelectorAll('.cohort-ai-brief').forEach(node => node.remove());
   }
 
   function removeDuplicateTranscriptSearch() {
@@ -795,6 +835,79 @@ FINAL_UI_SCRIPT = r'''
     document.querySelectorAll('button').forEach(button => { if (/\bdemo\b/i.test(button.textContent || '')) button.textContent = button.textContent.replace(/\bdemo\b\s*/ig, '').replace(/\s{2,}/g, ' ').trim(); });
   }
 
+  async function augmentModelEvidence() {
+    const body = document.querySelector('#page-model-evidence .model-runtime-body');
+    if (!body || body.querySelector('.ensemble-context')) return;
+    try {
+      const payload = await fetch('/api/model-metrics', {cache:'no-store'}).then(response => response.ok ? response.json() : {});
+      if (!payload.dataset_loaded) return;
+      const models = Object.entries(payload.models || {}).filter(([name]) => name !== payload.champion_model);
+      const descriptions = models.map(([name, detail]) => `<li><b>${escapeHtml(name)}:</b> ${escapeHtml(detail.description || 'Validation candidate in the operational ensemble.')}${detail.ensemble_weight ? ` (${(Number(detail.ensemble_weight) * 100).toFixed(1)}% weight)` : ''}</li>`).join('');
+      const layers = payload.pipeline_layers || {};
+      const context = document.createElement('section'); context.className = 'ensemble-context';
+      context.innerHTML = `<section><h3>Bronze</h3><p>${escapeHtml(layers.Bronze || 'Immutable raw upload retained for lineage and audit.')}</p></section><section><h3>Silver</h3><p>${escapeHtml(layers.Silver || 'Validated feature layer shared by every candidate model.')}</p></section><section><h3>Gold</h3><p>${escapeHtml(layers.Gold || 'Operational ensemble scores, risk tiers, and intervention actions.')}</p></section><section style="grid-column:1/-1"><h3>${escapeHtml(payload.champion_model || 'Validation-weighted ensemble')}</h3><p>All four models contribute to the final score using held-out validation quality weights.</p><ul style="margin:9px 0 0;padding-left:18px;color:var(--text2);font-size:12px;line-height:1.65">${descriptions}</ul></section>`;
+      body.prepend(context);
+    } catch (_) {}
+  }
+
+  function showOperationModal(title, message, actionLabel, actionHref) {
+    document.getElementById('operation-action-modal')?.remove();
+    const backdrop = document.createElement('div');
+    backdrop.id = 'operation-action-modal'; backdrop.className = 'operation-modal-backdrop';
+    backdrop.innerHTML = `<section class="operation-modal" role="dialog" aria-modal="true"><h2>${escapeHtml(title)}</h2><p>${escapeHtml(message)}</p><div class="operation-modal-actions">${actionHref ? `<a href="${escapeHtml(actionHref)}">${escapeHtml(actionLabel)}</a>` : ''}<button type="button">Close</button></div></section>`;
+    backdrop.addEventListener('click', event => { if (event.target === backdrop || event.target.tagName === 'BUTTON') backdrop.remove(); });
+    document.body.appendChild(backdrop);
+    return backdrop;
+  }
+
+  async function analyzeCallsWithModal() {
+    const modal = showOperationModal('Analyzing completed calls', 'Preparing transcript-specific AI summaries and the WhatsApp follow-up queue…');
+    try {
+      const response = await fetch('/analyze', {method: 'POST'});
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Call analysis could not be completed.');
+      modal.querySelector('h2').textContent = 'Call analysis complete';
+      modal.querySelector('p').textContent = `${Number(payload.analyzed || 0)} completed calls were analyzed and the operational CSV is ready.`;
+      refreshOperations();
+    } catch (error) {
+      modal.querySelector('h2').textContent = 'Call analysis status';
+      modal.querySelector('p').textContent = error.message || 'Completed calls are analyzed automatically as each call finishes.';
+    }
+  }
+
+  async function exportCallsWithModal() {
+    const modal = showOperationModal('Preparing CSV export', 'The export includes distinct walkthrough records and every analyzed live call, including Achal after completion.');
+    try {
+      const response = await fetch('/api/operations/export.csv', {cache:'no-store'});
+      if (!response.ok) {
+        const payload = await response.json();
+        throw new Error(payload.error || 'No completed call analysis is ready for export.');
+      }
+      modal.querySelector('h2').textContent = 'CSV export ready';
+      modal.querySelector('p').textContent = 'Download the spreadsheet-ready CSV. It includes detailed risk, support, and AI-summary columns.';
+      const controls = modal.querySelector('.operation-modal-actions');
+      const link = document.createElement('a'); link.href = '/api/operations/export.csv'; link.textContent = 'Download CSV'; controls.prepend(link);
+    } catch (error) {
+      modal.querySelector('h2').textContent = 'CSV export status';
+      modal.querySelector('p').textContent = error.message || 'The export could not be prepared.';
+    }
+  }
+
+  const legacyWorkspaceActivation = window.activateWorkspacePage;
+  if (typeof legacyWorkspaceActivation === 'function') {
+    window.activateWorkspacePage = (...args) => {
+      openedConversationByChannel.call = null; openedConversationByChannel.whatsapp = null; allowAchalAutofocus = false;
+      return legacyWorkspaceActivation(...args);
+    };
+  }
+  document.addEventListener('click', event => {
+    if (event.target.closest('.sb-item[data-page], [data-workspace-page]')) {
+      openedConversationByChannel.call = null; openedConversationByChannel.whatsapp = null; allowAchalAutofocus = false;
+    }
+  });
+  window.runAnalysis = analyzeCallsWithModal;
+  window.exportCSV = exportCallsWithModal;
+
   window.loadAtRisk = () => renderAtRisk(false);
   window.loadAdminAtRisk = () => renderAtRisk(true);
   const sendCallFollowUp = async () => {
@@ -810,8 +923,8 @@ FINAL_UI_SCRIPT = r'''
   window.waDemo = sendCallFollowUp;
   window.adminWaDemo = sendCallFollowUp;
   document.addEventListener('DOMContentLoaded', () => {
-    renderCohortPulse(); renderCohortBrief(); removeDuplicateTranscriptSearch(); normalizeUploadStages(); removeDemoUi(); refreshOperations(); renderAtRisk(false); renderAtRisk(true); refreshFairness();
-    setInterval(refreshOperations, 700); setInterval(normalizeUploadStages, 160); setInterval(removeDemoUi, 800); setInterval(refreshFairness, 1800); setInterval(renderCohortPulse, 8000); setInterval(renderCohortBrief, 3000); setInterval(removeDuplicateTranscriptSearch, 1000);
+    renderCohortPulse(); renderCohortBrief(); removeDuplicateTranscriptSearch(); normalizeUploadStages(); removeDemoUi(); refreshOperations(); renderAtRisk(false); renderAtRisk(true); refreshFairness(); augmentModelEvidence();
+    setInterval(refreshOperations, 700); setInterval(normalizeUploadStages, 160); setInterval(removeDemoUi, 800); setInterval(refreshFairness, 1800); setInterval(renderCohortPulse, 8000); setInterval(renderCohortBrief, 3000); setInterval(removeDuplicateTranscriptSearch, 1000); setInterval(augmentModelEvidence, 900);
   });
 })();
 </script>
@@ -934,6 +1047,22 @@ def install(app, namespace):
             return original_dataset_status()
 
         app.view_functions[status_rule.endpoint] = recovered_dataset_status
+
+    metrics_rule = next((rule for rule in app.url_map.iter_rules() if rule.rule == "/api/model-metrics"), None)
+    if metrics_rule:
+        original_model_metrics = app.view_functions[metrics_rule.endpoint]
+
+        def enriched_model_metrics():
+            response = app.make_response(original_model_metrics())
+            payload = response.get_json(silent=True)
+            if not isinstance(payload, dict) or not payload.get("dataset_loaded"):
+                return response
+            metadata = active_metadata() or {}
+            payload["pipeline_layers"] = metadata.get("pipeline_layers", {})
+            payload["ensemble"] = metadata.get("ensemble", {})
+            return jsonify(payload), response.status_code
+
+        app.view_functions[metrics_rule.endpoint] = enriched_model_metrics
 
     # The legacy upload route trains synchronously inside the browser request.
     # Wrap it in a server worker after receiving the file so a tab switch does
@@ -1064,16 +1193,36 @@ def install(app, namespace):
             scores = records.get("ml_risk_score")
             high = int((scores >= 0.67).sum()) if scores is not None else 0
             medium = int(((scores >= 0.34) & (scores < 0.67)).sum()) if scores is not None else 0
+        metadata = active_metadata() or {}
         return jsonify({
             "dataset_loaded": True,
             "total_students": total,
             "high_risk_students": high,
             "medium_risk_students": medium,
+            "champion_model": metadata.get("champion_model", "Validated ensemble"),
+            "ensemble": metadata.get("ensemble", {}),
             "summary": f"This uploaded dataset contains {total:,} scored students, including {high:,} high-risk and {medium:,} medium-risk students.",
         })
 
     if not any(rule.rule == "/api/dataset/insights" for rule in app.url_map.iter_rules()):
         app.add_url_rule("/api/dataset/insights", "dataset_insights", dataset_insights, methods=["GET"])
+
+    def operations_export_csv():
+        """Download the enriched operational export for spreadsheet review."""
+        if not voice_server.analyzed_results:
+            return jsonify({"error": "No completed call analysis is available yet."}), 400
+        voice_server._export_results()
+        export_path = Path(voice_server.OUTPUT_CSV)
+        if not export_path.exists():
+            return jsonify({"error": "The operational export could not be created."}), 500
+        return Response(
+            export_path.read_bytes(),
+            content_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": "attachment; filename=dropout-signal-call-follow-ups.csv"},
+        )
+
+    if not any(rule.rule == "/api/operations/export.csv" for rule in app.url_map.iter_rules()):
+        app.add_url_rule("/api/operations/export.csv", "operations_export_csv", operations_export_csv, methods=["GET"])
 
     def manual_call():
         if not _dataset_ready():
@@ -1128,7 +1277,7 @@ def install(app, namespace):
         for phone, session in voice_server.wa_sessions.items():
             profile = session.get("profile") or {}
             student_id = str(profile.get("student_id") or "")
-            student_name = session.get("spoken_name") or profile.get("student_name") or session.get("profile_name") or "Student"
+            student_name = profile.get("student_name") or session.get("profile_name") or session.get("spoken_name") or "Student"
             messages = [
                 {
                     "speaker": student_name if message.get("role") == "user" else "Asha AI",
@@ -1224,7 +1373,10 @@ def install(app, namespace):
     # script to both role views instead of duplicating their large HTML payload.
     for key in ("ADMIN_DASHBOARD", "COUNSELOR_DASHBOARD"):
         template = namespace.get(key)
-        if isinstance(template, str) and "refreshLiveTranscripts" not in template:
+        # Historical templates now contain their own legacy refresh helper.
+        # Use this final renderer's unique CSS marker so it is injected once
+        # per role even when those older helper names are already present.
+        if isinstance(template, str) and "authoritative-dashboard-ui" not in template:
             # Remove the legacy fabricated sentence from the HTML itself. The
             # card is populated only by the dataset-backed insights endpoint.
             template = template.replace(

@@ -33,6 +33,7 @@ import numpy as np
 import pandas as pd
 import shap
 from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, roc_auc_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
@@ -51,6 +52,19 @@ XGB_TRAINING_PARAMS = {
     "n_jobs": -1,
 }
 LOGISTIC_MAX_ITER = 400
+RANDOM_FOREST_PARAMS = {
+    "n_estimators": 240,
+    "max_depth": 12,
+    "min_samples_leaf": 3,
+    "class_weight": "balanced",
+    "n_jobs": -1,
+}
+HIST_GRADIENT_BOOSTING_PARAMS = {
+    "max_iter": 180,
+    "learning_rate": 0.08,
+    "max_leaf_nodes": 20,
+    "l2_regularization": 0.1,
+}
 
 
 ROOT = Path(__file__).resolve().parent
@@ -438,8 +452,11 @@ def _gold_table(
     signature: str,
     logistic_score: np.ndarray,
     xgb_score: np.ndarray,
-    champion_score: np.ndarray,
-    champion_name: str,
+    random_forest_score: np.ndarray,
+    hist_gradient_boosting_score: np.ndarray,
+    ensemble_score: np.ndarray,
+    ensemble_name: str,
+    ensemble_weights: dict[str, float],
     shap_values: np.ndarray,
 ) -> pd.DataFrame:
     frame = source.copy().reset_index(drop=True)
@@ -451,14 +468,20 @@ def _gold_table(
     frame.insert(1, "student_name", resolved_names)
     frame["logistic_risk_score"] = np.round(logistic_score, 4)
     frame["xgboost_risk_score"] = np.round(xgb_score, 4)
-    frame["ml_risk_score"] = np.round(champion_score, 4)
-    # The support-priority score combines the independently trained scores.
-    # It is deterministic and model-backed; it is not an LLM claim.
-    frame["ai_risk_score"] = np.round((0.65 * xgb_score) + (0.35 * logistic_score), 4)
-    frame["champion_model"] = champion_name
-    frame["predicted_dropout"] = (champion_score >= 0.5).astype(int)
+    frame["random_forest_risk_score"] = np.round(random_forest_score, 4)
+    frame["hist_gradient_boosting_risk_score"] = np.round(hist_gradient_boosting_score, 4)
+    frame["ensemble_risk_score"] = np.round(ensemble_score, 4)
+    # The Gold score is a validation-weighted blend of all four independently
+    # trained candidates.  This is a deterministic ML result, not an LLM
+    # claim; the exact weights are retained with every scored student.
+    frame["ml_risk_score"] = np.round(ensemble_score, 4)
+    frame["ai_risk_score"] = np.round(ensemble_score, 4)
+    frame["champion_model"] = ensemble_name
+    frame["ensemble_members"] = "Logistic Regression | XGBoost | Random Forest | HistGradientBoosting"
+    frame["ensemble_weights"] = json.dumps(ensemble_weights, sort_keys=True)
+    frame["predicted_dropout"] = (ensemble_score >= 0.5).astype(int)
     frame["actual_outcome"] = frame[TARGET_COLUMN].astype(str)
-    frame["final_risk_tier"] = np.where(champion_score >= 0.70, "HIGH", np.where(champion_score >= 0.40, "MEDIUM", "LOW"))
+    frame["final_risk_tier"] = np.where(ensemble_score >= 0.70, "HIGH", np.where(ensemble_score >= 0.40, "MEDIUM", "LOW"))
     frame["course"] = "Degree program"
     frame["branch"] = frame["Course"].map(_course_name)
     frame["year"] = np.where(frame["Age at enrollment"] >= 25, 2, 1).astype(int)
@@ -499,10 +522,12 @@ def _log_mlflow_run(
     x_train: pd.DataFrame,
     logistic: LogisticRegression,
     xgb: XGBClassifier,
-    logistic_metrics: dict[str, float],
-    xgb_metrics: dict[str, float],
+    random_forest: RandomForestClassifier,
+    hist_gradient_boosting: HistGradientBoostingClassifier,
+    model_metrics: dict[str, dict[str, float]],
+    ensemble_weights: dict[str, float],
     record_count: int,
-    champion_name: str,
+    ensemble_name: str,
 ) -> dict[str, Any]:
     """Create a local, inspectable MLflow tracking and registry record."""
     if os.environ.get("RENDER"):
@@ -528,7 +553,8 @@ def _log_mlflow_run(
         mlflow.set_tags({
             "project": "Dropout Signal",
             "dataset_pipeline": "Bronze/Silver/Gold",
-            "champion_model": champion_name,
+            "champion_model": ensemble_name,
+            "ensemble_members": "four validation-weighted models",
             "feature_schema": "UCI 36 predictors + Target",
         })
         mlflow.log_params({
@@ -538,11 +564,14 @@ def _log_mlflow_run(
             "logistic_solver": "lbfgs",
             "logistic_max_iter": LOGISTIC_MAX_ITER,
             **{f"xgb_{key}": value for key, value in XGB_TRAINING_PARAMS.items()},
+            **{f"random_forest_{key}": value for key, value in RANDOM_FOREST_PARAMS.items()},
+            **{f"hist_gradient_boosting_{key}": value for key, value in HIST_GRADIENT_BOOSTING_PARAMS.items()},
+            **{f"ensemble_weight_{_slug(name)}": value for name, value in ensemble_weights.items()},
             "train_test_split": "80/20 stratified, random_state=42",
         })
         mlflow.log_metrics({
-            **{f"logistic_{key}": float(value) for key, value in logistic_metrics.items()},
-            **{f"xgboost_{key}": float(value) for key, value in xgb_metrics.items()},
+            **{f"{_slug(name)}_{key}": float(value) for name, metrics in model_metrics.items() for key, value in metrics.items()},
+            **{f"ensemble_weight_{_slug(name)}": float(value) for name, value in ensemble_weights.items()},
         })
         # The hand-written Gold table, SHAP values, fairness report, and
         # joblib artifacts are all logged alongside the two model flavors.
@@ -559,6 +588,14 @@ def _log_mlflow_run(
         xgb_signature = infer_signature(
             model_input,
             xgb.predict_proba(model_input)[:, 1].astype("float64"),
+        )
+        random_forest_signature = infer_signature(
+            model_input,
+            random_forest.predict_proba(model_input)[:, 1].astype("float64"),
+        )
+        hist_gradient_boosting_signature = infer_signature(
+            model_input,
+            hist_gradient_boosting.predict_proba(model_input)[:, 1].astype("float64"),
         )
         mlflow.sklearn.log_model(
             logistic,
@@ -577,6 +614,24 @@ def _log_mlflow_run(
             signature=xgb_signature,
             await_registration_for=0,
         )
+        mlflow.sklearn.log_model(
+            random_forest,
+            name="random_forest",
+            registered_model_name="DropoutSignalRandomForest",
+            input_example=model_input,
+            signature=random_forest_signature,
+            serialization_format="skops",
+            await_registration_for=0,
+        )
+        mlflow.sklearn.log_model(
+            hist_gradient_boosting,
+            name="hist_gradient_boosting",
+            registered_model_name="DropoutSignalHistGradientBoosting",
+            input_example=model_input,
+            signature=hist_gradient_boosting_signature,
+            serialization_format="skops",
+            await_registration_for=0,
+        )
         # The champion is recorded as a run tag.  Re-registering a model by
         # URI while artifacts are still committing caused intermittent missing
         # xgboost-artifact warnings in MLflow.
@@ -584,12 +639,15 @@ def _log_mlflow_run(
             "tracking_uri": tracking_uri,
             "experiment_id": experiment.experiment_id,
             "run_id": run.info.run_id,
-            "registered_models": ["DropoutSignalLogisticRegression", "DropoutSignalXGBoost"],
+            "registered_models": [
+                "DropoutSignalLogisticRegression", "DropoutSignalXGBoost",
+                "DropoutSignalRandomForest", "DropoutSignalHistGradientBoosting",
+            ],
         }
 
 
 def train_and_score(source_path: str | Path, activate: bool = True, source_label: str | None = None) -> dict[str, Any]:
-    """Train Logistic Regression and XGBoost, score all rows, and save outputs."""
+    """Train four complementary models and score with their weighted ensemble."""
     _ensure_dirs()
     source = read_dataset(source_path)
     signature = hashlib.sha256(Path(source_path).read_bytes()).hexdigest()
@@ -614,18 +672,69 @@ def train_and_score(source_path: str | Path, activate: bool = True, source_label
     xgb.fit(x_train, y_train)
     xgb_test = xgb.predict_proba(x_test)[:, 1]
     xgb_metrics = _metric_bundle(y_test, xgb_test)
-    champion_name = "XGBoost" if xgb_metrics["f1_score"] >= logistic_metrics["f1_score"] else "Logistic Regression"
+
+    random_forest = RandomForestClassifier(random_state=42, **RANDOM_FOREST_PARAMS)
+    random_forest.fit(x_train, y_train)
+    random_forest_test = random_forest.predict_proba(x_test)[:, 1]
+    random_forest_metrics = _metric_bundle(y_test, random_forest_test)
+
+    hist_gradient_boosting = HistGradientBoostingClassifier(
+        random_state=42, **HIST_GRADIENT_BOOSTING_PARAMS,
+    )
+    hist_gradient_boosting.fit(x_train, y_train)
+    hist_gradient_boosting_test = hist_gradient_boosting.predict_proba(x_test)[:, 1]
+    hist_gradient_boosting_metrics = _metric_bundle(y_test, hist_gradient_boosting_test)
+
+    model_metrics = {
+        "Logistic Regression": logistic_metrics,
+        "XGBoost": xgb_metrics,
+        "Random Forest": random_forest_metrics,
+        "HistGradientBoosting": hist_gradient_boosting_metrics,
+    }
+    # Weight all four candidates by held-out quality instead of silently
+    # selecting a winner. F1 rewards useful intervention flags while AUC
+    # protects ranking quality; a floor means every requested model remains
+    # represented even on an unusually small or imbalanced upload.
+    raw_weights = {
+        name: max(0.05, (0.65 * metrics["f1_score"]) + (0.35 * metrics["auc_roc"]))
+        for name, metrics in model_metrics.items()
+    }
+    total_weight = sum(raw_weights.values())
+    ensemble_weights = {name: round(value / total_weight, 6) for name, value in raw_weights.items()}
+    ensemble_name = "4-Model Validation-Weighted Ensemble"
 
     all_scaled = pd.DataFrame(scaler.transform(x), columns=x.columns, index=x.index)
     all_logistic = logistic.predict_proba(all_scaled)[:, 1]
     all_xgb = xgb.predict_proba(x)[:, 1]
-    champion_probability = all_xgb if champion_name == "XGBoost" else all_logistic
-    champion_test_probability = xgb_test if champion_name == "XGBoost" else logistic_test
+    all_random_forest = random_forest.predict_proba(x)[:, 1]
+    all_hist_gradient_boosting = hist_gradient_boosting.predict_proba(x)[:, 1]
+    score_sets = {
+        "Logistic Regression": all_logistic,
+        "XGBoost": all_xgb,
+        "Random Forest": all_random_forest,
+        "HistGradientBoosting": all_hist_gradient_boosting,
+    }
+    test_score_sets = {
+        "Logistic Regression": logistic_test,
+        "XGBoost": xgb_test,
+        "Random Forest": random_forest_test,
+        "HistGradientBoosting": hist_gradient_boosting_test,
+    }
+    ensemble_probability = np.zeros(len(x), dtype=float)
+    ensemble_test_probability = np.zeros(len(x_test), dtype=float)
+    for name, weight in ensemble_weights.items():
+        ensemble_probability += weight * score_sets[name]
+        ensemble_test_probability += weight * test_score_sets[name]
+    ensemble_metrics = _metric_bundle(y_test, ensemble_test_probability)
     shap_values = _shap_values(xgb, x)
-    gold = _gold_table(silver, signature, all_logistic, all_xgb, champion_probability, champion_name, shap_values)
+    gold = _gold_table(
+        silver, signature, all_logistic, all_xgb, all_random_forest,
+        all_hist_gradient_boosting, ensemble_probability, ensemble_name,
+        ensemble_weights, shap_values,
+    )
     # The fairness audit is performed on the held-out test partition, matching
     # the notebook and avoiding an over-optimistic in-sample assessment.
-    fairness = _fairness(silver.loc[x_test.index], y_test, champion_test_probability, champion_name)
+    fairness = _fairness(silver.loc[x_test.index], y_test, ensemble_test_probability, ensemble_name)
     mean_abs_shap = np.abs(shap_values).mean(axis=0)
     global_shap = pd.DataFrame({"feature": FEATURE_COLUMNS, "mean_abs_shap": mean_abs_shap}).sort_values("mean_abs_shap", ascending=False)
     global_shap["rank"] = np.arange(1, len(global_shap) + 1)
@@ -643,9 +752,45 @@ def train_and_score(source_path: str | Path, activate: bool = True, source_label
     gold.to_csv(gold_path, index=False)
     global_shap.to_csv(run_dir / "shap_global_importance.csv", index=False)
     pd.DataFrame(fairness).to_csv(run_dir / "fairness_audit.csv", index=False)
+    pd.DataFrame([
+        {
+            "model": name,
+            "description": {
+                "Logistic Regression": "Transparent linear baseline that calibrates broad risk patterns.",
+                "XGBoost": "Gradient-boosted trees for non-linear academic, engagement, and financial signals.",
+                "Random Forest": "Bagged decision trees that reduce variance across diverse student profiles.",
+                "HistGradientBoosting": "Histogram-based gradient boosting for efficient, smooth non-linear scoring.",
+            }[name],
+            **metrics,
+            "ensemble_weight": ensemble_weights[name],
+        }
+        for name, metrics in model_metrics.items()
+    ] + [{
+        "model": ensemble_name,
+        "description": "Validation-weighted blend of all four candidates; this is the Gold-layer operational score.",
+        **ensemble_metrics,
+        "ensemble_weight": 1.0,
+    }]).to_csv(run_dir / "model_comparison.csv", index=False)
+    _write_json(run_dir / "layer_manifest.json", {
+        "bronze": {
+            "description": "Immutable source upload retained for lineage and audit; no model scores are applied.",
+            "model_role": "Raw model input record.",
+        },
+        "silver": {
+            "description": "Validated and derived feature layer used by all four candidate models.",
+            "model_role": "Shared feature schema for Logistic Regression, XGBoost, Random Forest, and HistGradientBoosting.",
+        },
+        "gold": {
+            "description": "Operational scored cohort with individual probabilities, model provenance, and a validation-weighted ensemble score.",
+            "model_role": ensemble_name,
+            "ensemble_weights": ensemble_weights,
+        },
+    })
     joblib.dump(scaler, run_dir / "logistic_scaler.joblib")
     joblib.dump(logistic, run_dir / "logistic_regression.joblib")
     joblib.dump(xgb, run_dir / "xgboost_model.joblib")
+    joblib.dump(random_forest, run_dir / "random_forest_model.joblib")
+    joblib.dump(hist_gradient_boosting, run_dir / "hist_gradient_boosting_model.joblib")
 
     tiers = gold["final_risk_tier"].value_counts().reindex(["HIGH", "MEDIUM", "LOW"], fill_value=0)
     metadata: dict[str, Any] = {
@@ -660,11 +805,26 @@ def train_and_score(source_path: str | Path, activate: bool = True, source_label
         "dropout_count": int(y.sum()),
         "dropout_rate": round(float(y.mean()), 4),
         "tier_breakdown": [{"final_risk_tier": tier, "cnt": int(tiers[tier])} for tier in ["HIGH", "MEDIUM", "LOW"]],
-        "predicted_dropouts": int((champion_probability >= 0.5).sum()),
-        "champion_model": champion_name,
+        "predicted_dropouts": int((ensemble_probability >= 0.5).sum()),
+        "champion_model": ensemble_name,
+        "ensemble": {
+            "strategy": "Validation-weighted mean probability across all four models",
+            "selection_rationale": "Each model contributes using a held-out quality weight (65% F1, 35% ROC-AUC).",
+            "weights": ensemble_weights,
+            "metrics": ensemble_metrics,
+            "shap_explanation_model": "XGBoost component; its tree SHAP values supply the per-student feature evidence.",
+        },
+        "pipeline_layers": {
+            "Bronze": "Raw, immutable uploaded records for lineage and audit.",
+            "Silver": "Validated inputs plus derived features consumed by every candidate model.",
+            "Gold": "Per-student four-model probabilities, ensemble score, tier, and intervention action.",
+        },
         "models": {
-            "Logistic Regression": {"parameters": {"C": 1.0, "penalty": "l2", "max_iter": LOGISTIC_MAX_ITER, "solver": "lbfgs"}, "metrics": logistic_metrics},
-            "XGBoost": {"parameters": XGB_TRAINING_PARAMS, "metrics": xgb_metrics},
+            "Logistic Regression": {"description": "Transparent linear baseline that calibrates broad risk patterns.", "parameters": {"C": 1.0, "penalty": "l2", "max_iter": LOGISTIC_MAX_ITER, "solver": "lbfgs"}, "metrics": logistic_metrics, "ensemble_weight": ensemble_weights["Logistic Regression"]},
+            "XGBoost": {"description": "Gradient-boosted trees for non-linear academic, engagement, and financial signals.", "parameters": XGB_TRAINING_PARAMS, "metrics": xgb_metrics, "ensemble_weight": ensemble_weights["XGBoost"]},
+            "Random Forest": {"description": "Bagged decision trees that reduce variance across diverse student profiles.", "parameters": RANDOM_FOREST_PARAMS, "metrics": random_forest_metrics, "ensemble_weight": ensemble_weights["Random Forest"]},
+            "HistGradientBoosting": {"description": "Histogram-based gradient boosting for efficient, smooth non-linear scoring.", "parameters": HIST_GRADIENT_BOOSTING_PARAMS, "metrics": hist_gradient_boosting_metrics, "ensemble_weight": ensemble_weights["HistGradientBoosting"]},
+            ensemble_name: {"description": "Validation-weighted blend of all four models used for Gold-layer risk tiers and actions.", "parameters": {"weighting": "0.65 F1 + 0.35 ROC-AUC on held-out validation"}, "metrics": ensemble_metrics, "ensemble_weight": 1.0},
         },
         "files": {
             "bronze": bronze_path.name,
@@ -672,13 +832,17 @@ def train_and_score(source_path: str | Path, activate: bool = True, source_label
             "gold": gold_path.name,
             "global_shap": "shap_global_importance.csv",
             "fairness": "fairness_audit.csv",
+            "model_comparison": "model_comparison.csv",
+            "layer_manifest": "layer_manifest.json",
             "logistic_model": "logistic_regression.joblib",
             "xgboost_model": "xgboost_model.joblib",
+            "random_forest_model": "random_forest_model.joblib",
+            "hist_gradient_boosting_model": "hist_gradient_boosting_model.joblib",
         },
     }
     metadata["mlflow"] = _log_mlflow_run(
-        run_id, run_dir, x_train, logistic, xgb, logistic_metrics, xgb_metrics,
-        len(source), champion_name,
+        run_id, run_dir, x_train, logistic, xgb, random_forest,
+        hist_gradient_boosting, model_metrics, ensemble_weights, len(source), ensemble_name,
     )
     _write_json(run_dir / "metadata.json", metadata)
     if activate:

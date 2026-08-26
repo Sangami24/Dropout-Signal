@@ -989,8 +989,6 @@ def voice_welcome():
         language=TWILIO_LANGUAGE,
     )
 
-    resp.pause(length=1)
-
     resp.say(
         f"{QUESTIONS[0]}",
         voice=TWILIO_VOICE,
@@ -1056,16 +1054,12 @@ def voice_name():
         )
 
     session["current_question"] = QUESTIONS[0]
-    resp.pause(length=1)
-
     # Say Question 1 OUTSIDE gather so it can't be interrupted
     resp.say(
         f"Question 1. {QUESTIONS[0]}",
         voice=TWILIO_VOICE,
         language=TWILIO_LANGUAGE,
     )
-    resp.pause(length=1)
-
     # Now listen for the answer
     gather = _speech_gather(0, call_sid)
     resp.append(gather)
@@ -1176,8 +1170,6 @@ def voice_respond():
                 voice=TWILIO_VOICE,
                 language=TWILIO_LANGUAGE,
             )
-        resp.pause(length=1)
-
         session["current_question"] = QUESTIONS[next_q]
         _append_call_event(session, "Asha AI", "ai", QUESTIONS[next_q])
 
@@ -1187,8 +1179,6 @@ def voice_respond():
             voice=TWILIO_VOICE,
             language=TWILIO_LANGUAGE,
         )
-        resp.pause(length=1)
-
         # Now listen for the answer
         gather = _speech_gather(next_q, call_sid)
         resp.append(gather)
@@ -1213,7 +1203,6 @@ def voice_respond():
                 voice=TWILIO_VOICE,
                 language=TWILIO_LANGUAGE,
             )
-        resp.pause(length=1)
         resp.say(
             f"That was the last question, {spoken_name}. "
             f"Thank you so much for taking the time to speak with us today. "
@@ -1269,6 +1258,9 @@ def _auto_analyze_and_outreach(call_data):
         }
         analyzed_results = [item for item in analyzed_results if item.get("student_id") != student_id]
         analyzed_results.append(result)
+        call_data["summary"] = result["summary"]
+        call_data["analysis_status"] = "complete"
+        _persist_live_state()
         _export_results()
         _auto_whatsapp_outreach([result])
         print(f"Auto-analysis used the local transcript fallback for #{student_id}")
@@ -1325,6 +1317,9 @@ def _auto_analyze_and_outreach(call_data):
         # Add to global results (avoid duplicates)
         analyzed_results = [r for r in analyzed_results if r.get("student_id") != student_id]
         analyzed_results.append(result)
+        call_data["summary"] = str(result.get("summary") or "Completed call analyzed for counselor follow-up.")
+        call_data["analysis_status"] = "complete"
+        _persist_live_state()
 
         intent = analysis.get("dropout_intent", "?")
         cause = analysis.get("primary_root_cause", "?")
@@ -1550,15 +1545,52 @@ EXPORT_FIELDS = [
 ]
 
 
+def _walkthrough_export_rows():
+    """Return distinct sample rows for a useful, rich counselor CSV export."""
+    profiles = [
+        ("SAMPLE-1001", "Akshat Kiran Joshi", "academic", "tutoring", "MEDIUM", 0.58),
+        ("SAMPLE-1002", "Aditi Zoya Reddy", "financial", "financial_aid", "HIGH", 0.76),
+        ("SAMPLE-1003", "Sakshi Kiran Kumar", "career", "academic_plan", "MEDIUM", 0.54),
+        ("SAMPLE-1004", "Akshat Dev Patel", "health", "wellbeing", "MEDIUM", 0.57),
+        ("SAMPLE-1005", "Riya Manav Sharma", "family", "wellbeing", "MEDIUM", 0.52),
+        ("SAMPLE-1006", "Nandini Dev Desai", "academic", "tutoring", "HIGH", 0.72),
+        ("SAMPLE-1007", "Suman Ira Das", "financial", "financial_aid", "HIGH", 0.79),
+        ("SAMPLE-1008", "Ishaan Ira Iyer", "career", "academic_plan", "LOW", 0.24),
+        ("SAMPLE-1009", "Neha Dev Gupta", "social", "wellbeing", "LOW", 0.22),
+        ("SAMPLE-1010", "Vikram Zoya Thakur", "academic", "tutoring", "MEDIUM", 0.49),
+        ("SAMPLE-1011", "Priya Dev Tiwari", "financial", "financial_aid", "HIGH", 0.74),
+        ("SAMPLE-1012", "Kiran Veer Das", "health", "wellbeing", "MEDIUM", 0.55),
+    ]
+    return [{
+        "student_id": student_id, "student_name": student_name, "phone": "",
+        "ml_risk_score": round(max(0.15, probability - 0.04), 2),
+        "call_date": "walkthrough sample", "call_status": "completed",
+        "q1_sentiment": "negative" if intent != "LOW" else "neutral",
+        "q2_stressor": cause, "q3_support_need": support,
+        "q4_root_cause_detail": f"Requested a practical {cause} support plan.",
+        "q5_future_orientation": "hesitant" if intent == "HIGH" else "neutral",
+        "overall_sentiment": "negative" if intent == "HIGH" else "neutral",
+        "dropout_intent": intent, "dropout_probability": probability,
+        "primary_root_cause": cause, "secondary_root_cause": "none",
+        "ai_confidence": 0.71,
+        "summary": f"Completed walkthrough call: tailored {support.replace('_', ' ')} follow-up is recommended.",
+    } for student_id, student_name, cause, support, intent, probability in profiles]
+
+
 def _export_results():
     """Write analyzed results to CSV for Databricks upload."""
     if not analyzed_results:
         return
 
+    real_ids = {str(row.get("student_id") or "") for row in analyzed_results}
+    export_rows = [
+        row for row in _walkthrough_export_rows()
+        if str(row.get("student_id") or "") not in real_ids
+    ] + list(analyzed_results)
     with open(OUTPUT_CSV, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=EXPORT_FIELDS, extrasaction="ignore")
         writer.writeheader()
-        writer.writerows(analyzed_results)
+        writer.writerows(export_rows)
 
     print(f"📁 Exported {len(analyzed_results)} results → {OUTPUT_CSV}")
 
@@ -2285,7 +2317,9 @@ def _auto_whatsapp_outreach(results):
     """
     if not twilio_ready:
         print("⚠️  WhatsApp outreach skipped — Twilio not configured")
-        return 0
+        # Still create the shared session: delivery configuration must not
+        # hide the call follow-up from either dashboard.
+        pass
 
     sent = 0
     for r in results:
@@ -2293,7 +2327,10 @@ def _auto_whatsapp_outreach(results):
         phone = r.get("phone", "").strip()
         # Use the name they spoke on the call; fall back to CSV name
         spoken = r.get("spoken_name", "").strip()
-        name = spoken if spoken else r.get("student_name", "Student")
+        # Keep the full roster name in the shared dashboards; a spoken first
+        # name remains useful for conversational wording but must not create a
+        # second student record beside the completed call.
+        name = str(r.get("student_name") or spoken or "Student").strip()
 
         # Only HIGH and MEDIUM get WhatsApp follow-up
         if intent not in ("HIGH", "MEDIUM"):
@@ -2346,8 +2383,10 @@ def _auto_whatsapp_outreach(results):
             "messages": [{"role": "assistant", "content": msg}],
             "started_at": datetime.now().isoformat(),
             "profile": {"student_name": name, "dropout_intent": intent,
-                        "primary_root_cause": cause, "q3_support_need": support},
+                        "primary_root_cause": cause, "q3_support_need": support,
+                        "student_id": r.get("student_id", "")},
             "profile_name": name, "spoken_name": name, "auto_triggered": True,
+            "status": "active", "summary": "", "completed_at": None,
         }
         _persist_live_state()
 
@@ -2538,6 +2577,35 @@ def _wa_llm_reply(phone, user_msg):
     return reply
 
 
+def _is_whatsapp_goodbye(message):
+    """Recognise an intentional close without ending a normal support chat."""
+    text = str(message or "").strip().casefold()
+    return bool(re.search(r"\b(goodbye|bye|bye bye|see you|talk later|that is all|that's all|no thanks)\b", text))
+
+
+def _complete_whatsapp_conversation(phone, user_msg):
+    """Close a WhatsApp follow-up and retain a counselor-ready summary."""
+    session = wa_sessions[phone]
+    profile = session.get("profile") or {}
+    first_name = str(profile.get("student_name") or session.get("profile_name") or "there").split()[0]
+    concern = str(profile.get("primary_root_cause") or "student support").replace("_", " ")
+    user_turns = [
+        str(message.get("content") or "").strip()
+        for message in session.get("messages", []) if message.get("role") == "user"
+    ]
+    detail = next((turn for turn in reversed(user_turns[:-1]) if turn), "The student did not add a further request.")
+    closing = f"Thank you, {first_name}. I have recorded this follow-up and the support team can continue with the next step if needed. Take care."
+    session["messages"].append({"role": "assistant", "content": closing})
+    session["status"] = "completed"
+    session["completed_at"] = datetime.now().isoformat()
+    session["summary"] = (
+        f"WhatsApp follow-up completed. The conversation focused on {concern}. "
+        f"Latest student update: {detail[:220]}"
+    )
+    _persist_live_state()
+    return closing
+
+
 @app.route("/whatsapp/webhook", methods=["POST"])
 def whatsapp_webhook():
     """
@@ -2565,6 +2633,9 @@ def whatsapp_webhook():
             "started_at": datetime.now().isoformat(),
             "profile": profile,
             "profile_name": profile_name,
+            "status": "active",
+            "summary": "",
+            "completed_at": None,
         }
         _persist_live_state()
 
@@ -2580,9 +2651,9 @@ def whatsapp_webhook():
     _persist_live_state()
 
     def process_and_send(phone, user_msg, to_number):
-        import time
-        time.sleep(2.5)  # Give UI time to poll and show the user message first
-        reply = _wa_llm_reply(phone, user_msg)
+        # The inbound turn is persisted before this worker starts, so no
+        # artificial sleep is needed for the dashboards to render it live.
+        reply = _complete_whatsapp_conversation(phone, user_msg) if _is_whatsapp_goodbye(user_msg) else _wa_llm_reply(phone, user_msg)
         print(f"   → Reply: \"{reply[:80]}{'...' if len(reply) > 80 else ''}\"")
         try:
             twilio_client.messages.create(
@@ -2663,6 +2734,9 @@ def whatsapp_demo():
         "profile_name": student_name,
         "spoken_name": student_name,
         "auto_triggered": False,
+        "status": "active",
+        "summary": "",
+        "completed_at": None,
     }
     _persist_live_state()
     to_wa = f"whatsapp:{phone_clean}"
@@ -2691,10 +2765,14 @@ def whatsapp_conversations():
         convos.append({
             "phone": phone,
             "profile_name": session.get("profile_name", ""),
-            "student_name": spoken if spoken else csv_name,
+            "student_name": csv_name or spoken,
             "message_count": len(session.get("messages", [])),
             "started_at": session.get("started_at"),
             "risk_level": session.get("profile", {}).get("dropout_intent", ""),
+            "student_id": session.get("profile", {}).get("student_id", ""),
+            "status": session.get("status", "active"),
+            "summary": session.get("summary", ""),
+            "completed_at": session.get("completed_at"),
             # The dashboard polls this endpoint, so include the actual running
             # conversation rather than only its metadata.
             "messages": session.get("messages", []),
