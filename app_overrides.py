@@ -21,6 +21,29 @@ import voice_server
 
 
 LIVE_UI_SCRIPT = r'''
+<style id="dataset-runtime-ui">
+  /* Never expose the template's fabricated AI insight. JavaScript reveals
+     this card only after /api/dataset/insights confirms an active cohort. */
+  .card-new:has(.card-new-h h3 span[style*="#bc8cff"]) { display: none !important; }
+  .card-new.dataset-insight-visible { display: block !important; }
+
+  /* Runtime transcript controls must inherit the dark dashboard theme on
+     both the counselor and administrator pages. */
+  .runtime-transcript-search { display:flex; gap:8px; align-items:center; margin:16px 0; }
+  .runtime-transcript-search input {
+    min-width:290px; padding:9px 11px; border:1px solid #30303a !important;
+    border-radius:7px; background:#101017 !important; color:#f4f4f8 !important;
+    color-scheme:dark; outline:none;
+  }
+  .runtime-transcript-search input::placeholder { color:#9292a0 !important; opacity:1; }
+  .runtime-transcript-search input:focus { border-color:#bc8cff !important; box-shadow:0 0 0 2px rgba(188,140,255,.16); }
+  .runtime-transcript-search button {
+    padding:9px 13px; border:1px solid #30303a !important; border-radius:7px;
+    background:#1b1b24 !important; color:#f4f4f8 !important; cursor:pointer;
+  }
+  .runtime-transcript-search button:hover { border-color:#bc8cff !important; }
+  .runtime-transcript-search button.danger { background:#a92731 !important; border-color:#d83d47 !important; color:#fff !important; }
+</style>
 <script>
 (() => {
   const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
@@ -503,25 +526,40 @@ LIVE_UI_SCRIPT = r'''
     if (!directUpload) localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
   }
 
+  function datasetInsightCards() {
+    return [...document.querySelectorAll('.card-new')].filter(card => /AI Insights/i.test(card.querySelector('h3')?.textContent || ''));
+  }
+
   async function refreshDatasetInsights() {
-    const cards = [...document.querySelectorAll('.card-new')].filter(card => /AI Insights/i.test(card.querySelector('h3')?.textContent || ''));
+    const cards = datasetInsightCards();
     if (!cards.length) return;
     try {
       const response = await fetch('/api/dataset/insights', {cache: 'no-store'});
       const data = await response.json();
       cards.forEach(card => {
+        // Inline display wins over the legacy card CSS, which otherwise
+        // overrides the browser's [hidden] rule and leaks the fake text.
+        card.classList.toggle('dataset-insight-visible', Boolean(data.dataset_loaded));
         card.hidden = !data.dataset_loaded;
+        card.style.display = data.dataset_loaded ? 'block' : 'none';
         if (!data.dataset_loaded) return;
         const body = card.querySelector('.card-new-b');
         if (body) body.innerHTML = `<p style="font-size:13px;color:var(--text2);line-height:1.6">${escapeHtml(data.summary)}</p>`;
       });
-    } catch (_) { cards.forEach(card => { card.hidden = true; }); }
+    } catch (_) {
+      cards.forEach(card => {
+        card.classList.remove('dataset-insight-visible');
+        card.hidden = true;
+        card.style.display = 'none';
+      });
+    }
   }
 
   // Do not show the template's placeholder insight while dataset status is
   // still unknown. refreshDatasetInsights reveals only active-data insight.
-  [...document.querySelectorAll('.card-new')].forEach(card => {
-    if (/AI Insights/i.test(card.querySelector('h3')?.textContent || '')) card.hidden = true;
+  datasetInsightCards().forEach(card => {
+    card.hidden = true;
+    card.style.display = 'none';
   });
 
   document.addEventListener('DOMContentLoaded', () => {
@@ -881,4 +919,10 @@ def install(app, namespace):
     for key in ("ADMIN_DASHBOARD", "COUNSELOR_DASHBOARD"):
         template = namespace.get(key)
         if isinstance(template, str) and "refreshLiveTranscripts" not in template:
+            # Remove the legacy fabricated sentence from the HTML itself. The
+            # card is populated only by the dataset-backed insights endpoint.
+            template = template.replace(
+                "Based on recent data, 87 students are at high risk of dropping out. Key factors include attendance (42%), low engagement (28%), and academic performance (30%). Early intervention can improve outcomes.",
+                "",
+            )
             namespace[key] = template.replace("</body>", LIVE_UI_SCRIPT + "</body>")
