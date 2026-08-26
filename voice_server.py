@@ -1546,35 +1546,51 @@ EXPORT_FIELDS = [
 
 
 def _walkthrough_export_rows():
-    """Return distinct sample rows for a useful, rich counselor CSV export."""
-    profiles = [
-        ("SAMPLE-1001", "Akshat Kiran Joshi", "academic", "tutoring", "MEDIUM", 0.58),
-        ("SAMPLE-1002", "Aditi Zoya Reddy", "financial", "financial_aid", "HIGH", 0.76),
-        ("SAMPLE-1003", "Sakshi Kiran Kumar", "career", "academic_plan", "MEDIUM", 0.54),
-        ("SAMPLE-1004", "Akshat Dev Patel", "health", "wellbeing", "MEDIUM", 0.57),
-        ("SAMPLE-1005", "Riya Manav Sharma", "family", "wellbeing", "MEDIUM", 0.52),
-        ("SAMPLE-1006", "Nandini Dev Desai", "academic", "tutoring", "HIGH", 0.72),
-        ("SAMPLE-1007", "Suman Ira Das", "financial", "financial_aid", "HIGH", 0.79),
-        ("SAMPLE-1008", "Ishaan Ira Iyer", "career", "academic_plan", "LOW", 0.24),
-        ("SAMPLE-1009", "Neha Dev Gupta", "social", "wellbeing", "LOW", 0.22),
-        ("SAMPLE-1010", "Vikram Zoya Thakur", "academic", "tutoring", "MEDIUM", 0.49),
-        ("SAMPLE-1011", "Priya Dev Tiwari", "financial", "financial_aid", "HIGH", 0.74),
-        ("SAMPLE-1012", "Kiran Veer Das", "health", "wellbeing", "MEDIUM", 0.55),
-    ]
-    return [{
-        "student_id": student_id, "student_name": student_name, "phone": "",
-        "ml_risk_score": round(max(0.15, probability - 0.04), 2),
-        "call_date": "walkthrough sample", "call_status": "completed",
-        "q1_sentiment": "negative" if intent != "LOW" else "neutral",
-        "q2_stressor": cause, "q3_support_need": support,
-        "q4_root_cause_detail": f"Requested a practical {cause} support plan.",
-        "q5_future_orientation": "hesitant" if intent == "HIGH" else "neutral",
-        "overall_sentiment": "negative" if intent == "HIGH" else "neutral",
-        "dropout_intent": intent, "dropout_probability": probability,
-        "primary_root_cause": cause, "secondary_root_cause": "none",
-        "ai_confidence": 0.71,
-        "summary": f"Completed walkthrough call: tailored {support.replace('_', ' ')} follow-up is recommended.",
-    } for student_id, student_name, cause, support, intent, probability in profiles]
+    """Build export samples from the active Gold cohort, never fixed names/counts."""
+    try:
+        from ml_pipeline import active_records
+        records = active_records().copy()
+    except Exception:
+        return []
+    if records.empty:
+        return []
+
+    records = records.sort_values("ml_risk_score", ascending=False).head(12)
+    support_by_cause = {
+        "Financial and economic pressure": "financial_aid",
+        "Academic progression": "tutoring",
+        "Student background and transition": "wellbeing",
+        "Engagement and enrolment context": "academic_plan",
+    }
+    rows = []
+    for _, student in records.iterrows():
+        cause = str(student.get("primary_root_cause") or "Engagement and enrolment context")
+        tier = str(student.get("final_risk_tier") or "MEDIUM").upper()
+        probability = round(float(student.get("ml_risk_score") or 0), 4)
+        support = support_by_cause.get(cause, "academic_plan")
+        factor = str(student.get("top_factor_1") or "current support signals")
+        action = str(student.get("final_action") or "Schedule counselor follow-up")
+        rows.append({
+            "student_id": str(student.get("student_id") or ""),
+            "student_name": str(student.get("student_name") or "Student"),
+            "phone": "",
+            "ml_risk_score": probability,
+            "call_date": "active cohort walkthrough",
+            "call_status": "completed",
+            "q1_sentiment": "negative" if tier == "HIGH" else "neutral",
+            "q2_stressor": cause,
+            "q3_support_need": support,
+            "q4_root_cause_detail": f"Gold-layer signal: {factor}.",
+            "q5_future_orientation": "hesitant" if tier == "HIGH" else "neutral",
+            "overall_sentiment": "negative" if tier == "HIGH" else "neutral",
+            "dropout_intent": tier,
+            "dropout_probability": probability,
+            "primary_root_cause": cause,
+            "secondary_root_cause": "none",
+            "ai_confidence": 0.71,
+            "summary": f"Active-cohort walkthrough record. Recommended action: {action}.",
+        })
+    return rows
 
 
 def _export_results():

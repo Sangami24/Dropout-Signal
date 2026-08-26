@@ -626,6 +626,7 @@ FINAL_UI_SCRIPT = r'''
   let operationalSignature = '';
   let fairnessRequest = 0;
   let latestCall = null;
+  let activeDatasetRunId = null;
   const openedConversationByChannel = {call: null, whatsapp: null};
   const visibleMessageCounts = new Map();
   let allowAchalAutofocus = true;
@@ -786,6 +787,40 @@ FINAL_UI_SCRIPT = r'''
     document.querySelectorAll('.cohort-ai-brief').forEach(node => node.remove());
   }
 
+  function setDatasetCounts(ids, value) {
+    ids.forEach(id => { const node = document.getElementById(id); if (node) node.textContent = value; });
+  }
+
+  function applySharedDatasetStatus(status) {
+    const loaded = Boolean(status?.dataset_loaded);
+    const tiers = Object.fromEntries((status?.tier_breakdown || []).map(row => [String(row.final_risk_tier || '').toUpperCase(), Number(row.cnt || 0)]));
+    const total = Number(status?.record_count || 0);
+    const atRisk = (tiers.HIGH || 0) + (tiers.MEDIUM || 0);
+    const predicted = Number(status?.predicted_dropouts || 0);
+    const display = loaded ? total.toLocaleString() : '–';
+    setDatasetCounts(['s-bronze','cd-calls','student-directory-nav-count','sb-student-count'], display);
+    setDatasetCounts(['s-gold','cd-med','admin-risk-count','sb-risk-count'], loaded ? atRisk.toLocaleString() : '–');
+    setDatasetCounts(['s-avgrisk','cd-high'], loaded ? predicted.toLocaleString() : '–');
+    document.querySelectorAll('.risk-fixed-badge').forEach(node => { node.textContent = loaded ? `${atRisk.toLocaleString()} at risk` : '– at risk'; });
+    const label = document.getElementById('dataset-active-label');
+    if (label) label.textContent = loaded ? `${status.dataset_name || status.source_label || 'Active dataset'} · ${display} students` : 'No dataset loaded';
+  }
+
+  async function syncActiveDatasetScope() {
+    try {
+      const status = await fetch('/api/dataset/status', {cache:'no-store'}).then(response => response.ok ? response.json() : {});
+      const nextRun = status.dataset_loaded ? String(status.run_id || status.dataset_name || '') : 'none';
+      applySharedDatasetStatus(status);
+      if (nextRun === activeDatasetRunId) return;
+      activeDatasetRunId = nextRun;
+      // A new upload changes the shared cohort. Refresh every data-dependent
+      // surface in both roles rather than retaining the prior run's cards.
+      renderCohortPulse(); renderAtRisk(false); renderAtRisk(true);
+      refreshFairness(); refreshOperations();
+      document.querySelectorAll('.ensemble-context').forEach(node => node.remove());
+    } catch (_) {}
+  }
+
   function removeDuplicateTranscriptSearch() {
     ['page-transcript', 'page-admin-transcript'].forEach(id => {
       const page = document.getElementById(id); if (!page) return;
@@ -923,8 +958,8 @@ FINAL_UI_SCRIPT = r'''
   window.waDemo = sendCallFollowUp;
   window.adminWaDemo = sendCallFollowUp;
   document.addEventListener('DOMContentLoaded', () => {
-    renderCohortPulse(); renderCohortBrief(); removeDuplicateTranscriptSearch(); normalizeUploadStages(); removeDemoUi(); refreshOperations(); renderAtRisk(false); renderAtRisk(true); refreshFairness(); augmentModelEvidence();
-    setInterval(refreshOperations, 700); setInterval(normalizeUploadStages, 160); setInterval(removeDemoUi, 800); setInterval(refreshFairness, 1800); setInterval(renderCohortPulse, 8000); setInterval(renderCohortBrief, 3000); setInterval(removeDuplicateTranscriptSearch, 1000); setInterval(augmentModelEvidence, 900);
+    renderCohortPulse(); renderCohortBrief(); removeDuplicateTranscriptSearch(); normalizeUploadStages(); removeDemoUi(); refreshOperations(); renderAtRisk(false); renderAtRisk(true); refreshFairness(); augmentModelEvidence(); syncActiveDatasetScope();
+    setInterval(refreshOperations, 700); setInterval(normalizeUploadStages, 160); setInterval(removeDemoUi, 800); setInterval(refreshFairness, 1800); setInterval(renderCohortPulse, 8000); setInterval(renderCohortBrief, 3000); setInterval(removeDuplicateTranscriptSearch, 1000); setInterval(augmentModelEvidence, 900); setInterval(syncActiveDatasetScope, 2000);
   });
 })();
 </script>

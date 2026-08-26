@@ -793,9 +793,14 @@ def train_and_score(source_path: str | Path, activate: bool = True, source_label
     joblib.dump(hist_gradient_boosting, run_dir / "hist_gradient_boosting_model.joblib")
 
     tiers = gold["final_risk_tier"].value_counts().reindex(["HIGH", "MEDIUM", "LOW"], fill_value=0)
+    dataset_display_name = source_label or Path(source_path).name
     metadata: dict[str, Any] = {
         "run_id": run_id,
-        "dataset_name": Path(source_path).name,
+        # Preserve the uploaded dataset's own label in every dashboard/API.
+        # Re-scoring a prior Bronze artifact must not make it look like a
+        # universal "bronze_raw.csv" cohort.
+        "dataset_name": dataset_display_name,
+        "source_file_name": Path(source_path).name,
         "source_label": dataset_label,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "dataset_sha256": signature,
