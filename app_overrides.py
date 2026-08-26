@@ -591,15 +591,20 @@ LIVE_UI_SCRIPT = r'''
 # instead of their historical browser-only sample state.
 FINAL_UI_SCRIPT = r'''
 <style id="authoritative-dashboard-ui">
-  .dataset-workflow { margin-top:18px; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
-  .dataset-workflow article { min-height:102px; padding:14px; border:1px solid var(--border); border-radius:10px; background:var(--surface2); }
-  .dataset-workflow b { display:block; margin-bottom:7px; color:var(--text); font-size:13px; }
-  .dataset-workflow span { color:var(--text3); font-size:11px; line-height:1.45; }
-  .dataset-workflow i { display:inline-block; width:7px; height:7px; margin-right:7px; border-radius:50%; background:var(--green); box-shadow:0 0 8px rgba(34,197,94,.65); }
+  .cohort-pulse { margin-top:18px; display:grid; grid-template-columns:1.1fr 1.4fr 1fr; gap:12px; }
+  .cohort-pulse > section { min-height:188px; padding:16px; border:1px solid var(--border); border-radius:10px; background:var(--surface2); }
+  .cohort-pulse h3 { margin:0 0 14px; font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--text2); }
+  .pulse-stat { display:flex; justify-content:space-between; align-items:baseline; padding:9px 0; border-bottom:1px solid var(--border); }
+  .pulse-stat:last-child { border-bottom:0; } .pulse-stat b { font-size:21px; color:var(--text); } .pulse-stat span { font-size:11px; color:var(--text3); }
+  .risk-bar { display:grid; grid-template-columns:60px 1fr 48px; gap:8px; align-items:center; margin:13px 0; font-size:11px; color:var(--text2); }
+  .risk-bar em { display:block; height:8px; border-radius:5px; background:#262632; overflow:hidden; } .risk-bar i { display:block; height:100%; border-radius:inherit; }
+  .pulse-insight { margin:0; color:var(--text2); font-size:12px; line-height:1.65; } .pulse-insight b { color:var(--text); }
+  .cohort-ai-brief { grid-column:1/-1; margin:0 0 18px; padding:18px; border:1px solid rgba(188,140,255,.28); border-radius:12px; background:linear-gradient(125deg,rgba(188,140,255,.11),rgba(17,17,25,.94)); }
+  .cohort-ai-brief h2 { margin:0 0 8px; font-size:15px; } .cohort-ai-brief p { margin:0; color:var(--text2); font-size:13px; line-height:1.65; }
   .dataset-empty-live { padding:28px 14px; color:var(--text3); font-size:13px; text-align:center; }
   .fairness-status { font-size:11px; font-weight:600; }
   .fairness-status.ok { color:var(--green); } .fairness-status.review { color:var(--amber); }
-  @media (max-width:800px) { .dataset-workflow { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+  @media (max-width:800px) { .cohort-pulse { grid-template-columns:1fr; } }
 </style>
 <script>
 (() => {
@@ -626,7 +631,7 @@ FINAL_UI_SCRIPT = r'''
     }).join('') || `<div class="dataset-empty-live">No ${channel === 'call' ? 'call transcripts' : 'WhatsApp conversations'} yet. New activity will appear here automatically.</div>`;
   }
 
-  function renderOperations(callsPayload, whatsappPayload) {
+  function renderOperations(callsPayload, whatsappPayload, experiencePayload) {
     const calls = Object.values(callsPayload.sessions || {});
     const byStudent = new Map();
     calls.forEach(session => {
@@ -651,10 +656,14 @@ FINAL_UI_SCRIPT = r'''
       target.student_name = name;
       target.whatsapp = messages;
     });
+    (experiencePayload?.conversations || []).filter(item => item.is_sample).forEach(item => {
+      const id = String(item.student_id || '');
+      if (!id || byStudent.has(id)) return;
+      byStudent.set(id, {...item, call: item.call || [], whatsapp: item.whatsapp || []});
+    });
     const items = [...byStudent.values()].sort((a, b) => String(a.status).toLowerCase() === 'completed' ? 1 : -1);
     latestCall = items.find(item => item.call.length) || latestCall;
     const signature = JSON.stringify(items.map(item => [item.student_id, item.status, item.call.length, item.whatsapp.length, item.call.at(-1)?.text, item.whatsapp.at(-1)?.content]));
-    if (signature === operationalSignature) return;
     operationalSignature = signature;
     const callHtml = panelMarkup(items, 'call'), waHtml = panelMarkup(items, 'whatsapp');
     ['full-transcript-panel', 'transcript-panel', 'admin-transcript-panel'].forEach(id => { const panel = document.getElementById(id); if (panel) panel.innerHTML = callHtml; });
@@ -665,25 +674,52 @@ FINAL_UI_SCRIPT = r'''
 
   async function refreshOperations() {
     try {
-      const [calls, whatsapp] = await Promise.all([
+      const [calls, whatsapp, experience] = await Promise.all([
         fetch('/api/transcripts', {cache: 'no-store'}).then(r => r.ok ? r.json() : {sessions:{}}),
         fetch('/whatsapp/conversations', {cache: 'no-store'}).then(r => r.ok ? r.json() : {conversations:[]}),
+        fetch('/api/dataset/experience', {cache: 'no-store'}).then(r => r.ok ? r.json() : {conversations:[]}),
       ]);
-      renderOperations(calls, whatsapp);
+      renderOperations(calls, whatsapp, experience);
     } catch (_) {}
   }
 
-  function workflow() {
-    const existing = document.getElementById('dataset-live-workflow');
-    if (existing) return existing;
+  async function renderCohortPulse() {
+    const existing = document.getElementById('cohort-pulse');
     const anchor = document.getElementById('intervention-stats')?.closest('.card,.card-new') || Array.from(document.querySelectorAll('.card,.card-new')).find(card => /intervention summary/i.test(card.querySelector('.card-h,.card-new-h,h3')?.textContent || ''));
-    if (!anchor) return null;
-    const section = document.createElement('section');
-    section.id = 'dataset-live-workflow';
-    section.className = 'dataset-workflow';
-    section.innerHTML = '<article><b><i></i>Upload</b><span>Securely receive the selected CSV.</span></article><article><b><i></i>Read</b><span>Validate columns and prepare records.</span></article><article><b><i></i>Analyze</b><span>Score the cohort and generate model evidence.</span></article><article><b><i></i>Finalize</b><span>Activate the scored cohort for both workspaces.</span></article>';
-    anchor.insertAdjacentElement('afterend', section);
-    return section;
+    if (!anchor) return;
+    try {
+      const status = await fetch('/api/dataset/status', {cache:'no-store'}).then(r => r.json());
+      if (!status.dataset_loaded) return;
+      const tiers = Object.fromEntries((status.tier_breakdown || []).map(row => [String(row.final_risk_tier).toUpperCase(), Number(row.cnt || 0)]));
+      const total = Number(status.record_count || 0), high = tiers.HIGH || 0, medium = tiers.MEDIUM || 0, low = tiers.LOW || 0, atRisk = high + medium;
+      const section = existing || document.createElement('section');
+      section.id = 'cohort-pulse'; section.className = 'cohort-pulse';
+      section.innerHTML = `<section><h3>Cohort snapshot</h3><div class="pulse-stat"><span>Scored students</span><b>${total.toLocaleString()}</b></div><div class="pulse-stat"><span>Students needing support</span><b>${atRisk.toLocaleString()}</b></div><div class="pulse-stat"><span>Predicted dropouts</span><b>${Number(status.predicted_dropouts || 0).toLocaleString()}</b></div></section><section><h3>Risk distribution</h3>${[['High',high,'#ef4444'],['Medium',medium,'#f59e0b'],['Low',low,'#22c55e']].map(([label,value,color]) => `<div class="risk-bar"><span>${label}</span><em><i style="width:${total ? value / total * 100 : 0}%;background:${color}"></i></em><b>${value.toLocaleString()}</b></div>`).join('')}</section><section><h3>Priority signal</h3><p class="pulse-insight"><b>${status.champion_model || 'Active model'}</b> is scoring this cohort. ${high.toLocaleString()} high-risk students should receive priority review, with ${medium.toLocaleString()} more in proactive follow-up.</p></section>`;
+      if (!existing) anchor.insertAdjacentElement('afterend', section);
+    } catch (_) {}
+  }
+
+  async function renderCohortBrief() {
+    const grid = document.getElementById('summary-students') || document.getElementById('admin-summary-grid');
+    if (!grid || grid.querySelector('.cohort-ai-brief')) return;
+    try {
+      const [status, metrics] = await Promise.all([fetch('/api/dataset/status', {cache:'no-store'}).then(r => r.json()), fetch('/api/model-metrics', {cache:'no-store'}).then(r => r.json())]);
+      if (!status.dataset_loaded) return;
+      const tiers = Object.fromEntries((status.tier_breakdown || []).map(row => [String(row.final_risk_tier).toUpperCase(), Number(row.cnt || 0)]));
+      const factors = (metrics.shap || []).slice(0, 3).map(row => String(row.feature || '').replaceAll('_', ' ')).filter(Boolean).join(', ');
+      const brief = document.createElement('section'); brief.className = 'cohort-ai-brief';
+      brief.innerHTML = `<h2>AI Cohort Summary</h2><p>The active cohort contains <b>${Number(status.record_count || 0).toLocaleString()} students</b>, with <b>${(tiers.HIGH || 0).toLocaleString()} requiring immediate review</b> and <b>${(tiers.MEDIUM || 0).toLocaleString()} recommended for proactive support</b>. ${status.champion_model || 'The active model'} identifies ${factors ? `<b>${escapeHtml(factors)}</b> as the strongest current signals.` : 'the current model signals as the basis for prioritisation.'} This summary is cohort-level; individual cards below retain the student-specific next actions.</p>`;
+      grid.prepend(brief);
+    } catch (_) {}
+  }
+
+  function removeDuplicateTranscriptSearch() {
+    ['page-transcript', 'page-admin-transcript'].forEach(id => {
+      const page = document.getElementById(id); if (!page) return;
+      const bars = [...page.querySelectorAll('.runtime-transcript-search')];
+      bars.slice(1).forEach(bar => bar.remove());
+      [...page.querySelectorAll('.operation-toolbar')].filter(bar => /search call transcripts/i.test(bar.querySelector('input')?.placeholder || '') && !bar.classList.contains('runtime-transcript-search')).forEach(bar => bar.remove());
+    });
   }
 
   function normalizeUploadStages() {
@@ -741,8 +777,8 @@ FINAL_UI_SCRIPT = r'''
   window.waDemo = sendCallFollowUp;
   window.adminWaDemo = sendCallFollowUp;
   document.addEventListener('DOMContentLoaded', () => {
-    workflow(); normalizeUploadStages(); removeDemoUi(); refreshOperations(); renderAtRisk(false); renderAtRisk(true); refreshFairness();
-    setInterval(refreshOperations, 700); setInterval(normalizeUploadStages, 160); setInterval(removeDemoUi, 800); setInterval(refreshFairness, 1800);
+    renderCohortPulse(); renderCohortBrief(); removeDuplicateTranscriptSearch(); normalizeUploadStages(); removeDemoUi(); refreshOperations(); renderAtRisk(false); renderAtRisk(true); refreshFairness();
+    setInterval(refreshOperations, 700); setInterval(normalizeUploadStages, 160); setInterval(removeDemoUi, 800); setInterval(refreshFairness, 1800); setInterval(renderCohortPulse, 8000); setInterval(renderCohortBrief, 3000); setInterval(removeDuplicateTranscriptSearch, 1000);
   });
 })();
 </script>
@@ -1086,6 +1122,22 @@ def install(app, namespace):
                 by_student[str(target["student_id"])] = target
             target["student_name"] = student_name
             target["whatsapp"] = messages
+        # Keep the operational views populated for a walkthrough, but make
+        # these explicitly separate sample records. They never replace a
+        # webhook-backed student call such as Achal's.
+        if payload.get("dataset_loaded"):
+            real_ids = {str(item.get("student_id")) for item in real_calls}
+            for index, student in enumerate(namespace["_dataset_records"](limit=8)):
+                if str(student.get("student_id")) in real_ids:
+                    continue
+                sample = namespace["_experience_conversation"](student, index)
+                sample["is_sample"] = True
+                sample["status"] = "active" if index < 4 else "completed"
+                sample["student_name"] = student.get("student_name") or "Student"
+                if sample["status"] == "active":
+                    sample["call"] = list(sample.get("call", []))[:3]
+                    sample["whatsapp"] = list(sample.get("whatsapp", []))[:3]
+                real_calls.append(sample)
         active_states = {"active", "ringing", "in-progress", "in_progress"}
         payload["conversations"] = sorted(
             real_calls,
@@ -1159,5 +1211,7 @@ def install(app, namespace):
                 .replace("Send WhatsApp Demo", "Send WhatsApp Follow-up")
                 .replace("WhatsApp Demo", "WhatsApp Follow-up")
                 .replace("Demo Call", "Start Call")
+                .replace("Uploading file...", "Uploading dataset...")
+                .replace("Uploading file…", "Uploading dataset…")
             )
             namespace[key] = template.replace("</body>", LIVE_UI_SCRIPT + FINAL_UI_SCRIPT + "</body>")
