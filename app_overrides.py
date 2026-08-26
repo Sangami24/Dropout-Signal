@@ -652,6 +652,7 @@ FINAL_UI_SCRIPT = r'''
   let allowAchalAutofocus = true;
   let pendingAchalCallFocus = false;
   const sampleCursors = new Map();
+  const liveThreadFollowState = new Map();
 
   const messageMarkup = (message, studentName) => {
     const student = message.side === 'student' || message.role === 'user';
@@ -824,7 +825,7 @@ FINAL_UI_SCRIPT = r'''
       const existing = document.getElementById('cohort-pulse');
       const section = existing || document.createElement('section');
       section.id = 'cohort-pulse'; section.className = 'cohort-pulse';
-      section.innerHTML = `<section><h3>Cohort snapshot</h3><div class="pulse-stat"><span>Scored students</span><b>${total.toLocaleString()}</b></div><div class="pulse-stat"><span>Students needing support</span><b>${atRisk.toLocaleString()}</b></div><div class="pulse-stat"><span>Predicted dropouts</span><b>${Number(status.predicted_dropouts || 0).toLocaleString()}</b></div></section><section><h3>Risk distribution</h3>${[['High',high,'#ef4444'],['Medium',medium,'#f59e0b'],['Low',low,'#22c55e']].map(([label,value,color]) => `<div class="risk-bar"><span>${label}</span><em><i style="width:${total ? value / total * 100 : 0}%;background:${color}"></i></em><b>${value.toLocaleString()}</b></div>`).join('')}</section><section><h3>Counselor action queue</h3><p class="pulse-insight"><b>Priority outreach:</b> contact ${high.toLocaleString()} high-risk students within the next review window.</p><p class="pulse-insight" style="margin-top:10px"><b>Proactive follow-up:</b> schedule check-ins for ${medium.toLocaleString()} medium-risk students.</p><p class="pulse-insight" style="margin-top:10px"><b>Live support:</b> monitor ongoing calls and WhatsApp replies, then record the agreed next action.</p></section>`;
+      section.innerHTML = `<section><h3>Cohort snapshot</h3><div class="pulse-stat"><span>Scored students</span><b>${total.toLocaleString()}</b></div><div class="pulse-stat"><span>Students needing support</span><b>${atRisk.toLocaleString()}</b></div><div class="pulse-stat"><span>Predicted dropouts</span><b>${Number(status.predicted_dropouts || 0).toLocaleString()}</b></div></section><section><h3>Risk distribution</h3>${[['High',high,'#ef4444'],['Medium',medium,'#f59e0b'],['Low',low,'#22c55e']].map(([label,value,color]) => `<div class="risk-bar"><span>${label}</span><em><i style="width:${total ? value / total * 100 : 0}%;background:${color}"></i></em><b>${value.toLocaleString()}</b></div>`).join('')}</section><section><h3>Outreach priorities</h3><p class="pulse-insight"><b>Priority outreach:</b> contact ${high.toLocaleString()} high-risk students within the next review window.</p><p class="pulse-insight" style="margin-top:10px"><b>Proactive follow-up:</b> schedule check-ins for ${medium.toLocaleString()} medium-risk students.</p><p class="pulse-insight" style="margin-top:10px"><b>Live support:</b> monitor ongoing calls and WhatsApp replies, then record the agreed next action.</p></section>`;
       if (!existing) anchor.insertAdjacentElement('afterend', section);
     } catch (_) {}
   }
@@ -865,12 +866,13 @@ FINAL_UI_SCRIPT = r'''
       const highEnd = total ? high / total * 100 : 0, mediumEnd = total ? (high + medium) / total * 100 : 0;
       chart.innerHTML = `<div class="d-chart-container"><div class="admin-risk-donut" style="background:conic-gradient(#ef4444 0 ${highEnd}%,#f59e0b ${highEnd}% ${mediumEnd}%,#22c55e ${mediumEnd}% 100%)"><div class="admin-risk-hole"><strong>${total.toLocaleString()}</strong><span>students</span></div></div></div><div class="d-legend"><div class="dl-item"><span class="dl-left"><span class="dl-dot" style="background:#ef4444"></span>High risk</span><strong>${high.toLocaleString()}</strong></div><div class="dl-item"><span class="dl-left"><span class="dl-dot" style="background:#f59e0b"></span>Medium risk</span><strong>${medium.toLocaleString()}</strong></div><div class="dl-item"><span class="dl-left"><span class="dl-dot" style="background:#22c55e"></span>Low risk</span><strong>${low.toLocaleString()}</strong></div></div>`;
     }
-    const trendCard = [...document.querySelectorAll('.card-new')].find(card => /^(Risk Trend|Outreach Priorities)\b/i.test(card.querySelector('h3')?.textContent || ''));
+    const trendCard = [...document.querySelectorAll('.card-new')].find(card => /^(Risk Trend|Outreach Priorities|Risk Prediction)\b/i.test(card.querySelector('h3')?.textContent || ''));
     const trendBody = trendCard?.querySelector('.card-new-b');
     if (trendCard && trendBody) {
       const heading = trendCard.querySelector('h3');
-      if (heading) heading.innerHTML = `Outreach Priorities <span class="risk-fixed-badge">${(high + medium).toLocaleString()} at risk</span>`;
-      trendBody.innerHTML = `<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:8px 2px"><section style="padding:13px;border:1px solid var(--border);border-radius:9px;background:var(--surface2)"><h3 style="margin:0 0 7px;color:#ef4444">${high.toLocaleString()}</h3><p style="margin:0;color:var(--text2);font-size:12px;line-height:1.5">high-risk students need immediate counselor review.</p></section><section style="padding:13px;border:1px solid var(--border);border-radius:9px;background:var(--surface2)"><h3 style="margin:0 0 7px;color:#f59e0b">${medium.toLocaleString()}</h3><p style="margin:0;color:var(--text2);font-size:12px;line-height:1.5">medium-risk students need proactive follow-up.</p></section><section style="padding:13px;border:1px solid var(--border);border-radius:9px;background:var(--surface2)"><h3 style="margin:0 0 7px;color:#22c55e">${low.toLocaleString()}</h3><p style="margin:0;color:var(--text2);font-size:12px;line-height:1.5">low-risk students remain in routine monitoring.</p></section></div>`;
+      const predicted = Number(status.predicted_dropouts || high);
+      if (heading) heading.innerHTML = `Risk Prediction <span class="risk-fixed-badge">${predicted.toLocaleString()} predicted dropouts</span>`;
+      trendBody.innerHTML = `<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:8px 2px"><section style="padding:13px;border:1px solid var(--border);border-radius:9px;background:var(--surface2)"><h3 style="margin:0 0 7px;color:#ef4444">${predicted.toLocaleString()}</h3><p style="margin:0;color:var(--text2);font-size:12px;line-height:1.5">students currently predicted to need intervention.</p></section><section style="padding:13px;border:1px solid var(--border);border-radius:9px;background:var(--surface2)"><h3 style="margin:0 0 7px;color:#f59e0b">${high.toLocaleString()}</h3><p style="margin:0;color:var(--text2);font-size:12px;line-height:1.5">high-confidence cases requiring immediate review.</p></section><section style="padding:13px;border:1px solid var(--border);border-radius:9px;background:var(--surface2)"><h3 style="margin:0 0 7px;color:#bc8cff">${medium.toLocaleString()}</h3><p style="margin:0;color:var(--text2);font-size:12px;line-height:1.5">students in the proactive support watchlist.</p></section></div>`;
     }
   }
 
@@ -895,13 +897,45 @@ FINAL_UI_SCRIPT = r'''
   }
 
   function keepLiveThreadsAtLatestTurn() {
-    // The authoritative workspace reveals a live turn on its own timer.
-    // Keep any selected active call or WhatsApp thread anchored to that turn
-    // so generated and real messages never appear below the viewport.
+    // A live thread follows new messages only while the viewer is at its
+    // bottom.  Reading earlier messages deliberately pauses the follow;
+    // scrolling back down resumes it.  State is keyed independently of the
+    // DOM node because the authoritative workspace redraws rows as messages
+    // arrive.
     document.querySelectorAll('.dataset-conversation[open]').forEach(row => {
       if (!row.querySelector('.dataset-live')) return;
       const thread = row.querySelector('.dataset-thread');
-      if (thread) thread.scrollTop = thread.scrollHeight;
+      if (!thread) return;
+
+      const channel = row.closest('#wa-convos-panel, #admin-wa-panel') ? 'whatsapp' : 'call';
+      const studentKey = row.dataset.studentId || row.dataset.conversationKey || row.querySelector('summary strong')?.textContent || 'conversation';
+      const key = `${channel}:${studentKey}`;
+      let state = liveThreadFollowState.get(key);
+      if (!state) {
+        state = { follow: true, scrollTop: 0 };
+        liveThreadFollowState.set(key, state);
+      }
+
+      if (!thread.dataset.runtimeFollowBound) {
+        thread.dataset.runtimeFollowBound = 'true';
+        thread.addEventListener('scroll', () => {
+          if (thread.dataset.runtimeProgrammaticScroll === 'true') return;
+          const stored = liveThreadFollowState.get(key) || { follow: true, scrollTop: 0 };
+          const atBottom = thread.scrollTop + thread.clientHeight >= thread.scrollHeight - 12;
+          stored.follow = atBottom;
+          stored.scrollTop = thread.scrollTop;
+          liveThreadFollowState.set(key, stored);
+        }, { passive: true });
+      }
+
+      thread.dataset.runtimeProgrammaticScroll = 'true';
+      if (state.follow) {
+        thread.scrollTop = thread.scrollHeight;
+      } else {
+        const maxScroll = Math.max(0, thread.scrollHeight - thread.clientHeight);
+        thread.scrollTop = Math.min(state.scrollTop, maxScroll);
+      }
+      requestAnimationFrame(() => { thread.dataset.runtimeProgrammaticScroll = ''; });
     });
   }
 
