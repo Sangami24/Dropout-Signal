@@ -188,6 +188,11 @@ LIVE_UI_SCRIPT = r'''
     });
   }
 
+  // Preserve the dashboard's upload cancellation function. This runtime
+  // script must not replace the upload controller that applies the server's
+  // returned dataset values directly to the dashboard.
+  const nativeCancelDatasetUpload = window.cancelDatasetUpload;
+
   // ═══════════════════════════════════════════════════════════════════
   //  UPLOAD CONTROLLER — single, race-free implementation
   // ═══════════════════════════════════════════════════════════════════
@@ -371,13 +376,9 @@ LIVE_UI_SCRIPT = r'''
   }
 
   // ── Capture file selection (before the legacy page handler) ───────
-  document.addEventListener('change', event => {
-    const input = event.target;
-    if (!(input instanceof HTMLInputElement) || input.id !== 'dataset-file-input') return;
-    event.stopImmediatePropagation();
-    beginUpload(input.files?.[0]);
-    input.value = '';
-  }, true);
+  // File selection remains owned by the dashboard's native uploadDataset()
+  // handler. Intercepting it here bypassed applyDatasetStatus() and forced a
+  // reload that returned users to an empty dashboard.
 
   // ── Cross-tab and visibility event handlers ───────────────────────
   document.addEventListener('visibilitychange', () => {
@@ -519,6 +520,10 @@ LIVE_UI_SCRIPT = r'''
     // No background job is used. A stale key from an old page must never
     // recreate a fake progress overlay or alter a new upload.
     if (!directUpload) localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
+  }
+
+  if (typeof nativeCancelDatasetUpload === 'function') {
+    window.cancelDatasetUpload = nativeCancelDatasetUpload;
   }
 
   function datasetInsightCards() {
