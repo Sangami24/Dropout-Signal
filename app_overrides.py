@@ -641,6 +641,7 @@ FINAL_UI_SCRIPT = r'''
 (() => {
   const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&gt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
   let operationalSignature = '';
+  let operationsRequest = 0;
   let fairnessRequest = 0;
   let latestCall = null;
   let activeDatasetRunId = null;
@@ -768,14 +769,46 @@ FINAL_UI_SCRIPT = r'''
     if (achal && String(achal.call_status || '').toLowerCase() === 'completed' && String(achal.whatsapp_status || '').toLowerCase() === 'active' && openedConversationKey === `${achal.student_id}:call`) openedConversationKey = `${achal.student_id}:whatsapp`;
     if (achal && openedConversationKey) pendingAchalCallFocus = false;
     latestCall = items.find(item => item.call.length) || latestCall;
-    const signature = JSON.stringify(items.map(item => [item.student_id, item.status, item.call.length, item.whatsapp.length, item.call.at(-1)?.text, item.whatsapp.at(-1)?.content]));
+    const signature = JSON.stringify(items.map(item => [item.student_id, item.status, item.call_status, item.whatsapp_status, progressiveMessages(item, 'call').length, progressiveMessages(item, 'whatsapp').length, item.call.at(-1)?.text, item.whatsapp.at(-1)?.content]));
     operationalSignature = signature;
     const callHtml = panelMarkup(items, 'call'), waHtml = panelMarkup(items, 'whatsapp');
-    ['full-transcript-panel', 'transcript-panel', 'admin-transcript-panel'].forEach(id => { const panel = document.getElementById(id); if (panel) panel.innerHTML = callHtml; });
-    ['wa-convos-panel', 'admin-wa-panel'].forEach(id => { const panel = document.getElementById(id); if (panel) panel.innerHTML = waHtml; });
+    const renderPanel = (id, channel, html) => {
+      const panel = document.getElementById(id);
+      if (!panel) return;
+      const panelSignature = `${signature}:${channel}:${openedConversationKey || ''}`;
+      if (panel.dataset.runtimeOperationSignature === panelSignature) return;
+      panel.innerHTML = html;
+      panel.dataset.runtimeOperationSignature = panelSignature;
+    };
+    ['full-transcript-panel', 'transcript-panel', 'admin-transcript-panel'].forEach(id => renderPanel(id, 'call', callHtml));
+    ['wa-convos-panel', 'admin-wa-panel'].forEach(id => renderPanel(id, 'whatsapp', waHtml));
     document.querySelectorAll('details[data-conversation-key]').forEach(row => {
       const key = row.dataset.conversationKey;
       const channel = row.dataset.channel || (key.endsWith(':whatsapp') ? 'whatsapp' : 'call');
+      const thread = row.querySelector('.dataset-thread');
+      const activeThread = Boolean(row.querySelector('.dataset-live'));
+      let followState = liveThreadFollowState.get(key);
+      if (!followState) {
+        followState = { follow: true, scrollTop: 0 };
+        liveThreadFollowState.set(key, followState);
+      }
+      if (thread) {
+        thread.addEventListener('scroll', () => {
+          if (thread.dataset.runtimeProgrammaticScroll === 'true') return;
+          const state = liveThreadFollowState.get(key) || { follow: true, scrollTop: 0 };
+          state.follow = thread.scrollTop + thread.clientHeight >= thread.scrollHeight - 12;
+          state.scrollTop = thread.scrollTop;
+          liveThreadFollowState.set(key, state);
+        }, { passive: true });
+      }
+      const restoreThread = () => {
+        if (!thread || !row.open) return;
+        const state = liveThreadFollowState.get(key) || { follow: true, scrollTop: 0 };
+        thread.dataset.runtimeProgrammaticScroll = 'true';
+        if (activeThread && state.follow) thread.scrollTop = thread.scrollHeight;
+        else thread.scrollTop = Math.min(state.scrollTop, Math.max(0, thread.scrollHeight - thread.clientHeight));
+        requestAnimationFrame(() => { thread.dataset.runtimeProgrammaticScroll = ''; });
+      };
       row.addEventListener('toggle', () => {
         // A selected conversation stays expanded. It is closed only when the
         // user selects another student or moves to another workspace tab.
@@ -786,30 +819,36 @@ FINAL_UI_SCRIPT = r'''
         if (String(row.querySelector('summary strong')?.textContent || '').trim().toLowerCase() !== 'achal sangami') allowAchalAutofocus = false;
         openedConversationKey = key;
         document.querySelectorAll('details[data-conversation-key]').forEach(other => { if (other !== row) other.open = false; });
-        const thread = row.querySelector('.dataset-thread');
-        if (thread) requestAnimationFrame(() => {
-          const isAchal = String(row.querySelector('summary strong')?.textContent || '').trim().toLowerCase() === 'achal sangami';
-          thread.scrollTop = isAchal && row.querySelector('.dataset-live') ? thread.scrollHeight : Math.max(0, (thread.scrollHeight - thread.clientHeight) * 0.5);
-        });
+        const state = liveThreadFollowState.get(key) || { follow: true, scrollTop: 0 };
+        state.follow = activeThread;
+        if (!activeThread) state.scrollTop = 0;
+        liveThreadFollowState.set(key, state);
+        requestAnimationFrame(restoreThread);
       });
       const panelKey = `${row.closest('[id]')?.id || 'operations'}:${key}`;
       const count = Number(row.dataset.messageCount || 0), previousCount = visibleMessageCounts.get(panelKey);
       visibleMessageCounts.set(panelKey, count);
-      const achalRow = String(row.querySelector('summary strong')?.textContent || '').trim().toLowerCase() === 'achal sangami';
-      if (row.open && row.querySelector('.dataset-live') && ((previousCount !== undefined && count > previousCount) || achalRow)) {
-        const thread = row.querySelector('.dataset-thread');
-        if (thread) requestAnimationFrame(() => { thread.scrollTop = thread.scrollHeight; });
-      }
+      if (row.open && activeThread) requestAnimationFrame(restoreThread);
     });
     const active = items.filter(isActive).length;
     [['ts-count', `${active} active`], ['admin-ts-count', `${active} active`], ['wa-count-badge', `${items.filter(i => i.whatsapp.length).length} conversations`], ['admin-wa-badge', `${items.filter(i => i.whatsapp.length).length} conversations`]].forEach(([id, value]) => { const node = document.getElementById(id); if (node) node.textContent = value; });
   }
 
   async function refreshOperations() {
-    // The main workspace already owns a complete, shared-state transcript
-    // renderer. Calling it is deliberately safer than maintaining a second
-    // renderer with another selection and scroll state.
-    window.__renderDatasetExperience?.();
+    // This is the single transcript renderer for both roles.  It coalesces
+    // repeated webhook/test SIDs for one student before replacing a panel.
+    // The recovered template's renderer cannot do that and was the source of
+    // duplicate Achal rows and forced scrolling.
+    try {
+      const requestId = ++operationsRequest;
+      const [calls, whatsapp, experience] = await Promise.all([
+        fetch('/api/transcripts', { cache: 'no-store' }).then(response => response.ok ? response.json() : { sessions: {} }),
+        fetch('/whatsapp/conversations', { cache: 'no-store' }).then(response => response.ok ? response.json() : { conversations: [] }),
+        fetch('/api/dataset/experience', { cache: 'no-store' }).then(response => response.ok ? response.json() : { conversations: [] }),
+      ]);
+      if (requestId !== operationsRequest) return;
+      renderOperations(calls, whatsapp, experience);
+    } catch (_) {}
   }
 
   async function renderCohortPulse() {
@@ -906,28 +945,13 @@ FINAL_UI_SCRIPT = r'''
       if (!row.querySelector('.dataset-live')) return;
       const thread = row.querySelector('.dataset-thread');
       if (!thread) return;
-
-      const channel = row.closest('#wa-convos-panel, #admin-wa-panel') ? 'whatsapp' : 'call';
-      const studentKey = row.dataset.studentId || row.dataset.conversationKey || row.querySelector('summary strong')?.textContent || 'conversation';
-      const key = `${channel}:${studentKey}`;
+      const key = row.dataset.conversationKey;
+      if (!key) return;
       let state = liveThreadFollowState.get(key);
       if (!state) {
         state = { follow: true, scrollTop: 0 };
         liveThreadFollowState.set(key, state);
       }
-
-      if (!thread.dataset.runtimeFollowBound) {
-        thread.dataset.runtimeFollowBound = 'true';
-        thread.addEventListener('scroll', () => {
-          if (thread.dataset.runtimeProgrammaticScroll === 'true') return;
-          const stored = liveThreadFollowState.get(key) || { follow: true, scrollTop: 0 };
-          const atBottom = thread.scrollTop + thread.clientHeight >= thread.scrollHeight - 12;
-          stored.follow = atBottom;
-          stored.scrollTop = thread.scrollTop;
-          liveThreadFollowState.set(key, stored);
-        }, { passive: true });
-      }
-
       thread.dataset.runtimeProgrammaticScroll = 'true';
       if (state.follow) {
         thread.scrollTop = thread.scrollHeight;
@@ -1056,8 +1080,12 @@ FINAL_UI_SCRIPT = r'''
       else if (/champion ML/i.test(value)) node.textContent = value.replace(/champion ML/ig, '4-Model Validation');
     });
     const detail = document.getElementById('layer-detail');
-    if (detail && /Logistic Regression and XGBoost train on an 80% stratified split/i.test(detail.textContent || '')) {
-      detail.innerHTML = `<div class="layer-expanded model"><div><span class="layer-expanded-kicker">Held-out ML validation and explainability</span><h2>4-Model Validation layer</h2><p>Logistic Regression, XGBoost, Random Forest, and HistGradientBoosting train on the same stratified split. Their held-out metrics are combined into the operational 4-Model Validation score.</p></div><ul><li>Accuracy, precision, recall, F1, and ROC-AUC are recorded for all four models.</li><li>The four-model validation score and model metadata are retained for reproducibility.</li><li>SHAP provides global feature importance and student-level contributing factors.</li><li>Gender and socioeconomic fairness checks measure demographic parity, equal opportunity, and predictive parity.</li></ul></div>`;
+    const modelSelected = Boolean(document.querySelector('.data-layer-card.selected[data-layer="model"]'));
+    if (detail && modelSelected && detail.dataset.runtimeFourModel !== 'true') {
+      detail.dataset.runtimeFourModel = 'true';
+      detail.innerHTML = `<div class="layer-expanded model"><div><span class="layer-expanded-kicker">Held-out ML validation and explainability</span><h2>4-Model Validation</h2><p>Logistic Regression, XGBoost, Random Forest, and HistGradientBoosting train on the same stratified split. Their held-out metrics are combined into the operational 4-Model Validation score.</p></div><ul><li>Accuracy, precision, recall, F1, and ROC-AUC are recorded for all four models.</li><li>All four model records and the combined validation result are retained for reproducibility.</li><li>SHAP provides global feature importance and student-level contributing factors.</li><li>Gender and socioeconomic fairness checks measure demographic parity, equal opportunity, and predictive parity.</li></ul></div>`;
+      const label = document.getElementById('layer-detail-label');
+      if (label) label.textContent = '4-Model Validation';
     }
   }
 
@@ -1118,6 +1146,13 @@ FINAL_UI_SCRIPT = r'''
       return legacyWorkspaceActivation(...args);
     };
   }
+  const nativeSelectDataLayer = window.selectDataLayer;
+  if (typeof nativeSelectDataLayer === 'function') {
+    window.selectDataLayer = key => {
+      nativeSelectDataLayer(key);
+      if (key === 'model') requestAnimationFrame(normalizeModelPresentation);
+    };
+  }
   document.addEventListener('click', event => {
     if (event.target.closest('.sb-item[data-page], [data-workspace-page]')) {
       closeRuntimeConversations(); allowAchalAutofocus = pendingAchalCallFocus;
@@ -1151,8 +1186,9 @@ FINAL_UI_SCRIPT = r'''
   window.waDemo = sendCallFollowUp;
   window.adminWaDemo = sendCallFollowUp;
   document.addEventListener('DOMContentLoaded', () => {
+    protectOperationPanels();
     renderCohortPulse(); renderCohortBrief(); removeDuplicateTranscriptSearch(); normalizeUploadStages(); normalizeModelPresentation(); removeDemoUi(); refreshOperations(); renderAtRisk(false); renderAtRisk(true); refreshFairness(); augmentModelEvidence(); syncActiveDatasetScope();
-    setInterval(keepLiveThreadsAtLatestTurn, 250); setInterval(normalizeUploadStages, 160); setInterval(normalizeModelPresentation, 450); setInterval(removeDemoUi, 800); setInterval(refreshFairness, 1800); setInterval(renderCohortPulse, 8000); setInterval(renderCohortBrief, 3000); setInterval(removeDuplicateTranscriptSearch, 1000); setInterval(augmentModelEvidence, 900); setInterval(syncActiveDatasetScope, 2000);
+    setInterval(refreshOperations, 2000); setInterval(keepLiveThreadsAtLatestTurn, 250); setInterval(normalizeUploadStages, 160); setInterval(normalizeModelPresentation, 450); setInterval(removeDemoUi, 800); setInterval(refreshFairness, 1800); setInterval(renderCohortPulse, 8000); setInterval(renderCohortBrief, 3000); setInterval(removeDuplicateTranscriptSearch, 1000); setInterval(augmentModelEvidence, 900); setInterval(syncActiveDatasetScope, 2000);
   });
 })();
 </script>
