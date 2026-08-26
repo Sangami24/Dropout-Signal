@@ -169,28 +169,15 @@ LIVE_UI_SCRIPT = r'''
 
   const BACKGROUND_UPLOAD_KEY = 'dropout-signal-background-upload';
   let backgroundUploadPoller = null;
-  let backgroundUploadVisualTimer = null;
 
   function showBackgroundUpload(job) {
     document.getElementById('dataset-training-overlay')?.remove();
     const overlay = document.createElement('div');
     overlay.id = 'dataset-training-overlay';
-    overlay.innerHTML = `<section class="dataset-training-card" role="status" aria-live="polite"><div class="dataset-progress-ring"><span>0.0%</span></div><div><b>Uploading Dataset</b><p>Uploading ${escapeHtml(job.filename || 'dataset')}. You can safely switch dashboards or browser tabs while this continues.</p><small>Uploading file...</small></div><button type="button" class="btn dataset-cancel-upload">Cancel Upload</button></section>`;
-    overlay.querySelector('.dataset-cancel-upload').addEventListener('click', window.cancelDatasetUpload);
+    overlay.innerHTML = `<section class="dataset-training-card" role="status" aria-live="polite"><div class="dataset-progress-ring"><span>…</span></div><div><b>Dataset processing in background</b><p>${escapeHtml(job.filename || 'Your dataset')} is safely processing on the server. You can switch dashboards or browser tabs.</p><small>Waiting for server progress…</small></div><button type="button" class="btn dataset-cancel-upload">Hide</button></section>`;
+    overlay.querySelector('.dataset-cancel-upload').addEventListener('click', () => overlay.remove());
     document.body.appendChild(overlay);
     return overlay;
-  }
-
-  function updateBackgroundPercentage(job) {
-    const overlay = document.getElementById('dataset-training-overlay');
-    if (!overlay) return;
-    const ring = overlay.querySelector('.dataset-progress-ring');
-    const percentage = ring?.querySelector('span');
-    if (!ring || !percentage) return;
-    const startedAt = Number(job.started_at_ms || Date.now());
-    const value = job.state === 'complete' ? 100 : Math.min(99.4, Math.max(0, (Date.now() - startedAt) * 100 / 150000));
-    ring.style.setProperty('--dataset-progress', `${value * 3.6}deg`);
-    percentage.textContent = `${value.toFixed(1)}%`;
   }
 
   function updateBackgroundUpload(job) {
@@ -198,25 +185,11 @@ LIVE_UI_SCRIPT = r'''
     const stage = overlay.querySelector('small');
     const title = overlay.querySelector('b');
     const detail = overlay.querySelector('p');
-    updateBackgroundPercentage(job);
-    if (stage) stage.textContent = job.message || 'Processing in the background…';
-    if (title && ['queued', 'processing'].includes(job.state)) title.textContent = 'Finalizing Dataset';
+    if (stage) stage.textContent = job.message || 'Processing on the server…';
+    if (title && job.state === 'queued') title.textContent = 'Dataset upload queued in background';
     if (title && job.state === 'complete') title.textContent = 'Dataset processing complete';
-    if (detail && ['queued', 'processing'].includes(job.state)) detail.textContent = 'Saving the scored cohort, model evidence, and SHAP explanations. Safe to switch tabs.';
     if (detail && job.state === 'complete') detail.textContent = 'The scored cohort is ready. Refreshing this dashboard…';
   }
-
-  window.cancelDatasetUpload = () => {
-    const raw = localStorage.getItem(BACKGROUND_UPLOAD_KEY);
-    const job = raw ? JSON.parse(raw) : null;
-    if (backgroundUploadPoller) clearInterval(backgroundUploadPoller);
-    if (backgroundUploadVisualTimer) clearInterval(backgroundUploadVisualTimer);
-    backgroundUploadPoller = null; backgroundUploadVisualTimer = null;
-    localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
-    document.getElementById('dataset-training-overlay')?.remove();
-    if (job?.id) fetch('/api/dataset/cancel', { method: 'POST', headers: {'Content-Type': 'application/json', 'X-Dataset-Upload-Id': job.id}, body: JSON.stringify({upload_id: job.id}), keepalive: true }).catch(() => {});
-    toast('Dataset upload canceled.', 'info');
-  };
 
   async function resumeBackgroundUpload() {
     const raw = localStorage.getItem(BACKGROUND_UPLOAD_KEY);
@@ -225,8 +198,6 @@ LIVE_UI_SCRIPT = r'''
     try { job = JSON.parse(raw); } catch (_) { localStorage.removeItem(BACKGROUND_UPLOAD_KEY); return; }
     updateBackgroundUpload(job);
     if (backgroundUploadPoller) clearInterval(backgroundUploadPoller);
-    if (backgroundUploadVisualTimer) clearInterval(backgroundUploadVisualTimer);
-    backgroundUploadVisualTimer = setInterval(() => updateBackgroundPercentage(job), 260);
     const poll = async () => {
       try {
         const response = await fetch(`/api/dataset/upload-status?job_id=${encodeURIComponent(job.id)}`, {cache: 'no-store'});
@@ -237,12 +208,10 @@ LIVE_UI_SCRIPT = r'''
         updateBackgroundUpload(state);
         if (state.state === 'complete') {
           clearInterval(backgroundUploadPoller); backgroundUploadPoller = null;
-          clearInterval(backgroundUploadVisualTimer); backgroundUploadVisualTimer = null;
           localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
           setTimeout(() => window.location.reload(), 700);
         } else if (state.state === 'failed') {
           clearInterval(backgroundUploadPoller); backgroundUploadPoller = null;
-          clearInterval(backgroundUploadVisualTimer); backgroundUploadVisualTimer = null;
           localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
           document.getElementById('dataset-training-overlay')?.remove();
           toast(state.error || 'Dataset upload failed.', 'err');
@@ -256,7 +225,7 @@ LIVE_UI_SCRIPT = r'''
   async function beginBackgroundUpload(file) {
     if (!file) return;
     const form = new FormData(); form.append('file', file);
-    const job = { id: globalThis.crypto?.randomUUID?.() || `upload-${Date.now()}`, filename: file.name, state: 'uploading', started_at_ms: Date.now() };
+    const job = { id: globalThis.crypto?.randomUUID?.() || `upload-${Date.now()}`, filename: file.name, state: 'uploading' };
     localStorage.setItem(BACKGROUND_UPLOAD_KEY, JSON.stringify(job));
     showBackgroundUpload(job);
     try {
@@ -282,7 +251,6 @@ LIVE_UI_SCRIPT = r'''
     beginBackgroundUpload(input.files?.[0]);
     input.value = '';
   }, true);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) resumeBackgroundUpload(); });
 
   document.addEventListener('DOMContentLoaded', () => {
     refreshCallGate();
