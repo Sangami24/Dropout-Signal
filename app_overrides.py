@@ -384,6 +384,7 @@ LIVE_UI_SCRIPT = r'''
   // train/score/activate endpoint and a single local progress presentation.
   let directUpload = null;
   let directProgressTimer = null;
+  const MIN_UPLOAD_DISPLAY_MS = 30000;
 
   function showUploadOverlay(job) {
     document.getElementById('dataset-training-overlay')?.remove();
@@ -427,6 +428,25 @@ LIVE_UI_SCRIPT = r'''
     return 'finalizing';
   }
 
+  function finishDirectUpload(active) {
+    if (directProgressTimer) clearInterval(directProgressTimer);
+    const render = () => {
+      if (directUpload !== active || active.canceled) return;
+      const progress = Math.min(100, ((Date.now() - active.startedAt) / MIN_UPLOAD_DISPLAY_MS) * 100);
+      if (progress < 100) {
+        updateUploadOverlay({...active.job, progress, state: directStage(progress)});
+        return;
+      }
+      clearInterval(directProgressTimer); directProgressTimer = null;
+      updateUploadOverlay({...active.job, progress: 100, state: 'complete'});
+      localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
+      directUpload = null;
+      setTimeout(() => window.location.reload(), 700);
+    };
+    render();
+    directProgressTimer = setInterval(render, 120);
+  }
+
   window.cancelDatasetUpload = async () => {
     const active = directUpload;
     if (active) { active.canceled = true; active.controller.abort(); }
@@ -454,7 +474,7 @@ LIVE_UI_SCRIPT = r'''
     updateUploadOverlay(job);
     directProgressTimer = setInterval(() => {
       if (directUpload !== active) return;
-      const progress = Math.min(94, ((Date.now() - active.startedAt) / 150000) * 94);
+      const progress = Math.min(94, ((Date.now() - active.startedAt) / MIN_UPLOAD_DISPLAY_MS) * 94);
       updateUploadOverlay({...job, progress, state: directStage(progress)});
     }, 260);
     try {
@@ -466,11 +486,7 @@ LIVE_UI_SCRIPT = r'''
       const payload = await response.json();
       if (!response.ok || !payload.ok || !payload.status?.dataset_loaded) throw new Error(payload.error || 'Dataset was not activated.');
       if (directUpload !== active || active.canceled) return;
-      clearInterval(directProgressTimer); directProgressTimer = null;
-      updateUploadOverlay({...job, progress: 100, state: 'complete'});
-      localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
-      directUpload = null;
-      setTimeout(() => window.location.reload(), 700);
+      finishDirectUpload(active);
     } catch (error) {
       if (directUpload !== active || active.canceled || error.name === 'AbortError') return;
       clearInterval(directProgressTimer); directProgressTimer = null;
