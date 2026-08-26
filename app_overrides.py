@@ -379,12 +379,142 @@ LIVE_UI_SCRIPT = r'''
     }
   });
 
+  // ── Direct upload controller ──────────────────────────────────────
+  // The user stays on this page during upload. Use the original synchronous
+  // train/score/activate endpoint and a single local progress presentation.
+  let directUpload = null;
+  let directProgressTimer = null;
+
+  function showUploadOverlay(job) {
+    document.getElementById('dataset-training-overlay')?.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'dataset-training-overlay';
+    overlay.innerHTML = `<section class="dataset-training-card" role="status" aria-live="polite"><div class="dataset-progress-ring"><span>0.0%</span></div><div><b>Uploading Dataset</b><p>${escapeHtml(job.filename || 'Your dataset')} is being uploaded.</p><small>Uploading dataset...</small></div><button type="button" class="btn dataset-cancel-upload">Cancel Upload</button></section>`;
+    overlay.querySelector('.dataset-cancel-upload').addEventListener('click', () => window.cancelDatasetUpload());
+    document.body.appendChild(overlay);
+    return overlay;
+  }
+
+  function updateUploadOverlay(job) {
+    const overlay = document.getElementById('dataset-training-overlay') || showUploadOverlay(job);
+    const ring = overlay.querySelector('.dataset-progress-ring');
+    const pct = ring?.querySelector('span');
+    const title = overlay.querySelector('b');
+    const detail = overlay.querySelector('p');
+    const stage = overlay.querySelector('small');
+    const cancel = overlay.querySelector('.dataset-cancel-upload');
+    const progress = Math.max(0, Math.min(100, Number(job.progress || 0)));
+    if (ring) ring.style.setProperty('--dataset-progress', `${progress * 3.6}deg`);
+    if (pct) pct.textContent = `${progress.toFixed(1)}%`;
+    const labels = {
+      uploading: ['Uploading Dataset', 'Sending the CSV securely to the server.', 'Uploading dataset...'],
+      reading: ['Reading Dataset', 'Checking columns and preparing the uploaded records.', 'Reading dataset...'],
+      analyzing: ['Analyzing Dataset', 'Training models and scoring the uploaded cohort.', 'Analyzing dataset...'],
+      finalizing: ['Finalizing Dataset', 'Saving the scored cohort and dataset-specific evidence.', 'Finalizing dataset...'],
+      complete: ['Dataset processing complete', 'The uploaded dataset is active. Refreshing this dashboard...', 'Dataset trained, scored, and activated.'],
+    };
+    const label = labels[job.state] || labels.uploading;
+    if (title) title.textContent = label[0];
+    if (detail) detail.textContent = label[1];
+    if (stage) stage.textContent = label[2];
+    if (cancel) cancel.hidden = job.state === 'complete';
+  }
+
+  function directStage(progress) {
+    if (progress < 18) return 'uploading';
+    if (progress < 35) return 'reading';
+    if (progress < 82) return 'analyzing';
+    return 'finalizing';
+  }
+
+  window.cancelDatasetUpload = async () => {
+    const active = directUpload;
+    if (active) { active.canceled = true; active.controller.abort(); }
+    if (directProgressTimer) clearInterval(directProgressTimer);
+    directProgressTimer = null;
+    directUpload = null;
+    localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
+    removeOverlay();
+    if (active?.job?.id) {
+      await fetch('/api/dataset/cancel', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({upload_id: active.job.id}), keepalive: true,
+      }).catch(() => {});
+    }
+    toast('Dataset upload canceled.', 'info');
+  };
+
+  async function beginUpload(file) {
+    if (!file) return;
+    if (directUpload) await window.cancelDatasetUpload();
+    const job = {id: globalThis.crypto?.randomUUID?.() || `upload-${Date.now()}`, filename: file.name, progress: 0, state: 'uploading'};
+    const active = {job, controller: new AbortController(), canceled: false, startedAt: Date.now()};
+    directUpload = active;
+    localStorage.setItem(BACKGROUND_UPLOAD_KEY, JSON.stringify({id: job.id, filename: job.filename, state: 'uploading'}));
+    updateUploadOverlay(job);
+    directProgressTimer = setInterval(() => {
+      if (directUpload !== active) return;
+      const progress = Math.min(94, ((Date.now() - active.startedAt) / 150000) * 94);
+      updateUploadOverlay({...job, progress, state: directStage(progress)});
+    }, 260);
+    try {
+      const form = new FormData(); form.append('file', file);
+      const response = await fetch('/api/dataset/upload', {
+        method: 'POST', body: form, signal: active.controller.signal,
+        headers: {'X-Dataset-Upload-Id': job.id},
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok || !payload.status?.dataset_loaded) throw new Error(payload.error || 'Dataset was not activated.');
+      if (directUpload !== active || active.canceled) return;
+      clearInterval(directProgressTimer); directProgressTimer = null;
+      updateUploadOverlay({...job, progress: 100, state: 'complete'});
+      localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
+      directUpload = null;
+      setTimeout(() => window.location.reload(), 700);
+    } catch (error) {
+      if (directUpload !== active || active.canceled || error.name === 'AbortError') return;
+      clearInterval(directProgressTimer); directProgressTimer = null;
+      directUpload = null;
+      localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
+      removeOverlay();
+      toast(error.message || 'Dataset upload failed.', 'err');
+    }
+  }
+
+  async function resumeUploadPolling() {
+    // No background job is used. A stale key from an old page must never
+    // recreate a fake progress overlay or alter a new upload.
+    if (!directUpload) localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
+  }
+
+  async function refreshDatasetInsights() {
+    const cards = [...document.querySelectorAll('.card-new')].filter(card => /AI Insights/i.test(card.querySelector('h3')?.textContent || ''));
+    if (!cards.length) return;
+    try {
+      const response = await fetch('/api/dataset/insights', {cache: 'no-store'});
+      const data = await response.json();
+      cards.forEach(card => {
+        card.hidden = !data.dataset_loaded;
+        if (!data.dataset_loaded) return;
+        const body = card.querySelector('.card-new-b');
+        if (body) body.innerHTML = `<p style="font-size:13px;color:var(--text2);line-height:1.6">${escapeHtml(data.summary)}</p>`;
+      });
+    } catch (_) { cards.forEach(card => { card.hidden = true; }); }
+  }
+
+  // Do not show the template's placeholder insight while dataset status is
+  // still unknown. refreshDatasetInsights reveals only active-data insight.
+  [...document.querySelectorAll('.card-new')].forEach(card => {
+    if (/AI Insights/i.test(card.querySelector('h3')?.textContent || '')) card.hidden = true;
+  });
+
   document.addEventListener('DOMContentLoaded', () => {
     refreshCallGate();
     refreshLiveTranscripts();
     refreshLiveWhatsApp();
     installTranscriptSearch();
     resumeUploadPolling();
+    refreshDatasetInsights();
     // The legacy dashboard still repaints its call cards. Re-apply the latest
     // webhook transcript in the same turn so it cannot alternate between the
     // greeting variant and the question variant.
@@ -394,6 +524,7 @@ LIVE_UI_SCRIPT = r'''
     setInterval(refreshLiveTranscripts, 650);
     setInterval(refreshLiveWhatsApp, 900);
     setInterval(installTranscriptSearch, 1500);
+    setInterval(refreshDatasetInsights, 5000);
   });
 })();
 </script>
@@ -602,7 +733,10 @@ def install(app, namespace):
                 })
             return response
 
-        app.view_functions[upload_rule.endpoint] = background_dataset_upload
+        # Keep uploads on the original request path. It already performs the
+        # validated train/score/activate flow atomically when the user stays on
+        # the page; the background wrapper remains only as legacy code.
+        app.view_functions[upload_rule.endpoint] = original_upload
         if not any(rule.rule == "/api/dataset/upload-status" for rule in app.url_map.iter_rules()):
             app.add_url_rule(
                 "/api/dataset/upload-status",
@@ -611,7 +745,32 @@ def install(app, namespace):
                 methods=["GET"],
             )
         if cancel_rule and original_cancel:
-            app.view_functions[cancel_rule.endpoint] = background_dataset_cancel
+            app.view_functions[cancel_rule.endpoint] = original_cancel
+
+    def dataset_insights():
+        """Return insight text derived only from the active scored cohort."""
+        if not _dataset_ready():
+            return jsonify({"dataset_loaded": False})
+        records = active_records().copy()
+        total = len(records)
+        tiers = records.get("final_risk_tier")
+        if tiers is not None:
+            high = int(tiers.astype(str).str.upper().eq("HIGH").sum())
+            medium = int(tiers.astype(str).str.upper().eq("MEDIUM").sum())
+        else:
+            scores = records.get("ml_risk_score")
+            high = int((scores >= 0.67).sum()) if scores is not None else 0
+            medium = int(((scores >= 0.34) & (scores < 0.67)).sum()) if scores is not None else 0
+        return jsonify({
+            "dataset_loaded": True,
+            "total_students": total,
+            "high_risk_students": high,
+            "medium_risk_students": medium,
+            "summary": f"This uploaded dataset contains {total:,} scored students, including {high:,} high-risk and {medium:,} medium-risk students.",
+        })
+
+    if not any(rule.rule == "/api/dataset/insights" for rule in app.url_map.iter_rules()):
+        app.add_url_rule("/api/dataset/insights", "dataset_insights", dataset_insights, methods=["GET"])
 
     def manual_call():
         if not _dataset_ready():
