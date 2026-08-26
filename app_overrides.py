@@ -715,7 +715,6 @@ FINAL_UI_SCRIPT = r'''
   }
 
   async function renderCohortPulse() {
-    const existing = document.getElementById('cohort-pulse');
     const anchor = document.getElementById('intervention-stats')?.closest('.card,.card-new') || Array.from(document.querySelectorAll('.card,.card-new')).find(card => /intervention summary/i.test(card.querySelector('.card-h,.card-new-h,h3')?.textContent || ''));
     if (!anchor) return;
     try {
@@ -723,9 +722,12 @@ FINAL_UI_SCRIPT = r'''
       if (!status.dataset_loaded) return;
       const tiers = Object.fromEntries((status.tier_breakdown || []).map(row => [String(row.final_risk_tier).toUpperCase(), Number(row.cnt || 0)]));
       const total = Number(status.record_count || 0), high = tiers.HIGH || 0, medium = tiers.MEDIUM || 0, low = tiers.LOW || 0, atRisk = high + medium;
+      const duplicatePanels = [...document.querySelectorAll('#cohort-pulse')];
+      duplicatePanels.slice(1).forEach(panel => panel.remove());
+      const existing = document.getElementById('cohort-pulse');
       const section = existing || document.createElement('section');
       section.id = 'cohort-pulse'; section.className = 'cohort-pulse';
-      section.innerHTML = `<section><h3>Cohort snapshot</h3><div class="pulse-stat"><span>Scored students</span><b>${total.toLocaleString()}</b></div><div class="pulse-stat"><span>Students needing support</span><b>${atRisk.toLocaleString()}</b></div><div class="pulse-stat"><span>Predicted dropouts</span><b>${Number(status.predicted_dropouts || 0).toLocaleString()}</b></div></section><section><h3>Risk distribution</h3>${[['High',high,'#ef4444'],['Medium',medium,'#f59e0b'],['Low',low,'#22c55e']].map(([label,value,color]) => `<div class="risk-bar"><span>${label}</span><em><i style="width:${total ? value / total * 100 : 0}%;background:${color}"></i></em><b>${value.toLocaleString()}</b></div>`).join('')}</section><section><h3>Priority signal</h3><p class="pulse-insight"><b>${status.champion_model || 'Active model'}</b> is scoring this cohort. ${high.toLocaleString()} high-risk students should receive priority review, with ${medium.toLocaleString()} more in proactive follow-up.</p></section>`;
+      section.innerHTML = `<section><h3>Cohort snapshot</h3><div class="pulse-stat"><span>Scored students</span><b>${total.toLocaleString()}</b></div><div class="pulse-stat"><span>Students needing support</span><b>${atRisk.toLocaleString()}</b></div><div class="pulse-stat"><span>Predicted dropouts</span><b>${Number(status.predicted_dropouts || 0).toLocaleString()}</b></div></section><section><h3>Risk distribution</h3>${[['High',high,'#ef4444'],['Medium',medium,'#f59e0b'],['Low',low,'#22c55e']].map(([label,value,color]) => `<div class="risk-bar"><span>${label}</span><em><i style="width:${total ? value / total * 100 : 0}%;background:${color}"></i></em><b>${value.toLocaleString()}</b></div>`).join('')}</section><section><h3>Counselor action queue</h3><p class="pulse-insight"><b>Priority outreach:</b> contact ${high.toLocaleString()} high-risk students within the next review window.</p><p class="pulse-insight" style="margin-top:10px"><b>Proactive follow-up:</b> schedule check-ins for ${medium.toLocaleString()} medium-risk students.</p><p class="pulse-insight" style="margin-top:10px"><b>Live support:</b> monitor ongoing calls and WhatsApp replies, then record the agreed next action.</p></section>`;
       if (!existing) anchor.insertAdjacentElement('afterend', section);
     } catch (_) {}
   }
@@ -1113,7 +1115,7 @@ def install(app, namespace):
             app.view_functions[rule.endpoint] = voice_server.whatsapp_demo
 
     def dataset_experience():
-        """Return only real webhook-backed call and WhatsApp activity."""
+        """Combine real webhook activity with synchronized active demo streams."""
         payload = namespace["_dataset_experience_payload"]()
         # A scored profile is not a completed conversation. Only webhook and
         # call-originated state belongs in the operational transcript views.
@@ -1158,12 +1160,12 @@ def install(app, namespace):
         # webhook-backed student call such as Achal's.
         if payload.get("dataset_loaded"):
             real_ids = {str(item.get("student_id")) for item in real_calls}
-            for index, student in enumerate(namespace["_dataset_records"](limit=8)):
+            for index, student in enumerate(namespace["_dataset_records"](limit=14)):
                 if str(student.get("student_id")) in real_ids:
                     continue
                 sample = namespace["_experience_conversation"](student, index)
                 sample["is_sample"] = True
-                sample["status"] = "active" if index < 4 else "completed"
+                sample["status"] = "active" if index < 7 else "completed"
                 sample["student_name"] = student.get("student_name") or "Student"
                 real_calls.append(sample)
         active_states = {"active", "ringing", "in-progress", "in_progress"}
