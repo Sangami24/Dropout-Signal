@@ -2325,6 +2325,39 @@ def dashboard():
 #  AUTO WHATSAPP OUTREACH — Triggered after LLM analysis
 # ═══════════════════════════════════════════════════════════════════
 
+def _call_followup_greeting(result):
+    """Build the first WhatsApp turn from the completed call's AI summary."""
+    name = str(result.get("student_name") or result.get("spoken_name") or "Student").strip()
+    first_name = name.split()[0] if name else "there"
+    summary = " ".join(str(result.get("summary") or "").split())
+    cause = str(result.get("primary_root_cause") or "the concern you raised").replace("_", " ")
+    support = str(result.get("q3_support_need") or "the support discussed on the call").replace("_", " ")
+    if summary:
+        # The summary is intentionally first: the WhatsApp follow-up should
+        # demonstrate continuity with the completed phone conversation.
+        return (
+            f"Hi {first_name}, this is Asha from {UNIVERSITY_NAME}'s Student Wellness team. "
+            f"I’m following up on our call. My note from that conversation: {summary[:360]} "
+            f"You mentioned {cause}; would you like to continue with {support}, or discuss another next step?"
+        )
+    return (
+        f"Hi {first_name}, this is Asha from {UNIVERSITY_NAME}'s Student Wellness team. "
+        f"I’m following up on our call about {cause}. Would you like to continue with {support} today?"
+    )
+
+
+def _call_result_for_profile(profile, student_name=""):
+    """Find the completed call result behind a profile or manual follow-up."""
+    student_id = str((profile or {}).get("student_id") or "")
+    name = str(student_name or (profile or {}).get("student_name") or "").strip().casefold()
+    for result in reversed(analyzed_results):
+        if student_id and str(result.get("student_id") or "") == student_id:
+            return result
+        if name and str(result.get("student_name") or "").strip().casefold() == name:
+            return result
+    return None
+
+
 def _auto_whatsapp_outreach(results):
     """
     After voice call analysis, automatically send WhatsApp messages
@@ -2357,16 +2390,12 @@ def _auto_whatsapp_outreach(results):
             print(f"   ⚠️  {name} — no phone number, skipping WhatsApp")
             continue
 
-        # Build personalized welcome based on the completed call, not a
-        # generic severity template. This prevents unsupported financial-aid
-        # claims after a coursework or wellbeing discussion.
+        # The opener carries the actual call summary, not merely a generic
+        # risk label, so the student immediately sees what this follow-up is
+        # about and why Asha is contacting them.
         cause = str(r.get("primary_root_cause") or "general support").replace("_", " ")
         support = str(r.get("q3_support_need") or "support").replace("_", " ")
-        msg = (
-            f"Hi {name.split()[0]}! This is Asha from {UNIVERSITY_NAME}'s Student Wellness team. "
-            f"Thanks for speaking with me earlier. You mentioned {cause}; would you like help with "
-            f"{support} or anything else today?"
-        )
+        msg = _call_followup_greeting(r)
         '''
         if intent == "HIGH":
             msg = (
@@ -2400,7 +2429,8 @@ def _auto_whatsapp_outreach(results):
             "started_at": datetime.now().isoformat(),
             "profile": {"student_name": name, "dropout_intent": intent,
                         "primary_root_cause": cause, "q3_support_need": support,
-                        "student_id": r.get("student_id", "")},
+                        "student_id": r.get("student_id", ""),
+                        "call_summary": r.get("summary", "")},
             "profile_name": name, "spoken_name": name, "auto_triggered": True,
             "status": "active", "summary": "", "completed_at": None,
         }
@@ -2642,7 +2672,8 @@ def whatsapp_webhook():
     if phone_clean not in wa_sessions:
         profile = _get_student_profile(phone_clean)
         name = profile_name or profile["student_name"]
-        welcome = WA_WELCOME_MSG.format(name=name, university=UNIVERSITY_NAME)
+        call_result = _call_result_for_profile(profile, name)
+        welcome = _call_followup_greeting(call_result) if call_result else WA_WELCOME_MSG.format(name=name, university=UNIVERSITY_NAME)
 
         wa_sessions[phone_clean] = {
             "messages": [{"role": "assistant", "content": welcome}],
@@ -2739,7 +2770,10 @@ def whatsapp_demo():
     profile = _get_student_profile(phone)
     student_name = str(payload.get("student_name") or profile.get("student_name") or "Student").strip()
     profile["student_name"] = student_name
-    welcome = WA_WELCOME_MSG.format(name=student_name, university=UNIVERSITY_NAME)
+    call_result = _call_result_for_profile(profile, student_name)
+    welcome = _call_followup_greeting(call_result) if call_result else WA_WELCOME_MSG.format(name=student_name, university=UNIVERSITY_NAME)
+    if call_result:
+        profile["call_summary"] = call_result.get("summary", "")
     phone_clean = phone.replace("whatsapp:", "")
     # Make the outbound greeting a real conversation event before delivery,
     # which lets the dashboard update without waiting for a reply webhook.
