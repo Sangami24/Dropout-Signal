@@ -682,7 +682,10 @@ def train_and_score(source_path: str | Path, activate: bool = True, source_label
     )
     _write_json(run_dir / "metadata.json", metadata)
     if activate:
-        _write_json(ACTIVE_RUN_FILE, {"run_id": run_id, "run_dir": str(run_dir.relative_to(ROOT))})
+        # The runtime directory can live outside the source checkout (for
+        # example /tmp on a hosted service).  Storing a path relative to ROOT
+        # made a successfully trained run unreadable on the next request.
+        _write_json(ACTIVE_RUN_FILE, {"run_id": run_id, "run_dir": str(run_dir.relative_to(RUNTIME_DIR))})
     return metadata
 
 
@@ -690,7 +693,15 @@ def active_metadata() -> dict[str, Any] | None:
     active = _read_json(ACTIVE_RUN_FILE)
     if not active or not active.get("run_dir"):
         return None
-    run_dir = ROOT / active["run_dir"]
+    saved_path = Path(active["run_dir"])
+    if saved_path.is_absolute():
+        run_dir = saved_path
+    else:
+        # New markers are relative to RUNTIME_DIR.  Keep support for markers
+        # produced by earlier versions, which were relative to the repo root.
+        run_dir = RUNTIME_DIR / saved_path
+        if not (run_dir / "metadata.json").exists():
+            run_dir = ROOT / saved_path
     metadata = _read_json(run_dir / "metadata.json")
     if not metadata:
         return None
@@ -704,7 +715,7 @@ def activate_run(metadata: dict[str, Any]) -> None:
     run_dir = RUNS_DIR / run_id
     if not run_id or not (run_dir / "metadata.json").exists():
         raise DatasetValidationError("Trained dataset run could not be activated.")
-    _write_json(ACTIVE_RUN_FILE, {"run_id": run_id, "run_dir": str(run_dir.relative_to(ROOT))})
+    _write_json(ACTIVE_RUN_FILE, {"run_id": run_id, "run_dir": str(run_dir.relative_to(RUNTIME_DIR))})
 
 
 def restore_latest_run() -> dict[str, Any] | None:
