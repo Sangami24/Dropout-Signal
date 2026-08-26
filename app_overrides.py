@@ -805,14 +805,10 @@ FINAL_UI_SCRIPT = r'''
   }
 
   async function refreshOperations() {
-    try {
-      const [calls, whatsapp, experience] = await Promise.all([
-        fetch('/api/transcripts', {cache: 'no-store'}).then(r => r.ok ? r.json() : {sessions:{}}),
-        fetch('/whatsapp/conversations', {cache: 'no-store'}).then(r => r.ok ? r.json() : {conversations:[]}),
-        fetch('/api/dataset/experience', {cache: 'no-store'}).then(r => r.ok ? r.json() : {conversations:[]}),
-      ]);
-      renderOperations(calls, whatsapp, experience);
-    } catch (_) {}
+    // The main workspace already owns a complete, shared-state transcript
+    // renderer. Calling it is deliberately safer than maintaining a second
+    // renderer with another selection and scroll state.
+    window.__renderDatasetExperience?.();
   }
 
   async function renderCohortPulse() {
@@ -896,6 +892,17 @@ FINAL_UI_SCRIPT = r'''
   function closeRuntimeConversations() {
     openedConversationKey = null;
     document.querySelectorAll('details[data-conversation-key]').forEach(row => { row.open = false; });
+  }
+
+  function keepLiveThreadsAtLatestTurn() {
+    // The authoritative workspace reveals a live turn on its own timer.
+    // Keep any selected active call or WhatsApp thread anchored to that turn
+    // so generated and real messages never appear below the viewport.
+    document.querySelectorAll('.dataset-conversation[open]').forEach(row => {
+      if (!row.querySelector('.dataset-live')) return;
+      const thread = row.querySelector('.dataset-thread');
+      if (thread) thread.scrollTop = thread.scrollHeight;
+    });
   }
 
   function protectOperationPanels() {
@@ -1110,8 +1117,8 @@ FINAL_UI_SCRIPT = r'''
   window.waDemo = sendCallFollowUp;
   window.adminWaDemo = sendCallFollowUp;
   document.addEventListener('DOMContentLoaded', () => {
-    renderCohortPulse(); renderCohortBrief(); removeDuplicateTranscriptSearch(); normalizeUploadStages(); normalizeModelPresentation(); removeDemoUi(); protectOperationPanels(); refreshOperations(); renderAtRisk(false); renderAtRisk(true); refreshFairness(); augmentModelEvidence(); syncActiveDatasetScope();
-    setInterval(refreshOperations, 2000); setInterval(protectOperationPanels, 1000); setInterval(normalizeUploadStages, 160); setInterval(normalizeModelPresentation, 450); setInterval(removeDemoUi, 800); setInterval(refreshFairness, 1800); setInterval(renderCohortPulse, 8000); setInterval(renderCohortBrief, 3000); setInterval(removeDuplicateTranscriptSearch, 1000); setInterval(augmentModelEvidence, 900); setInterval(syncActiveDatasetScope, 2000);
+    renderCohortPulse(); renderCohortBrief(); removeDuplicateTranscriptSearch(); normalizeUploadStages(); normalizeModelPresentation(); removeDemoUi(); refreshOperations(); renderAtRisk(false); renderAtRisk(true); refreshFairness(); augmentModelEvidence(); syncActiveDatasetScope();
+    setInterval(keepLiveThreadsAtLatestTurn, 250); setInterval(normalizeUploadStages, 160); setInterval(normalizeModelPresentation, 450); setInterval(removeDemoUi, 800); setInterval(refreshFairness, 1800); setInterval(renderCohortPulse, 8000); setInterval(renderCohortBrief, 3000); setInterval(removeDuplicateTranscriptSearch, 1000); setInterval(augmentModelEvidence, 900); setInterval(syncActiveDatasetScope, 2000);
   });
 })();
 </script>
