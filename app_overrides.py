@@ -586,6 +586,169 @@ LIVE_UI_SCRIPT = r'''
 '''
 
 
+# This final renderer deliberately runs after the recovered dashboard scripts.
+# It keeps the two role views pointed at the same server-side operational data
+# instead of their historical browser-only sample state.
+FINAL_UI_SCRIPT = r'''
+<style id="authoritative-dashboard-ui">
+  .dataset-workflow { margin-top:18px; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
+  .dataset-workflow article { min-height:102px; padding:14px; border:1px solid var(--border); border-radius:10px; background:var(--surface2); }
+  .dataset-workflow b { display:block; margin-bottom:7px; color:var(--text); font-size:13px; }
+  .dataset-workflow span { color:var(--text3); font-size:11px; line-height:1.45; }
+  .dataset-workflow i { display:inline-block; width:7px; height:7px; margin-right:7px; border-radius:50%; background:var(--green); box-shadow:0 0 8px rgba(34,197,94,.65); }
+  .dataset-empty-live { padding:28px 14px; color:var(--text3); font-size:13px; text-align:center; }
+  .fairness-status { font-size:11px; font-weight:600; }
+  .fairness-status.ok { color:var(--green); } .fairness-status.review { color:var(--amber); }
+  @media (max-width:800px) { .dataset-workflow { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+</style>
+<script>
+(() => {
+  const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&gt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+  let operationalSignature = '';
+  let fairnessRequest = 0;
+  let latestCall = null;
+
+  const messageMarkup = (message, studentName) => {
+    const student = message.side === 'student' || message.role === 'user';
+    const speaker = message.speaker || (student ? studentName : 'Asha AI');
+    const text = message.text ?? message.content ?? '';
+    return `<article class="dataset-message ${student ? 'student' : 'asha'}"><span>${escapeHtml(speaker)}</span><p>${escapeHtml(text)}</p></article>`;
+  };
+
+  function panelMarkup(items, channel) {
+    if (!items.length) return `<div class="dataset-empty-live">No ${channel === 'call' ? 'call transcripts' : 'WhatsApp conversations'} yet. New activity will appear here automatically.</div>`;
+    return items.map((item, index) => {
+      const messages = channel === 'call' ? item.call : item.whatsapp;
+      if (!messages?.length) return '';
+      const active = !['completed', 'failed', 'canceled'].includes(String(item.status || '').toLowerCase());
+      const tone = String(item.tier || 'MEDIUM').toLowerCase() === 'high' ? 'high' : 'medium';
+      return `<details class="operation-row dataset-conversation ${tone}" ${active || index === 0 ? 'open' : ''}><summary><strong>${escapeHtml(item.student_name || 'Student')}</strong><span class="${active ? 'dataset-live' : 'dataset-completed'}">${active ? 'ACTIVE' : 'COMPLETED'}</span>${active ? `<span class="dataset-presence ${tone}"></span>` : ''}<em>${escapeHtml(item.tier || 'MEDIUM')} RISK</em></summary><div class="dataset-thread ${channel}">${messages.map(m => messageMarkup(m, item.student_name || 'Student')).join('')}</div></details>`;
+    }).join('') || `<div class="dataset-empty-live">No ${channel === 'call' ? 'call transcripts' : 'WhatsApp conversations'} yet. New activity will appear here automatically.</div>`;
+  }
+
+  function renderOperations(callsPayload, whatsappPayload) {
+    const calls = Object.values(callsPayload.sessions || {});
+    const byStudent = new Map();
+    calls.forEach(session => {
+      const id = String(session.student_id || session.call_sid || '');
+      if (!id || !(session.transcript_events || []).length) return;
+      const existing = byStudent.get(id);
+      const updated = String(session.started_at || '') > String(existing?.started_at || '');
+      if (!existing || updated) byStudent.set(id, {
+        student_id: id, student_name: session.student_name || 'Student', tier: session.risk_tier || 'HIGH',
+        status: session.status || 'active', started_at: session.started_at, call: session.transcript_events || [], whatsapp: [],
+      });
+    });
+    (whatsappPayload.conversations || []).forEach(conversation => {
+      const name = conversation.student_name || conversation.profile_name || 'Student';
+      const messages = conversation.messages || [];
+      if (!messages.length) return;
+      let target = [...byStudent.values()].find(item => String(item.student_name).toLowerCase() === String(name).toLowerCase());
+      if (!target) {
+        target = { student_id: `wa-${conversation.phone || name}`, student_name: name, tier: conversation.risk_level || 'MEDIUM', status: 'active', call: [], whatsapp: [] };
+        byStudent.set(target.student_id, target);
+      }
+      target.student_name = name;
+      target.whatsapp = messages;
+    });
+    const items = [...byStudent.values()].sort((a, b) => String(a.status).toLowerCase() === 'completed' ? 1 : -1);
+    latestCall = items.find(item => item.call.length) || latestCall;
+    const signature = JSON.stringify(items.map(item => [item.student_id, item.status, item.call.length, item.whatsapp.length, item.call.at(-1)?.text, item.whatsapp.at(-1)?.content]));
+    if (signature === operationalSignature) return;
+    operationalSignature = signature;
+    const callHtml = panelMarkup(items, 'call'), waHtml = panelMarkup(items, 'whatsapp');
+    ['full-transcript-panel', 'transcript-panel', 'admin-transcript-panel'].forEach(id => { const panel = document.getElementById(id); if (panel) panel.innerHTML = callHtml; });
+    ['wa-convos-panel', 'admin-wa-panel'].forEach(id => { const panel = document.getElementById(id); if (panel) panel.innerHTML = waHtml; });
+    const active = items.filter(item => !['completed', 'failed', 'canceled'].includes(String(item.status).toLowerCase())).length;
+    [['ts-count', `${active} active`], ['admin-ts-count', `${active} active`], ['wa-count-badge', `${items.filter(i => i.whatsapp.length).length} conversations`], ['admin-wa-badge', `${items.filter(i => i.whatsapp.length).length} conversations`]].forEach(([id, value]) => { const node = document.getElementById(id); if (node) node.textContent = value; });
+  }
+
+  async function refreshOperations() {
+    try {
+      const [calls, whatsapp] = await Promise.all([
+        fetch('/api/transcripts', {cache: 'no-store'}).then(r => r.ok ? r.json() : {sessions:{}}),
+        fetch('/whatsapp/conversations', {cache: 'no-store'}).then(r => r.ok ? r.json() : {conversations:[]}),
+      ]);
+      renderOperations(calls, whatsapp);
+    } catch (_) {}
+  }
+
+  function workflow() {
+    const existing = document.getElementById('dataset-live-workflow');
+    if (existing) return existing;
+    const anchor = document.getElementById('intervention-stats')?.closest('.card,.card-new') || Array.from(document.querySelectorAll('.card,.card-new')).find(card => /intervention summary/i.test(card.querySelector('.card-h,.card-new-h,h3')?.textContent || ''));
+    if (!anchor) return null;
+    const section = document.createElement('section');
+    section.id = 'dataset-live-workflow';
+    section.className = 'dataset-workflow';
+    section.innerHTML = '<article><b><i></i>Upload</b><span>Securely receive the selected CSV.</span></article><article><b><i></i>Read</b><span>Validate columns and prepare records.</span></article><article><b><i></i>Analyze</b><span>Score the cohort and generate model evidence.</span></article><article><b><i></i>Finalize</b><span>Activate the scored cohort for both workspaces.</span></article>';
+    anchor.insertAdjacentElement('afterend', section);
+    return section;
+  }
+
+  function normalizeUploadStages() {
+    const overlay = document.getElementById('dataset-training-overlay');
+    if (!overlay) return;
+    const percent = Number((overlay.querySelector('.dataset-progress-ring span')?.textContent || '0').replace('%', ''));
+    const stage = percent < 18 ? ['Uploading Dataset', 'Sending the CSV securely to the server.', 'Uploading dataset...'] : percent < 35 ? ['Reading Dataset', 'Checking columns and preparing the uploaded records.', 'Reading dataset...'] : percent < 88 ? ['Analyzing Dataset', 'Training models, scoring students, and preparing evidence.', 'Analyzing dataset...'] : ['Finalizing Dataset', 'Saving the active cohort and synchronizing both dashboards.', 'Finalizing dataset...'];
+    const [title, detail, small] = [overlay.querySelector('b'), overlay.querySelector('p'), overlay.querySelector('small')];
+    if (title) title.textContent = stage[0]; if (detail) detail.textContent = stage[1]; if (small) small.textContent = stage[2];
+  }
+
+  async function renderAtRisk(admin) {
+    const tbody = document.getElementById(admin ? 'admin-risk-tbody' : 'risk-tbody');
+    if (!tbody) return;
+    const input = document.getElementById(admin ? 'admin-risk-search' : 'risk-search');
+    const query = String(input?.value || '').trim().toLowerCase();
+    try {
+      const payload = await fetch('/api/students?limit=6000&at_risk=1', {cache: 'no-store'}).then(r => r.json());
+      const records = (payload.students || []).filter(student => ['HIGH', 'MEDIUM'].includes(String(student.final_risk_tier || '').toUpperCase())).filter(student => !query || `${student.student_name || ''} ${student.student_id || ''} ${student.top_factor_1 || ''}`.toLowerCase().includes(query));
+      const badge = document.getElementById(admin ? 'admin-risk-badge' : 'risk-count-badge'); if (badge) badge.textContent = `${records.length.toLocaleString()} students`;
+      tbody.innerHTML = records.length ? records.slice(0, 100).map(student => `<tr><td><strong>${escapeHtml(student.student_name || 'Student')}</strong> <span class="mono" style="color:var(--text3)">(${escapeHtml(student.student_id || '')})</span></td><td><span class="mono">${Number(student.ml_risk_score || 0).toFixed(3)}</span></td><td><span class="tag ${String(student.final_risk_tier).toUpperCase() === 'HIGH' ? 'tag-t1' : 'tag-t2'}">${escapeHtml(student.final_risk_tier || 'MEDIUM')}</span></td><td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(student.primary_root_cause || student.top_factor_1 || 'Engagement review')}</td><td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(student.final_action || 'Schedule counselor follow-up')}</td><td></td></tr>`).join('') : '<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text3)">No at-risk students found</td></tr>';
+    } catch (_) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--red)">Unable to load students.</td></tr>'; }
+  }
+
+  async function refreshFairness() {
+    const body = document.getElementById('fairness-runtime-rows'); if (!body) return;
+    const request = ++fairnessRequest;
+    try {
+      const payload = await fetch('/api/fairness', {cache: 'no-store'}).then(r => r.json());
+      if (request !== fairnessRequest) return;
+      body.innerHTML = (payload.fairness || []).map(row => {
+        const status = value => value === 'YES' ? '<span class="fairness-status ok">Within range</span>' : '<span class="fairness-status review">Review</span>';
+        return `<tr><td>${escapeHtml(row.protected_attribute)}: ${escapeHtml(row.group_a)} vs ${escapeHtml(row.group_b)}</td><td>${Number(row.demographic_parity_ratio).toFixed(3)} ${status(row.dp_is_fair)}</td><td>${Number(row.equal_opportunity_ratio).toFixed(3)} ${status(row.eo_is_fair)}</td><td>${Number(row.predictive_parity_ratio).toFixed(3)} ${status(row.pp_is_fair)}</td></tr>`;
+      }).join('') || '<tr><td colspan="4">No comparison was available.</td></tr>';
+    } catch (_) {}
+  }
+
+  function removeDemoUi() {
+    document.querySelectorAll('.operation-row,.summary-person').forEach(node => { if (/\bdemo\b/i.test(node.textContent || '')) node.remove(); });
+    document.querySelectorAll('button').forEach(button => { if (/\bdemo\b/i.test(button.textContent || '')) button.textContent = button.textContent.replace(/\bdemo\b\s*/ig, '').replace(/\s{2,}/g, ' ').trim(); });
+  }
+
+  window.loadAtRisk = () => renderAtRisk(false);
+  window.loadAdminAtRisk = () => renderAtRisk(true);
+  const sendCallFollowUp = async () => {
+    if (!latestCall) { window.toast?.('Start a call before sending a WhatsApp follow-up.', 'info'); return; }
+    try {
+      const response = await fetch('/whatsapp/demo', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({student_name: latestCall.student_name})});
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Unable to send the WhatsApp follow-up.');
+      window.toast?.('Call follow-up sent on WhatsApp.', 'ok');
+      refreshOperations();
+    } catch (error) { window.toast?.(error.message || 'Unable to send the WhatsApp follow-up.', 'err'); }
+  };
+  window.waDemo = sendCallFollowUp;
+  window.adminWaDemo = sendCallFollowUp;
+  document.addEventListener('DOMContentLoaded', () => {
+    workflow(); normalizeUploadStages(); removeDemoUi(); refreshOperations(); renderAtRisk(false); renderAtRisk(true); refreshFairness();
+    setInterval(refreshOperations, 700); setInterval(normalizeUploadStages, 160); setInterval(removeDemoUi, 800); setInterval(refreshFairness, 1800);
+  });
+})();
+</script>
+'''
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  FILE-BACKED JOB STATE (survives worker restarts)
 # ═══════════════════════════════════════════════════════════════════
@@ -883,8 +1046,52 @@ def install(app, namespace):
             app.view_functions[rule.endpoint] = voice_server.whatsapp_demo
 
     def dataset_experience():
-        """Combine real webhook activity with synchronized active demo streams."""
+        """Return only real webhook-backed call and WhatsApp activity."""
         payload = namespace["_dataset_experience_payload"]()
+        # A scored profile is not a completed conversation. Only webhook and
+        # call-originated state belongs in the operational transcript views.
+        real_calls = namespace["_merge_real_operations"]([])
+        by_student = {str(item.get("student_id")): item for item in real_calls}
+        for session in voice_server.sessions.values():
+            item = by_student.get(str(session.get("student_id") or ""))
+            if item and session.get("student_name"):
+                item["student_name"] = session["student_name"]
+        for phone, session in voice_server.wa_sessions.items():
+            profile = session.get("profile") or {}
+            student_id = str(profile.get("student_id") or "")
+            student_name = session.get("spoken_name") or profile.get("student_name") or session.get("profile_name") or "Student"
+            messages = [
+                {
+                    "speaker": student_name if message.get("role") == "user" else "Asha AI",
+                    "side": "student" if message.get("role") == "user" else "ai",
+                    "text": str(message.get("content") or ""),
+                }
+                for message in session.get("messages", [])
+                if str(message.get("content") or "").strip()
+            ]
+            target = by_student.get(student_id) if student_id else next(
+                (item for item in real_calls if str(item.get("student_name", "")).casefold() == str(student_name).casefold()),
+                None,
+            )
+            if target is None:
+                target = {
+                    "student_id": student_id or f"WA-{phone}", "student_name": student_name,
+                    "branch": "WhatsApp follow-up", "tier": str(profile.get("dropout_intent") or "MEDIUM").upper(),
+                    "status": "active", "ml_score": float(profile.get("ml_risk_score") or 0),
+                    "ai_score": float(profile.get("ml_risk_score") or 0),
+                    "factor": profile.get("primary_root_cause") or "Student support follow-up",
+                    "action": "WhatsApp support follow-up", "call": [], "whatsapp": [], "summary": "",
+                }
+                real_calls.append(target)
+                by_student[str(target["student_id"])] = target
+            target["student_name"] = student_name
+            target["whatsapp"] = messages
+        active_states = {"active", "ringing", "in-progress", "in_progress"}
+        payload["conversations"] = sorted(
+            real_calls,
+            key=lambda item: str(item.get("status", "")).lower() not in active_states,
+        )
+        return jsonify(payload)
         if payload.get("dataset_loaded"):
             real_calls = namespace["_merge_real_operations"]([])
             real_ids = {str(call.get("student_id")) for call in real_calls}
@@ -942,4 +1149,15 @@ def install(app, namespace):
                 "Based on recent data, 87 students are at high risk of dropping out. Key factors include attendance (42%), low engagement (28%), and academic performance (30%). Early intervention can improve outcomes.",
                 "",
             )
-            namespace[key] = template.replace("</body>", LIVE_UI_SCRIPT + "</body>")
+            # Keep implementation compatibility with the recovered handlers,
+            # while removing the old sample wording from both user-facing
+            # dashboards.
+            template = (
+                template.replace("(Demo)", "")
+                .replace("Demo Student", "Student")
+                .replace("HIGH RISK · DEMO", "HIGH RISK")
+                .replace("Send WhatsApp Demo", "Send WhatsApp Follow-up")
+                .replace("WhatsApp Demo", "WhatsApp Follow-up")
+                .replace("Demo Call", "Start Call")
+            )
+            namespace[key] = template.replace("</body>", LIVE_UI_SCRIPT + FINAL_UI_SCRIPT + "</body>")

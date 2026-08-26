@@ -328,6 +328,8 @@ def _persist_live_state():
             payload = {
                 "sessions": sessions,
                 "completed_call_sids": [call.get("call_sid") for call in completed_calls],
+                "wa_sessions": wa_sessions,
+                "analyzed_results": analyzed_results,
             }
             temporary = _LIVE_STATE_FILE.with_suffix(".tmp")
             temporary.write_text(json.dumps(payload), encoding="utf-8")
@@ -345,6 +347,12 @@ def _restore_live_state():
             restored = payload.get("sessions", {})
             if isinstance(restored, dict):
                 sessions.update(restored)
+            restored_whatsapp = payload.get("wa_sessions", {})
+            if isinstance(restored_whatsapp, dict):
+                wa_sessions.update(restored_whatsapp)
+            restored_results = payload.get("analyzed_results", [])
+            if isinstance(restored_results, list):
+                analyzed_results[:] = restored_results
             completed_sids = set(payload.get("completed_call_sids", []))
             completed_calls[:] = [
                 call for call in sessions.values()
@@ -2341,6 +2349,7 @@ def _auto_whatsapp_outreach(results):
                         "primary_root_cause": cause, "q3_support_need": support},
             "profile_name": name, "spoken_name": name, "auto_triggered": True,
         }
+        _persist_live_state()
 
         try:
             twilio_client.messages.create(
@@ -2413,9 +2422,9 @@ WA_WELCOME_MSG = """Hi {name}! 👋
 
 I'm *Asha* — your AI student support assistant from {university}'s Retention & Wellness team.
 
-We're reaching out to students this semester because we genuinely care about your journey. This is a safe, confidential space — no judgments here.
+Thank you for speaking with us on the phone. I wanted to follow up on that check-in and make it easy to continue the conversation in a safe, confidential space — no judgments here.
 
-How has your semester been going? Anything on your mind? 💬"""
+Is there anything from the call that you would like support with now? 💬"""
 
 
 def _get_student_profile(phone):
@@ -2524,6 +2533,7 @@ def _wa_llm_reply(phone, user_msg):
 
     # Store AI reply
     wa_sessions[phone]["messages"].append({"role": "assistant", "content": reply})
+    _persist_live_state()
 
     return reply
 
@@ -2556,6 +2566,7 @@ def whatsapp_webhook():
             "profile": profile,
             "profile_name": profile_name,
         }
+        _persist_live_state()
 
         # If they sent a real message (not just "join"), process it after welcome
         if incoming_msg.lower().startswith("join"):
@@ -2566,6 +2577,7 @@ def whatsapp_webhook():
 
     # Append user message immediately so UI sees it before the AI replies
     wa_sessions[phone_clean]["messages"].append({"role": "user", "content": incoming_msg})
+    _persist_live_state()
 
     def process_and_send(phone, user_msg, to_number):
         import time
@@ -2652,6 +2664,7 @@ def whatsapp_demo():
         "spoken_name": student_name,
         "auto_triggered": False,
     }
+    _persist_live_state()
     to_wa = f"whatsapp:{phone_clean}"
 
     try:
