@@ -6,10 +6,13 @@ webhook state to the existing counselor and administrator screens.
 
 from __future__ import annotations
 
+import json as _json
+import os
 import time
 import threading
 import uuid
 from io import BytesIO
+from pathlib import Path
 
 from flask import jsonify, request
 
@@ -167,95 +170,15 @@ LIVE_UI_SCRIPT = r'''
     });
   }
 
+  // ═══════════════════════════════════════════════════════════════════
+  //  UPLOAD CONTROLLER — single, race-free implementation
+  // ═══════════════════════════════════════════════════════════════════
   const BACKGROUND_UPLOAD_KEY = 'dropout-signal-background-upload';
-  let backgroundUploadPoller = null;
-  let backgroundUploadGeneration = 0;
+  let _pollTimer = null;
+  let _pollGeneration = 0;
+  let _pollInFlight = false;
 
-  function showBackgroundUpload(job) {
-    document.getElementById('dataset-training-overlay')?.remove();
-    const overlay = document.createElement('div');
-    overlay.id = 'dataset-training-overlay';
-    overlay.innerHTML = `<section class="dataset-training-card" role="status" aria-live="polite"><div class="dataset-progress-ring"><span>…</span></div><div><b>Dataset processing in background</b><p>${escapeHtml(job.filename || 'Your dataset')} is safely processing on the server. You can switch dashboards or browser tabs.</p><small>Waiting for server progress…</small></div><button type="button" class="btn dataset-cancel-upload">Hide</button></section>`;
-    overlay.querySelector('.dataset-cancel-upload').addEventListener('click', () => overlay.remove());
-    document.body.appendChild(overlay);
-    return overlay;
-  }
-
-  function updateBackgroundUpload(job) {
-    const overlay = document.getElementById('dataset-training-overlay') || showBackgroundUpload(job);
-    const stage = overlay.querySelector('small');
-    const title = overlay.querySelector('b');
-    const detail = overlay.querySelector('p');
-    if (stage) stage.textContent = job.message || 'Processing on the server…';
-    if (title && job.state === 'queued') title.textContent = 'Dataset upload queued in background';
-    if (title && job.state === 'complete') title.textContent = 'Dataset processing complete';
-    if (detail && job.state === 'complete') detail.textContent = 'The scored cohort is ready. Refreshing this dashboard…';
-  }
-
-  async function resumeBackgroundUpload() {
-    const raw = localStorage.getItem(BACKGROUND_UPLOAD_KEY);
-    if (!raw) return;
-    let job;
-    try { job = JSON.parse(raw); } catch (_) { localStorage.removeItem(BACKGROUND_UPLOAD_KEY); return; }
-    updateBackgroundUpload(job);
-    if (backgroundUploadPoller) clearInterval(backgroundUploadPoller);
-    const poll = async () => {
-      try {
-        const response = await fetch(`/api/dataset/upload-status?job_id=${encodeURIComponent(job.id)}`, {cache: 'no-store'});
-        if (!response.ok) return;
-        const next = await response.json();
-        const state = {...job, ...next};
-        localStorage.setItem(BACKGROUND_UPLOAD_KEY, JSON.stringify(state));
-        updateBackgroundUpload(state);
-        if (state.state === 'complete') {
-          clearInterval(backgroundUploadPoller); backgroundUploadPoller = null;
-          localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
-          setTimeout(() => window.location.reload(), 700);
-        } else if (state.state === 'failed') {
-          clearInterval(backgroundUploadPoller); backgroundUploadPoller = null;
-          localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
-          document.getElementById('dataset-training-overlay')?.remove();
-          toast(state.error || 'Dataset upload failed.', 'err');
-        }
-      } catch (_) {}
-    };
-    await poll();
-    if (!backgroundUploadPoller) backgroundUploadPoller = setInterval(poll, 1200);
-  }
-
-  async function beginBackgroundUpload(file) {
-    if (!file) return;
-    const form = new FormData(); form.append('file', file);
-    const job = { id: globalThis.crypto?.randomUUID?.() || `upload-${Date.now()}`, filename: file.name, state: 'uploading' };
-    localStorage.setItem(BACKGROUND_UPLOAD_KEY, JSON.stringify(job));
-    showBackgroundUpload(job);
-    try {
-      const response = await fetch('/api/dataset/upload', { method: 'POST', body: form, headers: { 'X-Dataset-Upload-Id': job.id } });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || 'Dataset upload failed');
-      localStorage.setItem(BACKGROUND_UPLOAD_KEY, JSON.stringify({...job, ...payload, state: payload.state || 'queued'}));
-      resumeBackgroundUpload();
-    } catch (error) {
-      localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
-      document.getElementById('dataset-training-overlay')?.remove();
-      toast(error.message || 'Dataset upload failed.', 'err');
-    }
-  }
-
-  // Capture the file selection before the legacy page-local handler runs.
-  // The actual analysis is now a server job, so navigation or a backgrounded
-  // browser tab cannot abort it after the bytes are received.
-  document.addEventListener('change', event => {
-    const input = event.target;
-    if (!(input instanceof HTMLInputElement) || input.id !== 'dataset-file-input') return;
-    event.stopImmediatePropagation();
-    beginBackgroundUpload(input.files?.[0]);
-    input.value = '';
-  }, true);
-
-  // Server-authoritative upload UI. These declarations intentionally replace
-  // the earlier compatibility versions in this same scope.
-  function showBackgroundUpload(job) {
+  function showUploadOverlay(job) {
     document.getElementById('dataset-training-overlay')?.remove();
     const overlay = document.createElement('div');
     overlay.id = 'dataset-training-overlay';
@@ -266,119 +189,194 @@ LIVE_UI_SCRIPT = r'''
     return overlay;
   }
 
-  function updateBackgroundUpload(job) {
-    const overlay = document.getElementById('dataset-training-overlay') || showBackgroundUpload(job);
+  function updateUploadOverlay(job) {
+    const overlay = document.getElementById('dataset-training-overlay') || showUploadOverlay(job);
     const ring = overlay.querySelector('.dataset-progress-ring');
-    const percentage = ring?.querySelector('span');
+    const pct = ring?.querySelector('span');
     const stage = overlay.querySelector('small');
     const title = overlay.querySelector('b');
     const detail = overlay.querySelector('p');
-    const cancelButton = overlay.querySelector('.dataset-cancel-upload');
+    const cancelBtn = overlay.querySelector('.dataset-cancel-upload');
     const progress = Math.max(0, Math.min(100, Number(job.progress || 0)));
     if (ring) ring.style.setProperty('--dataset-progress', `${progress * 3.6}deg`);
-    if (percentage) percentage.textContent = `${progress.toFixed(1)}%`;
+    if (pct) pct.textContent = `${progress.toFixed(1)}%`;
     if (stage) stage.textContent = job.message || 'Processing on the server...';
     if (title && job.state === 'uploading') title.textContent = 'Uploading Dataset';
     if (title && ['queued', 'processing'].includes(job.state)) title.textContent = 'Finalizing Dataset';
     if (title && job.state === 'complete') title.textContent = 'Dataset processing complete';
     if (detail && ['queued', 'processing'].includes(job.state)) detail.textContent = 'Training, scoring, and saving the active cohort. Safe to switch dashboards or browser tabs.';
     if (detail && job.state === 'complete') detail.textContent = 'The scored cohort is active. Refreshing this dashboard...';
-    if (cancelButton) cancelButton.hidden = job.state === 'complete';
+    if (cancelBtn) cancelBtn.hidden = (job.state === 'complete');
   }
 
+  function removeOverlay() { document.getElementById('dataset-training-overlay')?.remove(); }
+
+  function clearUploadState() {
+    if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+    localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
+  }
+
+  // ── Cancel ────────────────────────────────────────────────────────
   window.cancelDatasetUpload = async () => {
     const raw = localStorage.getItem(BACKGROUND_UPLOAD_KEY);
-    if (!raw) { document.getElementById('dataset-training-overlay')?.remove(); return; }
+    if (!raw) { removeOverlay(); return; }
     let job;
-    try { job = JSON.parse(raw); } catch (_) { localStorage.removeItem(BACKGROUND_UPLOAD_KEY); return; }
-    const button = document.querySelector('#dataset-training-overlay .dataset-cancel-upload');
-    if (button) { button.disabled = true; button.textContent = 'Canceling...'; }
+    try { job = JSON.parse(raw); } catch (_) { clearUploadState(); removeOverlay(); return; }
+    const btn = document.querySelector('#dataset-training-overlay .dataset-cancel-upload');
+    if (btn) { btn.disabled = true; btn.textContent = 'Canceling...'; }
     try {
       await fetch('/api/dataset/cancel', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({upload_id: job.id}), keepalive: true,
       });
     } finally {
-      if (backgroundUploadPoller) clearInterval(backgroundUploadPoller);
-      backgroundUploadPoller = null;
-      localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
-      document.getElementById('dataset-training-overlay')?.remove();
+      ++_pollGeneration;
+      clearUploadState();
+      removeOverlay();
       toast('Dataset upload canceled.', 'info');
     }
   };
 
-  async function resumeBackgroundUpload() {
-    const raw = localStorage.getItem(BACKGROUND_UPLOAD_KEY);
-    if (!raw) return;
-    let job;
-    try { job = JSON.parse(raw); } catch (_) { localStorage.removeItem(BACKGROUND_UPLOAD_KEY); return; }
-    // Completion/progress are authoritative only from the server. Never
-    // revive a 100% snapshot left in shared storage by another tab.
-    if (job.state === 'complete') job = {...job, state: 'queued', progress: 0};
-    const generation = ++backgroundUploadGeneration;
-    updateBackgroundUpload(job);
-    if (backgroundUploadPoller) clearInterval(backgroundUploadPoller);
-    const poll = async () => {
-      try {
-        const response = await fetch(`/api/dataset/upload-status?job_id=${encodeURIComponent(job.id)}`, {cache: 'no-store'});
-        if (generation !== backgroundUploadGeneration) return;
-        if (!response.ok) {
-          if (response.status === 404) {
-            const age = Date.now() - Number(job.created_at_ms || 0);
-            if (job.state === 'uploading' && age < 120000) return;
-            clearInterval(backgroundUploadPoller); backgroundUploadPoller = null;
-            localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
-            document.getElementById('dataset-training-overlay')?.remove();
-            toast('The upload job is no longer available. Please upload the CSV again.', 'err');
-          }
-          return;
+  // ── Single server-authoritative poll ──────────────────────────────
+  async function pollOnce(jobId, generation) {
+    if (generation !== _pollGeneration) return 'stale';
+    if (_pollInFlight) return 'busy';
+    _pollInFlight = true;
+    try {
+      const response = await fetch(`/api/dataset/upload-status?job_id=${encodeURIComponent(jobId)}`, {cache: 'no-store'});
+      if (generation !== _pollGeneration) return 'stale';
+      if (!response.ok) {
+        if (response.status === 404) {
+          const raw = localStorage.getItem(BACKGROUND_UPLOAD_KEY);
+          if (!raw) return 'gone';
+          let stored; try { stored = JSON.parse(raw); } catch (_) { clearUploadState(); removeOverlay(); return 'gone'; }
+          const age = Date.now() - Number(stored.created_at_ms || 0);
+          if (stored.state === 'uploading' && age < 120000) return 'waiting';
+          clearUploadState(); removeOverlay();
+          toast('The upload job is no longer available. Please upload the CSV again.', 'err');
+          return 'gone';
         }
-        job = {...job, ...await response.json()};
-        updateBackgroundUpload(job);
-        if (job.state === 'complete') {
-          clearInterval(backgroundUploadPoller); backgroundUploadPoller = null;
-          const stored = localStorage.getItem(BACKGROUND_UPLOAD_KEY);
-          if (!stored || JSON.parse(stored).id === job.id) localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
-          const completionKey = `dropout-signal-upload-complete-${job.id}`;
-          if (!sessionStorage.getItem(completionKey)) {
-            sessionStorage.setItem(completionKey, '1');
-            setTimeout(() => window.location.reload(), 700);
-          }
-        } else if (['failed', 'canceled'].includes(job.state)) {
-          clearInterval(backgroundUploadPoller); backgroundUploadPoller = null;
-          localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
-          document.getElementById('dataset-training-overlay')?.remove();
-          toast(job.state === 'canceled' ? 'Dataset upload canceled.' : (job.error || 'Dataset upload failed.'), job.state === 'canceled' ? 'info' : 'err');
+        return 'error';
+      }
+      const serverJob = await response.json();
+      if (generation !== _pollGeneration) return 'stale';
+      updateUploadOverlay(serverJob);
+
+      if (serverJob.state === 'complete') {
+        if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+        // Remove localStorage BEFORE any reload so other tabs cannot read
+        // a stale 'complete' snapshot and re-trigger completion.
+        localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
+        // Single-fire: only the first tab to see 'complete' for this job
+        // triggers a reload. Other tabs detect the removed localStorage
+        // key via their storage listener and clean up silently.
+        const completionKey = `dropout-signal-upload-complete-${serverJob.id}`;
+        if (!sessionStorage.getItem(completionKey)) {
+          sessionStorage.setItem(completionKey, '1');
+          setTimeout(() => window.location.reload(), 700);
+        } else {
+          // This tab already completed this job. Just remove the overlay.
+          removeOverlay();
         }
-      } catch (_) {}
-    };
-    await poll();
-    if (generation !== backgroundUploadGeneration) return;
-    if (!backgroundUploadPoller && !['complete', 'failed', 'canceled'].includes(job.state)) backgroundUploadPoller = setInterval(poll, 800);
+        return 'complete';
+      }
+      if (serverJob.state === 'failed' || serverJob.state === 'canceled') {
+        clearUploadState(); removeOverlay();
+        toast(serverJob.state === 'canceled' ? 'Dataset upload canceled.' : (serverJob.error || 'Dataset upload failed.'), serverJob.state === 'canceled' ? 'info' : 'err');
+        return 'terminal';
+      }
+      // Keep localStorage in sync so other tabs can pick up the job ID.
+      // Never write 'complete' here — that path is handled above.
+      const raw = localStorage.getItem(BACKGROUND_UPLOAD_KEY);
+      if (raw) {
+        try {
+          const stored = JSON.parse(raw);
+          if (stored.id === jobId) {
+            localStorage.setItem(BACKGROUND_UPLOAD_KEY, JSON.stringify({...stored, ...serverJob, state: serverJob.state}));
+          }
+        } catch (_) {}
+      }
+      return 'active';
+    } finally { _pollInFlight = false; }
   }
 
-  async function beginBackgroundUpload(file) {
+  // ── Resume / start polling ────────────────────────────────────────
+  async function resumeUploadPolling() {
+    const raw = localStorage.getItem(BACKGROUND_UPLOAD_KEY);
+    if (!raw) { removeOverlay(); return; }
+    let job;
+    try { job = JSON.parse(raw); } catch (_) { clearUploadState(); removeOverlay(); return; }
+    // Never revive a terminal state from another tab's leftover storage.
+    if (['complete', 'failed', 'canceled'].includes(job.state)) {
+      clearUploadState(); removeOverlay(); return;
+    }
+    const generation = ++_pollGeneration;
+    // Show the last-known state while waiting for the server poll.
+    updateUploadOverlay(job);
+    if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+
+    const result = await pollOnce(job.id, generation);
+    if (generation !== _pollGeneration) return;
+    if (result === 'complete' || result === 'terminal' || result === 'gone' || result === 'stale') return;
+
+    // Start the regular interval poller.
+    _pollTimer = setInterval(async () => {
+      const r = await pollOnce(job.id, generation);
+      if (r === 'complete' || r === 'terminal' || r === 'gone' || r === 'stale') {
+        if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+      }
+    }, 800);
+  }
+
+  // ── Begin a new upload ────────────────────────────────────────────
+  async function beginUpload(file) {
     if (!file) return;
+    // Cancel any in-progress upload first.
+    ++_pollGeneration;
+    if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
     const form = new FormData(); form.append('file', file);
     const job = {id: globalThis.crypto?.randomUUID?.() || `upload-${Date.now()}`, filename: file.name, state: 'uploading', progress: 0, created_at_ms: Date.now()};
     localStorage.setItem(BACKGROUND_UPLOAD_KEY, JSON.stringify(job));
-    updateBackgroundUpload(job);
+    updateUploadOverlay(job);
     try {
       const response = await fetch('/api/dataset/upload', {method: 'POST', body: form, headers: {'X-Dataset-Upload-Id': job.id}});
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Dataset upload failed');
-      await resumeBackgroundUpload();
+      // The server accepted the file and started background processing.
+      const updated = {...job, ...payload, state: payload.state || 'queued'};
+      localStorage.setItem(BACKGROUND_UPLOAD_KEY, JSON.stringify(updated));
+      await resumeUploadPolling();
     } catch (error) {
-      localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
-      document.getElementById('dataset-training-overlay')?.remove();
+      clearUploadState(); removeOverlay();
       toast(error.message || 'Dataset upload failed.', 'err');
     }
   }
 
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) resumeBackgroundUpload(); });
-  window.addEventListener('focus', resumeBackgroundUpload);
+  // ── Capture file selection (before the legacy page handler) ───────
+  document.addEventListener('change', event => {
+    const input = event.target;
+    if (!(input instanceof HTMLInputElement) || input.id !== 'dataset-file-input') return;
+    event.stopImmediatePropagation();
+    beginUpload(input.files?.[0]);
+    input.value = '';
+  }, true);
+
+  // ── Cross-tab and visibility event handlers ───────────────────────
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) resumeUploadPolling();
+  });
+  window.addEventListener('focus', () => resumeUploadPolling());
   window.addEventListener('storage', event => {
-    if (event.key === BACKGROUND_UPLOAD_KEY && event.newValue) resumeBackgroundUpload();
+    if (event.key !== BACKGROUND_UPLOAD_KEY) return;
+    if (event.newValue) {
+      // Another tab started or updated an upload — start polling.
+      resumeUploadPolling();
+    } else {
+      // Another tab cleared the key (cancel or completion) — stop and clean up.
+      ++_pollGeneration;
+      if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+      removeOverlay();
+    }
   });
 
   document.addEventListener('DOMContentLoaded', () => {
@@ -386,7 +384,7 @@ LIVE_UI_SCRIPT = r'''
     refreshLiveTranscripts();
     refreshLiveWhatsApp();
     installTranscriptSearch();
-    resumeBackgroundUpload();
+    resumeUploadPolling();
     // The legacy dashboard still repaints its call cards. Re-apply the latest
     // webhook transcript in the same turn so it cannot alternate between the
     // greeting variant and the question variant.
@@ -402,8 +400,52 @@ LIVE_UI_SCRIPT = r'''
 '''
 
 
-_BACKGROUND_UPLOADS = {}
+# ═══════════════════════════════════════════════════════════════════
+#  FILE-BACKED JOB STATE (survives worker restarts)
+# ═══════════════════════════════════════════════════════════════════
+
+_RUNTIME_DIR = Path(
+    os.environ.get(
+        "DROPOUT_SIGNAL_RUNTIME_DIR",
+        "/tmp/dropout_signal_runtime" if os.environ.get("VERCEL") else str(Path(__file__).resolve().parent / "runtime_data"),
+    )
+)
+_JOBS_FILE = _RUNTIME_DIR / "upload_jobs.json"
 _BACKGROUND_UPLOAD_LOCK = threading.RLock()
+
+
+def _load_jobs() -> dict:
+    """Read all background upload jobs from disk."""
+    try:
+        return _json.loads(_JOBS_FILE.read_text(encoding="utf-8")) if _JOBS_FILE.exists() else {}
+    except Exception:
+        return {}
+
+
+def _save_jobs(jobs: dict) -> None:
+    """Persist all background upload jobs to disk."""
+    _JOBS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _JOBS_FILE.write_text(_json.dumps(jobs), encoding="utf-8")
+
+
+def _get_job(job_id: str) -> dict | None:
+    with _BACKGROUND_UPLOAD_LOCK:
+        return _load_jobs().get(job_id)
+
+
+def _set_job(job_id: str, data: dict) -> None:
+    with _BACKGROUND_UPLOAD_LOCK:
+        jobs = _load_jobs()
+        jobs[job_id] = data
+        _save_jobs(jobs)
+
+
+def _update_job(job_id: str, updates: dict) -> None:
+    with _BACKGROUND_UPLOAD_LOCK:
+        jobs = _load_jobs()
+        if job_id in jobs:
+            jobs[job_id].update(updates)
+            _save_jobs(jobs)
 
 
 def _background_upload_snapshot(job):
@@ -477,23 +519,21 @@ def install(app, namespace):
                 return jsonify({"error": "The selected CSV is empty."}), 400
             job_id = request.headers.get("X-Dataset-Upload-Id") or str(uuid.uuid4())
             filename = upload.filename
-            with _BACKGROUND_UPLOAD_LOCK:
-                _BACKGROUND_UPLOADS[job_id] = {
-                    "id": job_id,
-                    "filename": filename,
-                    "state": "queued",
-                    "message": "Dataset received. Starting background analysis…",
-                    "created_at": time.time(),
-                }
+            _set_job(job_id, {
+                "id": job_id,
+                "filename": filename,
+                "state": "queued",
+                "message": "Dataset received. Starting background analysis\u2026",
+                "created_at": time.time(),
+            })
 
             def run_upload_job():
-                with _BACKGROUND_UPLOAD_LOCK:
-                    _BACKGROUND_UPLOADS[job_id].update({
-                        "state": "processing",
-                        "processing_at": time.time(),
-                        "progress": 5.0,
-                        "message": "Training and scoring in the background…",
-                    })
+                _update_job(job_id, {
+                    "state": "processing",
+                    "processing_at": time.time(),
+                    "progress": 5.0,
+                    "message": "Training and scoring in the background\u2026",
+                })
                 try:
                     with app.test_request_context(
                         "/api/dataset/upload",
@@ -508,27 +548,28 @@ def install(app, namespace):
                     status = payload.get("status") or {}
                     if not payload.get("ok") or not status.get("dataset_loaded"):
                         raise RuntimeError("Dataset processing finished without activating the uploaded cohort.")
-                    with _BACKGROUND_UPLOAD_LOCK:
-                        if _BACKGROUND_UPLOADS[job_id].get("state") == "canceled":
-                            return
-                        _BACKGROUND_UPLOADS[job_id].update({
-                            "state": "complete",
-                            "message": "Dataset trained, scored, and activated.",
-                            "status": status,
-                            "progress": 100.0,
-                            "completed_at": time.time(),
-                        })
+                    # Check cancel before marking complete.
+                    job = _get_job(job_id) or {}
+                    if job.get("state") == "canceled":
+                        return
+                    _update_job(job_id, {
+                        "state": "complete",
+                        "message": "Dataset trained, scored, and activated.",
+                        "status": status,
+                        "progress": 100.0,
+                        "completed_at": time.time(),
+                    })
                 except Exception as exc:
                     app.logger.exception("Background dataset upload failed")
-                    with _BACKGROUND_UPLOAD_LOCK:
-                        if _BACKGROUND_UPLOADS[job_id].get("state") == "canceled":
-                            return
-                        _BACKGROUND_UPLOADS[job_id].update({
-                            "state": "failed",
-                            "error": str(exc),
-                            "message": "Background dataset processing failed.",
-                            "completed_at": time.time(),
-                        })
+                    job = _get_job(job_id) or {}
+                    if job.get("state") == "canceled":
+                        return
+                    _update_job(job_id, {
+                        "state": "failed",
+                        "error": str(exc),
+                        "message": "Background dataset processing failed.",
+                        "completed_at": time.time(),
+                    })
 
             threading.Thread(target=run_upload_job, name=f"dataset-upload-{job_id[:8]}", daemon=True).start()
             return jsonify({
@@ -541,26 +582,24 @@ def install(app, namespace):
 
         def background_dataset_upload_status():
             job_id = request.args.get("job_id", "")
-            with _BACKGROUND_UPLOAD_LOCK:
-                job = _background_upload_snapshot(_BACKGROUND_UPLOADS[job_id]) if job_id in _BACKGROUND_UPLOADS else {}
+            job = _get_job(job_id) if job_id else None
             if not job:
                 return jsonify({"error": "Upload job not found."}), 404
-            return jsonify(job)
+            return jsonify(_background_upload_snapshot(job))
 
         def background_dataset_cancel():
             payload = request.get_json(silent=True) or {}
             job_id = str(payload.get("upload_id") or "").strip()
             response = app.make_response(original_cancel()) if original_cancel else jsonify({"ok": True, "canceled": True})
-            with _BACKGROUND_UPLOAD_LOCK:
-                job = _BACKGROUND_UPLOADS.get(job_id)
-                if job and job.get("state") != "complete":
-                    snapshot = _background_upload_snapshot(job)
-                    job.update({
-                        "state": "canceled",
-                        "message": "Dataset upload canceled.",
-                        "progress": snapshot.get("progress", 0.0),
-                        "completed_at": time.time(),
-                    })
+            job = _get_job(job_id) if job_id else None
+            if job and job.get("state") != "complete":
+                snapshot = _background_upload_snapshot(job)
+                _update_job(job_id, {
+                    "state": "canceled",
+                    "message": "Dataset upload canceled.",
+                    "progress": snapshot.get("progress", 0.0),
+                    "completed_at": time.time(),
+                })
             return response
 
         app.view_functions[upload_rule.endpoint] = background_dataset_upload
@@ -621,26 +660,26 @@ def install(app, namespace):
             real_ids = {str(call.get("student_id")) for call in real_calls}
             active_dummies = []
             completed_dummies = []
-            for index, student in enumerate(namespace["_dataset_records"](limit=14)):
+            # Request more records so we can fill both active and completed
+            # buckets even when there are fewer than 14 unique students.
+            for index, student in enumerate(namespace["_dataset_records"](limit=24)):
                 if str(student.get("student_id")) in real_ids:
                     continue
                 dummy = namespace["_experience_conversation"](student, index)
                 dummy["student_id"] = f"DEMO-{student.get('student_id', index)}"
                 dummy["student_name"] = f"{student.get('student_name', 'Student')} (Demo)"
-                # Every dashboard reads the same time-sliced stream from this
-                # endpoint. It is visually live, but it is kept separate from
-                # the real Achal webhook transcript.
                 elapsed_steps = int(time.time() // 2) + index
                 call_turns = list(dummy.get("call", []))
                 wa_turns = list(dummy.get("whatsapp", []))
-                dummy["call"] = call_turns[:min(len(call_turns), 2 + elapsed_steps % max(1, len(call_turns)))]
-                dummy["whatsapp"] = wa_turns[:min(len(wa_turns), 2 + elapsed_steps % max(1, len(wa_turns)))]
-                dummy["status"] = "active"
-                dummy["summary"] = "Saved demonstration transcript — not an active phone call."
-                dummy["summary"] = "Live synchronized demonstration stream."
                 if len(active_dummies) < 7:
+                    # Active: show a time-sliced subset of turns.
+                    dummy["call"] = call_turns[:min(len(call_turns), 2 + elapsed_steps % max(1, len(call_turns)))]
+                    dummy["whatsapp"] = wa_turns[:min(len(wa_turns), 2 + elapsed_steps % max(1, len(wa_turns)))]
+                    dummy["status"] = "active"
+                    dummy["summary"] = "Live synchronized demonstration stream."
                     active_dummies.append(dummy)
-                else:
+                elif len(completed_dummies) < 7:
+                    # Completed: show all turns, mark as completed.
                     dummy["call"] = call_turns
                     dummy["whatsapp"] = wa_turns
                     dummy["status"] = "completed"
@@ -651,6 +690,7 @@ def install(app, namespace):
             active_states = {"active", "ringing", "in-progress", "in_progress"}
             real_active = [call for call in real_calls if str(call.get("status", "")).lower() in active_states]
             real_completed = [call for call in real_calls if call not in real_active]
+            # Active transcripts first, then completed — for both calls and WhatsApp.
             payload["conversations"] = real_active + active_dummies + real_completed + completed_dummies
         return jsonify(payload)
 
