@@ -614,6 +614,17 @@ LIVE_UI_SCRIPT = r'''
 # instead of their historical browser-only sample state.
 FINAL_UI_SCRIPT = r'''
 <style id="authoritative-dashboard-ui">
+  html, body { width:100%; max-width:100%; overflow-x:hidden !important; }
+  body { min-width:0; }
+  .main { width:calc(100% - 220px); max-width:calc(100% - 220px); min-width:0; box-sizing:border-box; }
+  .page,.topbar,.grid-3,.card,.card-new,.card-b,.card-new-b { min-width:0; max-width:100%; box-sizing:border-box; }
+  .grid-3 { grid-template-columns:minmax(0,3fr) minmax(0,5fr) minmax(0,4fr); }
+  .dataset-thread { min-width:0; max-width:100%; overflow-x:hidden; white-space:normal; }
+  .dataset-message,.dataset-message p { min-width:0; overflow-wrap:anywhere; word-break:break-word; }
+  .dataset-message.partial { opacity:.82; }
+  .side-panel { right:0!important; width:min(450px,100vw)!important; max-width:100vw; }
+  .side-panel:not(.active) { display:none!important; }
+  .dataset-message.partial p::after { content:' …'; color:var(--text3); }
   .cohort-pulse { margin-top:18px; display:grid; grid-template-columns:1.1fr 1.4fr 1fr; gap:12px; }
   .cohort-pulse > section { min-height:188px; padding:16px; border:1px solid var(--border); border-radius:10px; background:var(--surface2); }
   .cohort-pulse h3 { margin:0 0 14px; font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--text2); }
@@ -635,13 +646,26 @@ FINAL_UI_SCRIPT = r'''
   .ensemble-context { margin:14px 0; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
   .ensemble-context section { padding:13px; border:1px solid var(--border); border-radius:9px; background:var(--surface2); }
   .ensemble-context h3 { margin:0 0 7px; font-size:12px; letter-spacing:.06em; text-transform:uppercase; } .ensemble-context p { margin:0; font-size:12px; color:var(--text2); line-height:1.55; }
-  @media (max-width:800px) { .cohort-pulse { grid-template-columns:1fr; } }
+  @media (max-width:1200px) {
+    .topbar { flex-wrap:wrap; align-items:flex-start; gap:12px; }
+    .topbar-title { flex:1 1 100%; min-width:0; }
+    .topbar-actions { width:100%; max-width:100%; min-width:0; flex-wrap:wrap; gap:8px; }
+    .top-search { flex:1 1 220px; width:auto; min-width:0; max-width:100%; }
+    .dataset-controls { flex:1 1 260px; max-width:100%; flex-wrap:wrap; }
+    .stat-grid-4 { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  }
+  @media (max-width:800px) {
+    .main { width:100%; max-width:100%; }
+    .grid-3,.cohort-pulse,.stat-grid-4 { grid-template-columns:1fr; }
+    .topbar-actions > button,.topbar-actions > .btn,.topbar-actions > .nav-cta { flex:1 1 auto; }
+  }
 </style>
 <script>
 (() => {
-  const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&gt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+  const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
   let operationalSignature = '';
   let operationsRequest = 0;
+  let operationsInFlight = false;
   let fairnessRequest = 0;
   let latestCall = null;
   let activeDatasetRunId = null;
@@ -652,14 +676,28 @@ FINAL_UI_SCRIPT = r'''
   const visibleMessageCounts = new Map();
   let allowAchalAutofocus = true;
   let pendingAchalCallFocus = false;
-  const sampleCursors = new Map();
+  let authoritativePanelWrite = false;
+  const sampleTimelines = new Map();
   const liveThreadFollowState = new Map();
+
+  const legacyDatasetCacheReset = window.resetDatasetUiCaches;
+  if (typeof legacyDatasetCacheReset === 'function') {
+    window.resetDatasetUiCaches = () => {
+      try { legacyDatasetCacheReset(); }
+      catch (error) {
+        // One recovered counselor bundle does not declare the retired
+        // transcript cache maps. Its useful directory-cache resets run before
+        // that reference, so only this known missing-map failure is ignored.
+        if (!(error instanceof ReferenceError) || !/datasetConversation/i.test(String(error.message || ''))) throw error;
+      }
+    };
+  }
 
   const messageMarkup = (message, studentName) => {
     const student = message.side === 'student' || message.role === 'user';
     const speaker = message.speaker || (student ? studentName : 'Asha AI');
     const text = message.text ?? message.content ?? '';
-    return `<article class="dataset-message ${student ? 'student' : 'asha'}"><span>${escapeHtml(speaker)}</span><p>${escapeHtml(text)}</p></article>`;
+    return `<article class="dataset-message ${student ? 'student' : 'asha'}${message.partial ? ' partial' : ''}"><span>${escapeHtml(speaker)}</span><p>${escapeHtml(text)}</p></article>`;
   };
 
   function completedSummary(item) {
@@ -668,47 +706,71 @@ FINAL_UI_SCRIPT = r'''
 
   function channelLabel(item) { return item.whatsapp?.length && !item.call?.length ? 'WhatsApp' : 'phone'; }
 
-  function progressiveMessages(item, channel) {
+  function sampleTimeline(item, channel) {
     const messages = channel === 'call' ? item.call : item.whatsapp;
-    if (!item.is_sample || String(item.status).toLowerCase() === 'completed') return messages;
     const key = `${item.student_id}:${channel}`;
-    // Begin sample conversations part-way through their history.  The whole
-    // thread remains scrollable, while every active sample advances together.
-    const seed = [...key].reduce((total, char) => total + char.charCodeAt(0), 0);
-    const initial = Math.min(messages.length, Math.max(2, Math.floor(messages.length * 0.45) + (seed % 2)));
-    const current = sampleCursors.get(key) || initial;
-    return messages.slice(0, current);
+    if (!item.is_sample || String(item.status).toLowerCase() === 'completed') {
+      return {count: messages.length, completed: String(item.status).toLowerCase() === 'completed'};
+    }
+    let timeline = sampleTimelines.get(key);
+    if (!timeline) {
+      // Each sample begins at a different, genuinely random point in the
+      // conversation while preserving the greeting at the top of the thread.
+      const minimum = Math.min(messages.length, Math.max(2, Math.floor(messages.length * .35)));
+      const maximum = Math.max(minimum, Math.min(messages.length - 1, Math.floor(messages.length * .65)));
+      timeline = {
+        initial: minimum + Math.floor(Math.random() * (maximum - minimum + 1)),
+        startedAt: null,
+      };
+      sampleTimelines.set(key, timeline);
+    }
+    // A closed sample stays live at its randomized midpoint. Selecting it
+    // starts that conversation's own clock, so other rows neither jump nor
+    // finish off-screen. Date-based progress catches this selected thread up
+    // immediately after the browser throttles a background tab.
+    if (openedConversationKey === key && !timeline.startedAt) timeline.startedAt = Date.now();
+    const exchanges = timeline.startedAt ? Math.floor((Date.now() - timeline.startedAt) / 2000) : 0;
+    const count = Math.min(messages.length, timeline.initial + exchanges * 2);
+    return {count, completed: count >= messages.length};
   }
 
-  function advanceSampleStreams(items) {
-    // Both channels and every active sample gain exactly one alternating turn
-    // per two-second poll. This is independent of whether its row is open.
-    items.filter(item => item.is_sample && String(item.status).toLowerCase() !== 'completed').forEach(item => {
-      ['call', 'whatsapp'].forEach(channel => {
-        const messages = channel === 'call' ? item.call : item.whatsapp;
-        if (!messages?.length) return;
-        const key = `${item.student_id}:${channel}`;
-        const seed = [...key].reduce((total, char) => total + char.charCodeAt(0), 0);
-        const initial = Math.min(messages.length, Math.max(2, Math.floor(messages.length * 0.45) + (seed % 2)));
-        sampleCursors.set(key, Math.min(messages.length, (sampleCursors.get(key) || initial) + 1));
-      });
-    });
+  function progressiveMessages(item, channel) {
+    const messages = channel === 'call' ? item.call : item.whatsapp;
+    return messages.slice(0, sampleTimeline(item, channel).count);
+  }
+
+  function effectiveChannelStatus(item, channel) {
+    const original = channel === 'call' ? (item.call_status || item.status) : (item.whatsapp_status || item.status);
+    if (item.is_sample && !['completed', 'failed', 'canceled', 'interrupted'].includes(String(original || '').toLowerCase())) {
+      return sampleTimeline(item, channel).completed ? 'completed' : 'active';
+    }
+    return original;
   }
 
   function panelMarkup(items, channel) {
     if (!items.length) return `<div class="dataset-empty-live">No ${channel === 'call' ? 'call transcripts' : 'WhatsApp conversations'} yet. New activity will appear here automatically.</div>`;
-    return items.map(item => {
+    const channelItems = items.filter(item => (channel === 'call' ? item.call : item.whatsapp)?.length).sort((a, b) => {
+      const achalA = String(a.student_name || '').trim().toLowerCase() === 'achal sangami';
+      const achalB = String(b.student_name || '').trim().toLowerCase() === 'achal sangami';
+      if (achalA !== achalB) return achalA ? -1 : 1;
+      const activeA = !['completed', 'failed', 'canceled', 'interrupted'].includes(String(effectiveChannelStatus(a, channel) || '').toLowerCase());
+      const activeB = !['completed', 'failed', 'canceled', 'interrupted'].includes(String(effectiveChannelStatus(b, channel) || '').toLowerCase());
+      return activeA === activeB ? String(b.started_at || '').localeCompare(String(a.started_at || '')) : (activeA ? -1 : 1);
+    });
+    return channelItems.map(item => {
       const messages = progressiveMessages(item, channel);
       if (!messages?.length) return '';
-      const channelStatus = channel === 'call' ? (item.call_status || item.status) : (item.whatsapp_status || item.status);
+      const channelStatus = effectiveChannelStatus(item, channel);
       const active = !['completed', 'failed', 'canceled', 'interrupted'].includes(String(channelStatus || '').toLowerCase());
       const tone = String(item.tier || 'MEDIUM').toLowerCase() === 'high' ? 'high' : 'medium';
       const key = `${item.student_id}:${channel}`;
       const isAchal = String(item.student_name || '').trim().toLowerCase() === 'achal sangami';
       const summaryText = channel === 'call' ? (item.call_summary || item.summary) : (item.whatsapp_summary || item.summary);
-      const summary = active ? '' : `<footer class="dataset-contact-summary"><b>AI Summary</b><p>${escapeHtml(summaryText || completedSummary({...item, status: channelStatus}))}</p></footer>`;
+      const highRisk = String(item.dropout_intent || item.tier || '').toUpperCase() === 'HIGH';
+      const riskAssessment = highRisk ? 'High dropout risk flagged' : 'No high dropout risk flag';
+      const summary = active ? '' : `<footer class="dataset-contact-summary"><b>AI Summary · ${riskAssessment}</b><p>${escapeHtml(summaryText || completedSummary({...item, status: channelStatus}))}</p></footer>`;
       const open = openedConversationKey === key || (isAchal && active && allowAchalAutofocus && !openedConversationKey);
-      return `<details class="operation-row dataset-conversation ${tone}" data-conversation-key="${escapeHtml(key)}" data-channel="${channel}" data-message-count="${messages.length}" ${open ? 'open' : ''}><summary><strong>${escapeHtml(item.student_name || 'Student')}</strong><span class="${active ? 'dataset-live' : 'dataset-completed'}">${active ? 'ACTIVE' : 'COMPLETED'}</span>${active ? `<span class="dataset-presence ${tone}"></span>` : ''}<em>${escapeHtml(item.tier || 'MEDIUM')} RISK</em></summary><div class="dataset-thread ${channel}">${messages.map(m => messageMarkup(m, item.student_name || 'Student')).join('')}${summary}</div></details>`;
+      return `<details class="operation-row dataset-conversation ${tone}" data-conversation-key="${escapeHtml(key)}" data-channel="${channel}" data-message-count="${messages.length}" data-is-sample="${item.is_sample ? 'true' : 'false'}" ${open ? 'open' : ''}><summary><strong>${escapeHtml(item.student_name || 'Student')}</strong><span class="${active ? 'dataset-live' : 'dataset-completed'}">${active ? 'ACTIVE' : 'COMPLETED'}</span>${active ? `<span class="dataset-presence ${tone}"></span>` : ''}<em>${escapeHtml(item.tier || 'MEDIUM')} RISK</em></summary><div class="dataset-thread ${channel}">${messages.map(m => messageMarkup(m, item.student_name || 'Student')).join('')}${summary}</div></details>`;
     }).join('') || `<div class="dataset-empty-live">No ${channel === 'call' ? 'call transcripts' : 'WhatsApp conversations'} yet. New activity will appear here automatically.</div>`;
   }
 
@@ -722,6 +784,7 @@ FINAL_UI_SCRIPT = r'''
       const updated = String(session.started_at || '') > String(existing?.started_at || '');
       if (!existing || updated) byStudent.set(id, {
         student_id: id, student_name: session.student_name || 'Student', tier: session.risk_tier || 'HIGH',
+        dropout_intent: session.dropout_intent || session.risk_tier || '',
         status: session.status || 'active', call_status: session.status || 'active', call_summary: session.summary || '',
         started_at: session.started_at, call: session.transcript_events || [], whatsapp: [],
       });
@@ -737,6 +800,8 @@ FINAL_UI_SCRIPT = r'''
         byStudent.set(target.student_id, target);
       }
       target.student_name = name;
+      target.tier = conversation.risk_level || target.tier || 'MEDIUM';
+      target.dropout_intent = conversation.risk_level || target.dropout_intent || '';
       target.whatsapp = messages;
       target.whatsapp_status = conversation.status || 'active';
       target.whatsapp_summary = conversation.summary || '';
@@ -754,7 +819,6 @@ FINAL_UI_SCRIPT = r'''
       if (isActive(a) !== isActive(b)) return isActive(a) ? -1 : 1;
       return String(b.started_at || '').localeCompare(String(a.started_at || ''));
     });
-    advanceSampleStreams(items);
     // The live practice contact is the current operational focus. Keep its
     // active thread expanded and following new turns, without expanding any
     // other student automatically.
@@ -766,10 +830,36 @@ FINAL_UI_SCRIPT = r'''
       else if (isActive(achal) && achal.call?.length) openedConversationKey = `${achal.student_id}:call`;
       else if (achal.whatsapp?.length) openedConversationKey = `${achal.student_id}:whatsapp`;
     }
-    if (achal && String(achal.call_status || '').toLowerCase() === 'completed' && String(achal.whatsapp_status || '').toLowerCase() === 'active' && openedConversationKey === `${achal.student_id}:call`) openedConversationKey = `${achal.student_id}:whatsapp`;
-    if (achal && openedConversationKey) pendingAchalCallFocus = false;
+    const achalWhatsAppReady = achal && String(achal.call_status || '').toLowerCase() === 'completed' && String(achal.whatsapp_status || '').toLowerCase() === 'active' && achal.whatsapp?.length;
+    if (achalWhatsAppReady && openedConversationKey === `${achal.student_id}:call`) openedConversationKey = `${achal.student_id}:whatsapp`;
+    if (achalWhatsAppReady && pendingAchalCallFocus) {
+      openedConversationKey = `${achal.student_id}:whatsapp`;
+      allowAchalAutofocus = true;
+      const pageName = document.getElementById('page-admin-whatsapp') ? 'admin-whatsapp' : 'whatsapp';
+      if (!document.getElementById(`page-${pageName}`)?.classList.contains('active')) {
+        queueMicrotask(async () => {
+          window.activateWorkspacePage?.(pageName);
+          openedConversationKey = `${achal.student_id}:whatsapp`;
+          allowAchalAutofocus = true;
+          pendingAchalCallFocus = false;
+          await refreshOperations();
+          const focusWhatsApp = () => {
+            document.querySelectorAll(`.page.active details[data-channel="whatsapp"]`).forEach(row => {
+              if (String(row.querySelector('summary strong')?.textContent || '').trim().toLowerCase() !== 'achal sangami') return;
+              row.open = true;
+              const thread = row.querySelector('.dataset-thread');
+              if (thread) thread.scrollTop = thread.scrollHeight;
+            });
+          };
+          requestAnimationFrame(focusWhatsApp);
+          setTimeout(focusWhatsApp, 80);
+        });
+      } else {
+        pendingAchalCallFocus = false;
+      }
+    }
     latestCall = items.find(item => item.call.length) || latestCall;
-    const signature = JSON.stringify(items.map(item => [item.student_id, item.status, item.call_status, item.whatsapp_status, progressiveMessages(item, 'call').length, progressiveMessages(item, 'whatsapp').length, item.call.at(-1)?.text, item.whatsapp.at(-1)?.content]));
+    const signature = JSON.stringify(items.map(item => [item.student_id, effectiveChannelStatus(item, 'call'), effectiveChannelStatus(item, 'whatsapp'), progressiveMessages(item, 'call').length, progressiveMessages(item, 'whatsapp').length, item.call.at(-1)?.text, item.whatsapp.at(-1)?.content]));
     operationalSignature = signature;
     const callHtml = panelMarkup(items, 'call'), waHtml = panelMarkup(items, 'whatsapp');
     const renderPanel = (id, channel, html) => {
@@ -777,7 +867,9 @@ FINAL_UI_SCRIPT = r'''
       if (!panel) return;
       const panelSignature = `${signature}:${channel}:${openedConversationKey || ''}`;
       if (panel.dataset.runtimeOperationSignature === panelSignature) return;
-      panel.innerHTML = html;
+      authoritativePanelWrite = true;
+      try { panel.innerHTML = html; }
+      finally { authoritativePanelWrite = false; }
       panel.dataset.runtimeOperationSignature = panelSignature;
     };
     ['full-transcript-panel', 'transcript-panel', 'admin-transcript-panel'].forEach(id => renderPanel(id, 'call', callHtml));
@@ -805,7 +897,11 @@ FINAL_UI_SCRIPT = r'''
         if (!thread || !row.open) return;
         const state = liveThreadFollowState.get(key) || { follow: true, scrollTop: 0 };
         thread.dataset.runtimeProgrammaticScroll = 'true';
-        if (activeThread && state.follow) thread.scrollTop = thread.scrollHeight;
+        const count = Number(row.dataset.messageCount || 0);
+        if (state.midpointAtCount === count) {
+          const maxScroll = Math.max(0, thread.scrollHeight - thread.clientHeight);
+          thread.scrollTop = Math.round(maxScroll * (state.midpointRatio || .46));
+        } else if (activeThread && state.follow) thread.scrollTop = thread.scrollHeight;
         else thread.scrollTop = Math.min(state.scrollTop, Math.max(0, thread.scrollHeight - thread.clientHeight));
         requestAnimationFrame(() => { thread.dataset.runtimeProgrammaticScroll = ''; });
       };
@@ -821,17 +917,24 @@ FINAL_UI_SCRIPT = r'''
         document.querySelectorAll('details[data-conversation-key]').forEach(other => { if (other !== row) other.open = false; });
         const state = liveThreadFollowState.get(key) || { follow: true, scrollTop: 0 };
         state.follow = activeThread;
-        if (!activeThread) state.scrollTop = 0;
+        if (row.dataset.isSample === 'true') {
+          state.midpointAtCount = Number(row.dataset.messageCount || 0);
+          state.midpointRatio = .32 + Math.random() * .34;
+        } else {
+          state.midpointAtCount = null;
+          if (!activeThread) state.scrollTop = 0;
+        }
         liveThreadFollowState.set(key, state);
         requestAnimationFrame(restoreThread);
       });
       const panelKey = `${row.closest('[id]')?.id || 'operations'}:${key}`;
       const count = Number(row.dataset.messageCount || 0), previousCount = visibleMessageCounts.get(panelKey);
       visibleMessageCounts.set(panelKey, count);
+      if (previousCount !== undefined && count > previousCount && followState.midpointAtCount !== count) followState.midpointAtCount = null;
       if (row.open && activeThread) requestAnimationFrame(restoreThread);
     });
-    const active = items.filter(isActive).length;
-    [['ts-count', `${active} active`], ['admin-ts-count', `${active} active`], ['wa-count-badge', `${items.filter(i => i.whatsapp.length).length} conversations`], ['admin-wa-badge', `${items.filter(i => i.whatsapp.length).length} conversations`]].forEach(([id, value]) => { const node = document.getElementById(id); if (node) node.textContent = value; });
+    const activeCalls = items.filter(item => item.call?.length && !['completed', 'failed', 'canceled', 'interrupted'].includes(String(effectiveChannelStatus(item, 'call') || '').toLowerCase())).length;
+    [['ts-count', `${activeCalls} active`], ['admin-ts-count', `${activeCalls} active`], ['wa-count-badge', `${items.filter(i => i.whatsapp.length).length} conversations`], ['admin-wa-badge', `${items.filter(i => i.whatsapp.length).length} conversations`]].forEach(([id, value]) => { const node = document.getElementById(id); if (node) node.textContent = value; });
   }
 
   async function refreshOperations() {
@@ -839,6 +942,8 @@ FINAL_UI_SCRIPT = r'''
     // repeated webhook/test SIDs for one student before replacing a panel.
     // The recovered template's renderer cannot do that and was the source of
     // duplicate Achal rows and forced scrolling.
+    if (window.__guidedDemoActive || operationsInFlight) return;
+    operationsInFlight = true;
     try {
       const requestId = ++operationsRequest;
       const [calls, whatsapp, experience] = await Promise.all([
@@ -848,7 +953,11 @@ FINAL_UI_SCRIPT = r'''
       ]);
       if (requestId !== operationsRequest) return;
       renderOperations(calls, whatsapp, experience);
-    } catch (_) {}
+    } catch (error) {
+      console.error('Live transcript refresh failed', error);
+    } finally {
+      operationsInFlight = false;
+    }
   }
 
   async function renderCohortPulse() {
@@ -913,6 +1022,19 @@ FINAL_UI_SCRIPT = r'''
       if (heading) heading.innerHTML = `Risk Prediction <span class="risk-fixed-badge">${predicted.toLocaleString()} predicted dropouts</span>`;
       trendBody.innerHTML = `<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:8px 2px"><section style="padding:13px;border:1px solid var(--border);border-radius:9px;background:var(--surface2)"><h3 style="margin:0 0 7px;color:#ef4444">${predicted.toLocaleString()}</h3><p style="margin:0;color:var(--text2);font-size:12px;line-height:1.5">students currently predicted to need intervention.</p></section><section style="padding:13px;border:1px solid var(--border);border-radius:9px;background:var(--surface2)"><h3 style="margin:0 0 7px;color:#f59e0b">${high.toLocaleString()}</h3><p style="margin:0;color:var(--text2);font-size:12px;line-height:1.5">high-confidence cases requiring immediate review.</p></section><section style="padding:13px;border:1px solid var(--border);border-radius:9px;background:var(--surface2)"><h3 style="margin:0 0 7px;color:#bc8cff">${medium.toLocaleString()}</h3><p style="margin:0;color:var(--text2);font-size:12px;line-height:1.5">students in the proactive support watchlist.</p></section></div>`;
     }
+    swapRiskCards();
+  }
+
+  function swapRiskCards() {
+    ['tier-chart', 'tier-chart-counselor'].forEach(id => {
+      const distribution = document.getElementById(id)?.closest('.card-new,.card');
+      const grid = distribution?.parentElement;
+      if (!distribution || !grid) return;
+      const heading = distribution.querySelector('.card-new-h h3,.card-h h3,h3');
+      if (heading) heading.textContent = 'Risk Distribution';
+      const prediction = [...grid.children].find(card => card !== distribution && /^Risk Prediction\b/i.test(card.querySelector('h3')?.textContent || ''));
+      if (prediction && distribution.previousElementSibling !== prediction) grid.insertBefore(prediction, distribution);
+    });
   }
 
   async function syncActiveDatasetScope() {
@@ -941,7 +1063,7 @@ FINAL_UI_SCRIPT = r'''
     // scrolling back down resumes it.  State is keyed independently of the
     // DOM node because the authoritative workspace redraws rows as messages
     // arrive.
-    document.querySelectorAll('.dataset-conversation[open]').forEach(row => {
+    document.querySelectorAll('.page.active .dataset-conversation[open]').forEach(row => {
       if (!row.querySelector('.dataset-live')) return;
       const thread = row.querySelector('.dataset-thread');
       if (!thread) return;
@@ -952,6 +1074,7 @@ FINAL_UI_SCRIPT = r'''
         state = { follow: true, scrollTop: 0 };
         liveThreadFollowState.set(key, state);
       }
+      if (state.midpointAtCount === Number(row.dataset.messageCount || 0)) return;
       thread.dataset.runtimeProgrammaticScroll = 'true';
       if (state.follow) {
         thread.scrollTop = thread.scrollHeight;
@@ -978,10 +1101,10 @@ FINAL_UI_SCRIPT = r'''
         configurable: true,
         get() { return descriptor.get.call(this); },
         set(markup) {
-          // Reject only the retired renderer's conversation markup. The
-          // authoritative renderer includes this shared-state key, while
-          // ordinary empty states and the final renderer remain unaffected.
-          if (typeof markup === 'string' && markup.includes('dataset-conversation') && !markup.includes('data-conversation-key')) return;
+          // Every legacy renderer is retired for these panels, including its
+          // stale "upload a CSV" empty state. Only the unified renderer (and
+          // the guided demo using the same row structure) may replace them.
+          if (!authoritativePanelWrite) return;
           descriptor.set.call(this, markup);
         },
       });
@@ -1171,6 +1294,30 @@ FINAL_UI_SCRIPT = r'''
   window.runAnalysis = analyzeCallsWithModal;
   window.exportCSV = exportCallsWithModal;
 
+  async function beginOperationalCall(transcriptPage) {
+    // Replace the recovered client-side "manual demo" state machine. The
+    // server webhook session is the only source of truth for Achal's row.
+    openedConversationKey = null;
+    allowAchalAutofocus = true;
+    pendingAchalCallFocus = true;
+    window.toast?.('Calling Achal Sangami...', 'info');
+    try {
+      const response = await fetch('/api/manual-call', {method:'POST'});
+      const payload = await response.json();
+      if (!response.ok || payload.error) throw new Error(payload.error || 'The call could not be started.');
+      window.activateWorkspacePage?.(transcriptPage);
+      await refreshOperations();
+      window.toast?.('Achal is now in Active Calls.', 'ok');
+      return payload;
+    } catch (error) {
+      pendingAchalCallFocus = false;
+      window.toast?.(error.message || 'The call could not be started.', 'err');
+      return null;
+    }
+  }
+  window.initiateCall = () => beginOperationalCall('transcript');
+  window.adminInitiateCall = () => beginOperationalCall('admin-transcript');
+
   window.loadAtRisk = () => renderAtRisk(false);
   window.loadAdminAtRisk = () => renderAtRisk(true);
   const sendCallFollowUp = async () => {
@@ -1185,10 +1332,154 @@ FINAL_UI_SCRIPT = r'''
   };
   window.waDemo = sendCallFollowUp;
   window.adminWaDemo = sendCallFollowUp;
+
+  // Watch Demo is intentionally browser-only. It uses the same stable row
+  // markup as the live renderer, but owns its timeline so no webhook poll or
+  // hidden-tab throttling can make messages disappear.
+  window.startGuidedDemo = async () => {
+    if (window.__guidedDemoActive) return;
+    window.__guidedDemoActive = true;
+    window.__guidedDemoCancelled = false;
+    document.querySelectorAll('#guided-demo-lock,#end-guided-demo,.guided-demo-popup').forEach(node => node.remove());
+    const lock = document.createElement('div');
+    lock.id = 'guided-demo-lock';
+    lock.style.cssText = 'position:fixed;inset:0;z-index:18000;background:transparent;cursor:default';
+    ['pointerdown','mousedown','click','touchstart'].forEach(type => lock.addEventListener(type, event => { event.preventDefault(); event.stopPropagation(); }, true));
+    lock.addEventListener('wheel', event => event.preventDefault(), {passive:false});
+    document.body.appendChild(lock);
+    const endButton = document.createElement('button');
+    endButton.id = 'end-guided-demo'; endButton.className = 'btn btn-red'; endButton.textContent = 'End Demo';
+    endButton.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:22000;padding:12px 28px;height:auto;font-size:13px;box-shadow:0 8px 28px rgba(0,0,0,.45)';
+    endButton.addEventListener('click', () => { window.__guidedDemoCancelled = true; window.location.href = '/logout'; });
+    document.body.appendChild(endButton);
+
+    const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+    const waitUntil = async target => { const remaining = target - Date.now(); if (remaining > 0) await wait(remaining); };
+    const popup = (title, copy, color = 'var(--border)') => {
+      const node = document.createElement('div'); node.className = 'guided-demo-popup';
+      node.style.cssText = 'position:fixed;inset:0;z-index:19000;background:rgba(0,0,0,.72);display:grid;place-items:center;padding:20px';
+      node.innerHTML = `<section style="width:min(520px,100%);background:var(--bg);border:1px solid ${color};border-radius:16px;padding:28px;text-align:center"><h2 style="font-size:23px;margin:0 0 10px">${escapeHtml(title)}</h2><p style="font-size:13px;line-height:1.65;color:var(--text2);margin:0">${copy}</p></section>`;
+      document.body.appendChild(node); return node;
+    };
+    const dummyTurns = (name, channel) => channel === 'call' ? [
+      {speaker:'Asha AI',side:'ai',text:'How has this semester been going for you so far?'},
+      {speaker:name.split(' ')[0],side:'student',text:'I am working through a few deadlines and would value some planning support.'},
+    ] : [
+      {speaker:'Asha AI',side:'ai',text:`Hi ${name.split(' ')[0]}, I am checking in after our support call.`},
+      {speaker:name.split(' ')[0],side:'student',text:'Thank you. I have started the next step and will keep you updated.'},
+    ];
+    const dummyRows = channel => [
+      ['Kabir Rhea Sen','HIGH',true], ['Ishaan Kiran Kumar','HIGH',true],
+      ['Suman Saanvi Gupta','MEDIUM',false], ['Rohan Ira Kumar','HIGH',false],
+    ].map(([name,tier,active], index) => {
+      const turns = dummyTurns(name, channel);
+      const summary = active ? '' : `<footer class="dataset-contact-summary"><b>AI Summary · ${tier === 'HIGH' ? 'High dropout risk flagged' : 'No high dropout risk flag'}</b><p>${escapeHtml(`${name} completed the ${channel === 'call' ? 'five-question call' : 'WhatsApp follow-up'} and has a recorded support next step.`)}</p></footer>`;
+      return `<details class="operation-row dataset-conversation ${tier.toLowerCase()}" data-conversation-key="guided-${channel}-${index}" data-channel="${channel}"><summary><strong>${escapeHtml(name)}</strong><span class="${active ? 'dataset-live' : 'dataset-completed'}">${active ? 'ACTIVE' : 'COMPLETED'}</span>${active ? `<span class="dataset-presence ${tier.toLowerCase()}"></span>` : ''}<em>${tier} RISK</em></summary><div class="dataset-thread ${channel}">${turns.map(turn => messageMarkup(turn, name)).join('')}${summary}</div></details>`;
+    }).join('');
+    const renderGuided = (panel, channel, turns, active, summary = '') => {
+      const summaryMarkup = summary ? `<footer class="dataset-contact-summary"><b>AI Summary · High dropout risk flagged</b><p>${escapeHtml(summary)}</p></footer>` : '';
+      authoritativePanelWrite = true;
+      try {
+        panel.innerHTML = `<details open class="operation-row dataset-conversation high" data-conversation-key="guided-demo:${channel}" data-channel="${channel}" data-message-count="${turns.length}"><summary><strong>Demo Student</strong><span class="${active ? 'dataset-live' : 'dataset-completed'}">${active ? 'ACTIVE' : 'COMPLETED'}</span>${active ? '<span class="dataset-presence high"></span>' : ''}<em>HIGH RISK</em></summary><div class="dataset-thread ${channel}">${turns.map(turn => messageMarkup(turn, 'Demo Student')).join('')}${summaryMarkup}</div></details>${dummyRows(channel)}`;
+      } finally { authoritativePanelWrite = false; }
+      const thread = panel.querySelector('.dataset-thread');
+      if (thread) requestAnimationFrame(() => { thread.scrollTop = thread.scrollHeight; });
+    };
+    const setCounts = (callCount, waCount) => {
+      [['ts-count',`${callCount} active`],['admin-ts-count',`${callCount} active`],['wa-count-badge',`${waCount} conversations`],['admin-wa-badge',`${waCount} conversations`]].forEach(([id,value]) => { const node=document.getElementById(id); if(node)node.textContent=value; });
+    };
+
+    try {
+      const preparing = popup('Loading demo student cohort', 'Preparing the guided call and support workflow…', 'var(--purple)');
+      await wait(900); preparing.remove();
+      if (window.__guidedDemoCancelled) return;
+      const calling = popup('Calling Demo Student', 'Connecting Asha AI and opening the live transcript…', 'var(--red)');
+      await wait(1200); calling.remove();
+      window.activateWorkspacePage?.('transcript');
+      const callPanel = document.getElementById('full-transcript-panel') || document.getElementById('transcript-panel');
+      if (!callPanel) throw new Error('Transcript panel unavailable');
+      const questions = [
+        'How has this semester been going for you so far?',
+        'What has been the most challenging part of college life recently?',
+        'Which part of your current coursework would you most like support with?',
+        'If you could change one thing about your college experience, what would it be?',
+        'What are you most looking forward to next semester?',
+      ];
+      const answers = [
+        'I have been falling behind and I am worried about managing coursework and finances.',
+        'Balancing assignments, attendance, and my fee payment has been the hardest part.',
+        'Financial-aid guidance and help making an academic recovery plan would help me.',
+        'I would change how difficult it is to find the right support before deadlines build up.',
+        'I am looking forward to getting back on track and continuing next semester.',
+      ];
+      const callTurns = questions.flatMap((question,index) => [
+        {speaker:'Asha AI',side:'ai',text:question},
+        {speaker:'Demo Student',side:'student',text:answers[index]},
+      ]);
+      const shownCall = [];
+      const slowCallStart = Date.now();
+      for (let index=0; index<callTurns.length; index++) {
+        if (index < 3) await waitUntil(slowCallStart + index * 2000); else await wait(240);
+        if (window.__guidedDemoCancelled) return;
+        shownCall.push(callTurns[index]); renderGuided(callPanel, 'call', shownCall, true); setCounts(3, 0);
+      }
+      const callSummary = 'Demo Student reported coursework, attendance, and fee pressure. Asha AI flagged high dropout risk and recommends financial-aid guidance, an academic recovery plan, and counselor contact within 24 hours.';
+      renderGuided(callPanel, 'call', shownCall, false, callSummary); setCounts(2, 0);
+      const assessment = popup('Asha AI flagged Demo Student as high risk', `<strong>Call summary:</strong> ${escapeHtml(callSummary)}`, 'var(--red)');
+      await wait(3200); assessment.remove();
+      window.activateWorkspacePage?.('whatsapp');
+      const waPanel = document.getElementById('wa-convos-panel');
+      if (!waPanel) throw new Error('WhatsApp panel unavailable');
+      const waVariants = [
+        [
+          ['ai','Hi Demo Student, it is Asha from Student Wellness. I am following up after our call. How are you feeling about the plan?'],
+          ['student','I am still worried about the fees, but having a clear plan would help.'],
+          ['ai','I can arrange a financial-aid appointment and an academic planning session. Which should we book first?'],
+          ['student','Please book the financial-aid appointment first.'],
+          ['ai','It is booked. I also added an academic recovery checklist for this week.'],
+          ['student','Thank you. I can start with that today.'],
+        ],
+        [
+          ['ai','Hi Demo Student, Asha here. I wanted to check in about the workload you mentioned on the call.'],
+          ['student','The next assignment is the part I am most concerned about.'],
+          ['ai','Let us break it into three small steps and connect you with the tutor desk. Would that help?'],
+          ['student','Yes, that would make it feel manageable.'],
+          ['ai','Done. Your tutor request and short checklist are ready.'],
+          ['student','I appreciate the support. I will begin with the first step.'],
+        ],
+      ];
+      const selected = waVariants[Math.floor(Math.random() * waVariants.length)];
+      const waTurns = selected.map(([side,text]) => ({speaker:side === 'ai' ? 'Asha AI' : 'Demo Student',side,text}));
+      const shownWa = [];
+      const slowWaStart = Date.now();
+      for (let index=0; index<waTurns.length; index++) {
+        if (index < 3) await waitUntil(slowWaStart + index * 2000); else await wait(240);
+        if (window.__guidedDemoCancelled) return;
+        shownWa.push(waTurns[index]); renderGuided(waPanel, 'whatsapp', shownWa, true); setCounts(2, 3);
+      }
+      const waSummary = 'Demo Student completed the WhatsApp follow-up. Financial and academic support were arranged, and the student confirmed a manageable first action.';
+      renderGuided(waPanel, 'whatsapp', shownWa, false, waSummary); setCounts(2, 2);
+      const helped = popup('Demo Student has been helped', 'Financial-aid and academic-planning support have been arranged, and the student has a clear next step.', 'var(--green)');
+      await wait(1800); helped.remove();
+      const ended = popup('Demo Ended', 'The intervention flow is complete.', 'var(--border)');
+      await wait(1200); ended.remove();
+      window.location.href = '/logout';
+    } catch (error) {
+      console.error('Watch Demo error:', error);
+      window.toast?.('Demo could not start. Please refresh and try again.', 'err');
+    } finally {
+      window.__guidedDemoActive = false;
+      lock.remove(); endButton.remove();
+    }
+  };
+
   document.addEventListener('DOMContentLoaded', () => {
     protectOperationPanels();
-    renderCohortPulse(); renderCohortBrief(); removeDuplicateTranscriptSearch(); normalizeUploadStages(); normalizeModelPresentation(); removeDemoUi(); refreshOperations(); renderAtRisk(false); renderAtRisk(true); refreshFairness(); augmentModelEvidence(); syncActiveDatasetScope();
-    setInterval(refreshOperations, 2000); setInterval(keepLiveThreadsAtLatestTurn, 250); setInterval(normalizeUploadStages, 160); setInterval(normalizeModelPresentation, 450); setInterval(removeDemoUi, 800); setInterval(refreshFairness, 1800); setInterval(renderCohortPulse, 8000); setInterval(renderCohortBrief, 3000); setInterval(removeDuplicateTranscriptSearch, 1000); setInterval(augmentModelEvidence, 900); setInterval(syncActiveDatasetScope, 2000);
+    renderCohortPulse(); renderCohortBrief(); removeDuplicateTranscriptSearch(); normalizeUploadStages(); normalizeModelPresentation(); removeDemoUi(); swapRiskCards(); refreshOperations(); renderAtRisk(false); renderAtRisk(true); refreshFairness(); augmentModelEvidence(); syncActiveDatasetScope();
+    setInterval(refreshOperations, 1000); setInterval(keepLiveThreadsAtLatestTurn, 500); setInterval(normalizeUploadStages, 500); setInterval(normalizeModelPresentation, 2500); setInterval(removeDemoUi, 2500); setInterval(refreshFairness, 3000); setInterval(renderCohortPulse, 8000); setInterval(renderCohortBrief, 5000); setInterval(removeDuplicateTranscriptSearch, 2500); setInterval(augmentModelEvidence, 3000); setInterval(syncActiveDatasetScope, 3000);
+    const resumeOperations = () => { if (!document.hidden) { refreshOperations(); keepLiveThreadsAtLatestTurn(); syncActiveDatasetScope(); } };
+    document.addEventListener('visibilitychange', resumeOperations);
+    window.addEventListener('pageshow', resumeOperations);
   });
 })();
 </script>
@@ -1295,6 +1586,19 @@ def _manual_call_payload():
 
 def install(app, namespace):
     """Install call gating, a real manual-call endpoint, and live UI sync."""
+
+    def reset_live_operations():
+        """Clear the durable operation snapshot as well as this worker's view."""
+        voice_server.sessions.clear()
+        voice_server.completed_calls.clear()
+        voice_server.analyzed_results.clear()
+        voice_server.wa_sessions.clear()
+        voice_server._persist_live_state()
+        return jsonify({"status": "ok"})
+
+    for rule in app.url_map.iter_rules():
+        if rule.rule == "/api/reset":
+            app.view_functions[rule.endpoint] = reset_live_operations
 
     # If a request or deploy lost only the small active-run marker while the
     # scored run files remain on disk, recover the newest completed run before
@@ -1529,21 +1833,28 @@ def install(app, namespace):
         # welcome webhook replaces this provisional entry using the same SID.
         call_sid = str(result.get("call_sid") or "")
         if call_sid:
-            provisional = {
-                "student_id": student["student_id"],
-                "student_name": student["student_name"],
-                "ml_risk_score": student["ml_risk_score"],
-                "risk_tier": student.get("risk_tier", "HIGH"),
-                "phone": phone,
-                "call_sid": call_sid,
-                "answers": {},
-                "current_question": "",
-                "started_at": voice_server.datetime.now().isoformat(),
-                "status": "ringing",
-                "transcript_events": [],
-            }
-            voice_server._append_call_event(provisional, "Asha AI", "ai", "Calling Achal now…")
-            voice_server.sessions[call_sid] = provisional
+            # The answer webhook can beat the REST response. Never overwrite
+            # a session that already contains the first question or speech.
+            provisional = voice_server.sessions.get(call_sid)
+            if provisional is None:
+                provisional = {
+                    "student_id": student["student_id"],
+                    "student_name": student["student_name"],
+                    "ml_risk_score": student["ml_risk_score"],
+                    "risk_tier": student.get("risk_tier", "HIGH"),
+                    "phone": phone,
+                    "call_sid": call_sid,
+                    "answers": {},
+                    "current_question": "",
+                    "started_at": voice_server.datetime.now().isoformat(),
+                    "status": "ringing",
+                    "transcript_events": [],
+                }
+                voice_server._append_call_event(provisional, "Asha AI", "ai", "Calling Achal now…")
+                voice_server.sessions[call_sid] = provisional
+            else:
+                provisional.setdefault("risk_tier", student.get("risk_tier", "HIGH"))
+                provisional.setdefault("student_name", student["student_name"])
             voice_server._persist_live_state()
         return jsonify({**student, **result})
 

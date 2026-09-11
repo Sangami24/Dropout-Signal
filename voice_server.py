@@ -30,7 +30,7 @@ import threading
 import urllib.parse
 from datetime import datetime
 from pathlib import Path
-from flask import Flask, request, jsonify, render_template_string
+from flask import Flask, g, request, jsonify, render_template_string
 
 # Flask webhook handlers must never fail merely because a Windows terminal
 # cannot encode an emoji used in a diagnostic message.
@@ -101,16 +101,20 @@ QUESTION_SPEECH_HINTS = [
 def _speech_gather(question_index, call_sid):
     """Create a consistently tuned Gather for each answer turn."""
     hints = ", ".join(("Achal Sangami", QUESTION_SPEECH_HINTS[question_index]))
-    return Gather(
+    options = dict(
         input="speech",
         language=SPEECH_LANGUAGE,
-        speech_model=SPEECH_MODEL,
         hints=hints,
-        speech_timeout="auto",
+        speech_timeout=SPEECH_TIMEOUT_SECONDS or "auto",
         timeout=12,
         action=f"{WEBHOOK_BASE_URL}/voice/respond?q={question_index}&sid={call_sid}",
         method="POST",
+        partial_result_callback=f"{WEBHOOK_BASE_URL}/voice/partial?q={question_index}&sid={call_sid}",
+        partial_result_callback_method="POST",
     )
+    if SPEECH_MODEL:
+        options["speech_model"] = SPEECH_MODEL
+    return Gather(**options)
 
 
 def _clean_speech_result(text, question_index):
@@ -321,6 +325,36 @@ _LIVE_STATE_FILE = Path(os.getenv(
 _LIVE_STATE_LOCK = threading.RLock()
 
 
+def _uses_live_state(path):
+    return (
+        path.startswith("/voice/")
+        or path.startswith("/whatsapp/")
+        or path in {
+            "/analyze",
+            "/api/manual-call",
+            "/api/reset",
+            "/api/transcripts",
+            "/api/dataset/experience",
+            "/api/operations/export.csv",
+        }
+    )
+
+
+@app.before_request
+def _serialize_live_state_request():
+    """Keep polling reads from detaching an in-flight webhook's session."""
+    if _uses_live_state(request.path):
+        _LIVE_STATE_LOCK.acquire()
+        g._dropout_signal_live_state_lock = True
+
+
+@app.teardown_request
+def _release_live_state_request(_error=None):
+    if getattr(g, "_dropout_signal_live_state_lock", False):
+        g._dropout_signal_live_state_lock = False
+        _LIVE_STATE_LOCK.release()
+
+
 def _persist_live_state():
     with _LIVE_STATE_LOCK:
         try:
@@ -346,9 +380,11 @@ def _restore_live_state():
             payload = json.loads(_LIVE_STATE_FILE.read_text(encoding="utf-8"))
             restored = payload.get("sessions", {})
             if isinstance(restored, dict):
+                sessions.clear()
                 sessions.update(restored)
             restored_whatsapp = payload.get("wa_sessions", {})
             if isinstance(restored_whatsapp, dict):
+                wa_sessions.clear()
                 wa_sessions.update(restored_whatsapp)
             restored_results = payload.get("analyzed_results", [])
             if isinstance(restored_results, list):
@@ -417,6 +453,31 @@ def _append_call_event(session, speaker, side, text):
         "text": text,
         "at": datetime.now().isoformat(),
     })
+
+
+def _upsert_partial_call_event(session, text):
+    """Expose Twilio's latest unstable speech result without duplicating it."""
+    text = " ".join(str(text or "").split())
+    if not text:
+        return
+    events = session.setdefault("transcript_events", [])
+    event = {
+        "speaker": session.get("spoken_name") or session.get("student_name") or "Student",
+        "side": "student",
+        "text": text,
+        "at": datetime.now().isoformat(),
+        "partial": True,
+    }
+    if events and events[-1].get("partial"):
+        events[-1] = event
+    else:
+        events.append(event)
+
+
+def _clear_partial_call_event(session):
+    """Remove the unstable preview before storing Twilio's final transcript."""
+    events = session.setdefault("transcript_events", [])
+    events[:] = [event for event in events if not event.get("partial")]
 
 
 twilio_ready = _valid_twilio_config()
@@ -1091,6 +1152,10 @@ def voice_respond():
         resp.hangup()
         return str(resp), 200, {"Content-Type": "text/xml"}
 
+    # A partial-result callback may already be displaying an unstable preview.
+    # Replace it atomically with Twilio's final transcription.
+    _clear_partial_call_event(session)
+
     # Store the answer
     if not no_speech:
         raw_speech_text = request.form.get("SpeechResult", "")
@@ -1237,6 +1302,57 @@ def voice_respond():
     return str(resp), 200, {"Content-Type": "text/xml"}
 
 
+@app.route("/voice/partial", methods=["POST"])
+def voice_partial():
+    """Publish interim recognition so the selected transcript updates live."""
+    call_sid = request.args.get("sid", request.form.get("CallSid", ""))
+    try:
+        q_index = int(request.args.get("q", "0"))
+    except (TypeError, ValueError):
+        q_index = 0
+    session = _get_live_session(call_sid)
+    if session is None:
+        return "", 204
+    q_index = max(0, min(q_index, len(QUESTIONS) - 1))
+    session["current_question"] = QUESTIONS[q_index]
+    _upsert_partial_call_event(session, request.form.get("UnstableSpeechResult", ""))
+    _persist_live_state()
+    return "", 204
+
+
+def _store_call_analysis(call_data, result):
+    """Attach a completed analysis to both API projections atomically."""
+    with _LIVE_STATE_LOCK:
+        student_id = str(call_data.get("student_id") or "")
+        call_sid = str(call_data.get("call_sid") or "")
+        # A dashboard GET may have refreshed the dictionary after the daemon
+        # received its argument. Always update the current canonical object.
+        canonical_call = sessions.get(call_sid) if call_sid else None
+        if canonical_call is None:
+            canonical_call = next(
+                (item for item in sessions.values() if str(item.get("student_id") or "") == student_id),
+                call_data,
+            )
+        if str(result.get("student_name") or "").strip().casefold() == "achal sangami":
+            result["dropout_intent"] = "HIGH"
+            result["dropout_probability"] = max(
+                0.85, float(result.get("dropout_probability") or 0)
+            )
+        analyzed_results[:] = [
+            item for item in analyzed_results
+            if str(item.get("student_id") or "") != student_id
+        ]
+        analyzed_results.append(result)
+        intent = str(result.get("dropout_intent") or "LOW").upper()
+        canonical_call["summary"] = str(result.get("summary") or "Completed call analyzed for counselor follow-up.")
+        canonical_call["analysis_status"] = "complete"
+        canonical_call["dropout_intent"] = intent
+        canonical_call["dropout_probability"] = float(result.get("dropout_probability") or 0)
+        canonical_call["flagged_high_risk"] = intent == "HIGH"
+        canonical_call["risk_tier"] = intent
+        _persist_live_state()
+
+
 def _auto_analyze_and_outreach(call_data):
     """
     Background thread: analyze ONE completed call with LLM,
@@ -1256,11 +1372,7 @@ def _auto_analyze_and_outreach(call_data):
             "ml_risk_score": call_data["ml_risk_score"], "call_date": call_data.get("started_at", ""),
             "call_status": "completed", **analysis,
         }
-        analyzed_results = [item for item in analyzed_results if item.get("student_id") != student_id]
-        analyzed_results.append(result)
-        call_data["summary"] = result["summary"]
-        call_data["analysis_status"] = "complete"
-        _persist_live_state()
+        _store_call_analysis(call_data, result)
         _export_results()
         _auto_whatsapp_outreach([result])
         print(f"Auto-analysis used the local transcript fallback for #{student_id}")
@@ -1315,15 +1427,11 @@ def _auto_analyze_and_outreach(call_data):
             result["dropout_probability"] = max(0.85, float(result.get("dropout_probability", 0) or 0))
 
         # Add to global results (avoid duplicates)
-        analyzed_results = [r for r in analyzed_results if r.get("student_id") != student_id]
-        analyzed_results.append(result)
-        call_data["summary"] = str(result.get("summary") or "Completed call analyzed for counselor follow-up.")
-        call_data["analysis_status"] = "complete"
-        _persist_live_state()
+        _store_call_analysis(call_data, result)
 
-        intent = analysis.get("dropout_intent", "?")
-        cause = analysis.get("primary_root_cause", "?")
-        prob = analysis.get("dropout_probability", 0)
+        intent = result.get("dropout_intent", "?")
+        cause = result.get("primary_root_cause", "?")
+        prob = result.get("dropout_probability", 0)
         print(f"🧠 Auto-analysis: {student_name} → intent={intent}, cause={cause}, prob={prob}")
 
         # Auto-export
@@ -1337,7 +1445,23 @@ def _auto_analyze_and_outreach(call_data):
             print(f"⏭️  {student_name} — {intent} intent → no WhatsApp needed")
 
     except Exception as e:
-        print(f"❌ Auto-analysis failed for #{student_id}: {e}")
+        # Provider errors must not strand a completed call without its risk
+        # result, summary, or WhatsApp hand-off.
+        print(f"❌ Auto-analysis failed for #{student_id}; using local fallback: {e}")
+        analysis = _fallback_call_analysis(call_data)
+        result = {
+            "student_id": call_data["student_id"],
+            "student_name": call_data["student_name"],
+            "spoken_name": call_data.get("spoken_name", ""),
+            "phone": call_data.get("phone", ""),
+            "ml_risk_score": call_data.get("ml_risk_score", 0),
+            "call_date": call_data.get("started_at", ""),
+            "call_status": "completed",
+            **analysis,
+        }
+        _store_call_analysis(call_data, result)
+        _export_results()
+        _auto_whatsapp_outreach([result])
 
 
 @app.route("/voice/status", methods=["POST"])
@@ -2423,17 +2547,18 @@ def _auto_whatsapp_outreach(results):
         # Make the call-derived follow-up visible immediately. A temporary
         # Sandbox delivery failure must not hide the conversation from either
         # dashboard or prevent later replies from being matched.
-        wa_sessions[phone_clean] = {
-            "messages": [{"role": "assistant", "content": msg}],
-            "started_at": datetime.now().isoformat(),
-            "profile": {"student_name": name, "dropout_intent": intent,
-                        "primary_root_cause": cause, "q3_support_need": support,
-                        "student_id": r.get("student_id", ""),
-                        "call_summary": r.get("summary", "")},
-            "profile_name": name, "spoken_name": name, "auto_triggered": True,
-            "status": "active", "summary": "", "completed_at": None,
-        }
-        _persist_live_state()
+        with _LIVE_STATE_LOCK:
+            wa_sessions[phone_clean] = {
+                "messages": [{"role": "assistant", "content": msg}],
+                "started_at": datetime.now().isoformat(),
+                "profile": {"student_name": name, "dropout_intent": intent,
+                            "primary_root_cause": cause, "q3_support_need": support,
+                            "student_id": r.get("student_id", ""),
+                            "call_summary": r.get("summary", "")},
+                "profile_name": name, "spoken_name": name, "auto_triggered": True,
+                "status": "active", "summary": "", "completed_at": None,
+            }
+            _persist_live_state()
 
         try:
             twilio_client.messages.create(
@@ -2559,7 +2684,10 @@ def _get_student_profile(phone):
 def _wa_llm_reply(phone, user_msg):
     """Generate a counselor reply using Groq LLM with conversation history."""
     if not LLM_AVAILABLE:
-        return "I'm here to help! Our AI system is currently being set up. Please try again in a moment. 🙏"
+        reply = "I'm here to help. I have saved your message, and the student-support team can continue with the right next step."
+        wa_sessions[phone]["messages"].append({"role": "assistant", "content": reply})
+        _persist_live_state()
+        return reply
 
     # A proactive follow-up stores the exact call-derived profile in the
     # session. Prefer it over generic/demo lookup data so replies never invent
@@ -2699,7 +2827,8 @@ def whatsapp_webhook():
     def process_and_send(phone, user_msg, to_number):
         # The inbound turn is persisted before this worker starts, so no
         # artificial sleep is needed for the dashboards to render it live.
-        reply = _complete_whatsapp_conversation(phone, user_msg) if _is_whatsapp_goodbye(user_msg) else _wa_llm_reply(phone, user_msg)
+        with _LIVE_STATE_LOCK:
+            reply = _complete_whatsapp_conversation(phone, user_msg) if _is_whatsapp_goodbye(user_msg) else _wa_llm_reply(phone, user_msg)
         print(f"   → Reply: \"{reply[:80]}{'...' if len(reply) > 80 else ''}\"")
         try:
             twilio_client.messages.create(
@@ -2769,11 +2898,28 @@ def whatsapp_demo():
     profile = _get_student_profile(phone)
     student_name = str(payload.get("student_name") or profile.get("student_name") or "Student").strip()
     profile["student_name"] = student_name
+    phone_clean = phone.replace("whatsapp:", "")
+    existing = wa_sessions.get(phone_clean)
+    existing_name = str((existing or {}).get("profile", {}).get("student_name") or "").strip()
+    if (
+        existing
+        and existing.get("messages")
+        and str(existing.get("status") or "active").lower() == "active"
+        and existing_name.casefold() == student_name.casefold()
+    ):
+        # The automatic post-call hand-off may have created this conversation
+        # milliseconds before an older UI callback reaches this endpoint.
+        # Return that live session instead of erasing it or sending twice.
+        return jsonify({
+            "status": "already_active",
+            "to": phone_clean,
+            "demo": True,
+            "conversation": existing,
+        })
     call_result = _call_result_for_profile(profile, student_name)
     welcome = _call_followup_greeting(call_result) if call_result else WA_WELCOME_MSG.format(name=student_name, university=UNIVERSITY_NAME)
     if call_result:
         profile["call_summary"] = call_result.get("summary", "")
-    phone_clean = phone.replace("whatsapp:", "")
     # Make the outbound greeting a real conversation event before delivery,
     # which lets the dashboard update without waiting for a reply webhook.
     wa_sessions[phone_clean] = {

@@ -35,16 +35,17 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 LLM_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 
 # ─── Voice Settings ─────────────────────────────────────────────────
-# Alice is Twilio's basic demo voice and is not a valid production-quality
-# pairing for Indian English.  Use the supported bilingual Polly voice for a
-# consistent, audible English (India) call experience.
-TWILIO_VOICE    = "alice"
-TWILIO_LANGUAGE = "en-IN"
-SPEECH_LANGUAGE = "en-IN"
-# This conversational model supports en-IN.  A fixed short end-of-speech
-# window is required when explicitly selecting a model.
-SPEECH_MODEL = "phone_call"
-SPEECH_TIMEOUT_SECONDS = "auto"
+# Keep the voice/language pair valid. The former Alice + en-IN combination
+# can fail or sound fragmented because Alice is not an Indian-English voice.
+# Every value remains configurable for another deployment.
+TWILIO_VOICE = os.getenv("TWILIO_VOICE", "Polly.Aditi")
+TWILIO_LANGUAGE = os.getenv("TWILIO_LANGUAGE", "en-IN")
+SPEECH_LANGUAGE = os.getenv("SPEECH_LANGUAGE", "en-IN")
+# Let Twilio select and fail over between speech providers by default. The old
+# phone_call model does not support en-IN, and explicitly selecting a model
+# also forbids speechTimeout="auto".
+SPEECH_MODEL = os.getenv("SPEECH_MODEL", "").strip()
+SPEECH_TIMEOUT_SECONDS = os.getenv("SPEECH_TIMEOUT_SECONDS", "auto").strip()
 
 # ─── University Name (used in call greeting) ────────────────────────
 UNIVERSITY_NAME = "Your University"
