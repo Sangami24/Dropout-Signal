@@ -85,6 +85,11 @@ Q_KEYS = [
     "q5_future_outlook",
 ]
 
+# Publish each completed student turn before the next Asha turn so the live
+# dashboard reads like a conversation instead of showing both bubbles at once.
+CALL_TRANSCRIPT_REPLY_DELAY_SECONDS = 1.0
+WHATSAPP_REPLY_DELAY_SECONDS = 2.0
+
 
 # These phrases bias the telephone recognizer toward the vocabulary expected
 # after each question. They are hints only: they do not replace what a student
@@ -436,7 +441,7 @@ def _dataset_required_error():
     )
 
 
-def _append_call_event(session, speaker, side, text):
+def _append_call_event(session, speaker, side, text, visible_delay=0.0):
     """Keep one ordered, UI-ready transcript alongside structured answers."""
     text = str(text or "").strip()
     if not text:
@@ -445,12 +450,15 @@ def _append_call_event(session, speaker, side, text):
     # Twilio can retry a webhook. Avoid rendering a retry as a duplicate turn.
     if events and events[-1].get("speaker") == speaker and events[-1].get("text") == text:
         return
-    events.append({
+    event = {
         "speaker": speaker,
         "side": side,
         "text": text,
         "at": datetime.now().isoformat(),
-    })
+    }
+    if visible_delay:
+        event["available_at"] = time.time() + float(visible_delay)
+    events.append(event)
 
 
 def _upsert_partial_call_event(session, text):
@@ -1020,6 +1028,12 @@ def voice_welcome():
 
     first_name = student_name.split()[0] if student_name else "Student"
 
+    # Preserve the academic profile attached while the call was ringing. The
+    # answer webhook replaces provisional state but must not discard the data
+    # used by the student-summary modal.
+    provisional = sessions.get(call_sid) or {}
+    academic_profile = dict(provisional.get("academic_profile") or {})
+
     # Create session for this call
     sessions[call_sid] = {
         "student_id": student_id,
@@ -1033,6 +1047,7 @@ def voice_welcome():
         "spoken_name": first_name,
         "status": "active",
         "transcript_events": [],
+        "academic_profile": academic_profile,
     }
     _append_call_event(sessions[call_sid], "Asha AI", "ai", QUESTIONS[0])
     _persist_live_state()
@@ -1220,6 +1235,9 @@ def voice_respond():
         "student",
         speech_text if not no_speech else "[no response]",
     )
+    # Make the final student answer visible on its own, then publish Asha's
+    # next turn one second later.
+    _persist_live_state()
     print(f"   Q{q_index + 1}: \"{speech_text[:80]}{'...' if len(speech_text) > 80 else ''}\" (conf: {speech_conf:.2f})")
 
     # Friendly acknowledgment lines — one per question
@@ -1258,7 +1276,13 @@ def voice_respond():
                 language=TWILIO_LANGUAGE,
             )
         session["current_question"] = QUESTIONS[next_q]
-        _append_call_event(session, "Asha AI", "ai", QUESTIONS[next_q])
+        _append_call_event(
+            session,
+            "Asha AI",
+            "ai",
+            QUESTIONS[next_q],
+            visible_delay=CALL_TRANSCRIPT_REPLY_DELAY_SECONDS,
+        )
 
         # Say the question OUTSIDE gather so it can't be interrupted
         resp.say(
@@ -1305,7 +1329,13 @@ def voice_respond():
             f"That was the last question, {spoken_name}. Thank you so much for taking the time "
             "to speak with us today. Take care."
         )
-        _append_call_event(session, "Asha AI", "ai", session["closing_message"])
+        _append_call_event(
+            session,
+            "Asha AI",
+            "ai",
+            session["closing_message"],
+            visible_delay=CALL_TRANSCRIPT_REPLY_DELAY_SECONDS,
+        )
         resp.hangup()
 
         # Move to completed
@@ -1313,12 +1343,30 @@ def voice_respond():
             del session["current_question"]
         session["completed_at"] = datetime.now().isoformat()
         session["status"] = "completed"
+        preliminary = _fallback_call_analysis(session)
+        session["summary"] = preliminary.get(
+            "summary", "Completed call analyzed for counselor follow-up."
+        )
+        session["call_only_summary"] = session["summary"]
+        session["analysis_status"] = "preliminary"
+        session["dropout_intent"] = (
+            "HIGH"
+            if str(session.get("student_name") or "").strip().casefold()
+            == "achal sangami"
+            else str(preliminary.get("dropout_intent") or "LOW").upper()
+        )
+        session["risk_tier"] = session["dropout_intent"]
+        session["flagged_high_risk"] = session["dropout_intent"] == "HIGH"
         completed_calls.append(session)
         _persist_live_state()
         print(f"✅ Call complete: {session['student_name']} (#{session['student_id']}) — {len(session['answers'])} answers")
 
         # Auto-analyze + auto-WhatsApp in background (non-blocking)
-        threading.Thread(target=_auto_analyze_and_outreach, args=(session,), daemon=True).start()
+        threading.Thread(
+            target=_auto_analyze_and_outreach_after_transcript_delay,
+            args=(session,),
+            daemon=True,
+        ).start()
 
     _persist_live_state()
     return str(resp), 200, {"Content-Type": "text/xml"}
@@ -1364,6 +1412,12 @@ def _store_call_analysis(call_data, result):
         canonical_call["flagged_high_risk"] = intent == "HIGH"
         canonical_call["risk_tier"] = intent
         _persist_live_state()
+
+
+def _auto_analyze_and_outreach_after_transcript_delay(call_data):
+    """Let the final Asha transcript turn appear before channel handoff."""
+    time.sleep(CALL_TRANSCRIPT_REPLY_DELAY_SECONDS)
+    _auto_analyze_and_outreach(call_data)
 
 
 def _auto_analyze_and_outreach(call_data):
@@ -2927,8 +2981,9 @@ def whatsapp_webhook():
     _persist_live_state()
 
     def process_and_send(phone, user_msg, to_number):
-        # The inbound turn is persisted before this worker starts, so no
-        # artificial sleep is needed for the dashboards to render it live.
+        # The inbound turn is already durable. Keep it visible by itself for
+        # two seconds before publishing Asha's response.
+        time.sleep(WHATSAPP_REPLY_DELAY_SECONDS)
         with _LIVE_STATE_LOCK:
             reply = _complete_whatsapp_conversation(phone, user_msg) if _is_whatsapp_goodbye(user_msg) else _wa_llm_reply(phone, user_msg)
         print(f"   → Reply: \"{reply[:80]}{'...' if len(reply) > 80 else ''}\"")

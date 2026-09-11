@@ -601,8 +601,7 @@ LIVE_UI_SCRIPT = r'''
     new MutationObserver(() => queueMicrotask(() => { renderLiveTranscripts(); renderLiveWhatsApp(); installTranscriptSearch(); }))
       .observe(document.body, {childList: true, subtree: true});
     setInterval(refreshCallGate, 3000);
-    setInterval(refreshLiveTranscripts, 650);
-    setInterval(refreshLiveWhatsApp, 900);
+    // The final unified renderer below owns both live channels.
     setInterval(installTranscriptSearch, 1500);
     setInterval(refreshDatasetInsights, 5000);
   });
@@ -634,6 +633,7 @@ FINAL_UI_SCRIPT = r'''
   .pulse-stat:last-child { border-bottom:0; } .pulse-stat b { font-size:21px; color:var(--text); } .pulse-stat span { font-size:11px; color:var(--text3); }
   .risk-bar { display:grid; grid-template-columns:60px 1fr 48px; gap:8px; align-items:center; margin:13px 0; font-size:11px; color:var(--text2); }
   .risk-bar em { display:block; height:8px; border-radius:5px; background:#262632; overflow:hidden; } .risk-bar i { display:block; height:100%; border-radius:inherit; }
+  .risk-bar > b { min-width:0; text-align:right; white-space:nowrap; }
   .pulse-insight { margin:0; color:var(--text2); font-size:12px; line-height:1.65; } .pulse-insight b { color:var(--text); }
   .cohort-ai-brief { grid-column:1/-1; margin:0 0 18px; padding:18px; border:1px solid rgba(188,140,255,.28); border-radius:12px; background:linear-gradient(125deg,rgba(188,140,255,.11),rgba(17,17,25,.94)); }
   .cohort-ai-brief h2 { margin:0 0 8px; font-size:15px; } .cohort-ai-brief p { margin:0; color:var(--text2); font-size:13px; line-height:1.65; }
@@ -668,6 +668,24 @@ FINAL_UI_SCRIPT = r'''
   .prediction-table th,.prediction-table td { padding:11px 9px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; overflow-wrap:anywhere; }
   .prediction-table th { color:var(--text3); font:9px var(--mono); letter-spacing:.08em; text-transform:uppercase; }
   .prediction-table td { color:var(--text2); font-size:11px; line-height:1.45; }
+  #page-pipeline > [hidden],#page-pipeline > :not(.page-hdr):not(#professional-risk-workspace) { display:none!important; }
+  #professional-risk-workspace { display:grid!important; min-width:0; }
+  #tier-chart,#tier-chart-counselor { display:grid; grid-template-columns:minmax(150px,190px) minmax(180px,1fr); align-items:center; gap:24px; min-width:0; }
+  .d-chart-container { display:grid; place-items:center; min-width:0; }
+  .admin-risk-donut { width:clamp(128px,12vw,164px)!important; height:clamp(128px,12vw,164px)!important; aspect-ratio:1; border-radius:50%; display:grid; place-items:center; flex:none; }
+  .admin-risk-hole { width:68%; aspect-ratio:1; border-radius:50%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; background:var(--surface2,#15151d); text-align:center; }
+  .admin-risk-hole strong { display:block; font-size:18px; line-height:1; color:var(--text); white-space:nowrap; }
+  .admin-risk-hole span { display:block; font:9px var(--mono); line-height:1; color:var(--text3); text-transform:uppercase; letter-spacing:.06em; }
+  .d-legend { display:grid; gap:10px; min-width:0; }
+  .dl-item { display:flex; align-items:center; justify-content:space-between; gap:14px; min-width:0; font-size:11px; }
+  .dl-left { display:flex; align-items:center; gap:8px; min-width:0; }
+  .dl-dot { width:8px; height:8px; border-radius:50%; flex:none; }
+  .student-summary-profile { display:grid; gap:12px; margin-top:4px; }
+  .student-summary-copy { color:var(--text2); font-size:12px; line-height:1.6; }
+  .student-summary-facts { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+  .student-summary-facts div { min-width:0; padding:10px; border:1px solid var(--border); border-radius:8px; background:var(--bg); }
+  .student-summary-facts span { display:block; margin-bottom:4px; color:var(--text3); font:9px var(--mono); letter-spacing:.07em; text-transform:uppercase; }
+  .student-summary-facts strong { display:block; color:var(--text); font-size:12px; overflow-wrap:anywhere; }
   .fairness-audit-note { margin:0 0 12px; padding:11px 13px; border-left:3px solid var(--purple); color:var(--text2); background:rgba(188,140,255,.07); font-size:11px; line-height:1.55; }
   @media (max-width:1200px) {
     .topbar { flex-wrap:wrap; align-items:flex-start; gap:12px; }
@@ -676,10 +694,15 @@ FINAL_UI_SCRIPT = r'''
     .top-search { flex:1 1 220px; width:auto; min-width:0; max-width:100%; }
     .dataset-controls { flex:1 1 260px; max-width:100%; flex-wrap:wrap; }
     .stat-grid-4 { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .prediction-kpis,.prediction-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .prediction-grid .prediction-panel:last-child { grid-column:1/-1; }
   }
   @media (max-width:800px) {
     .main { width:100%; max-width:100%; }
     .grid-3,.cohort-pulse,.stat-grid-4,.prediction-grid,.prediction-kpis { grid-template-columns:1fr; }
+    .prediction-grid .prediction-panel:last-child { grid-column:auto; }
+    #tier-chart,#tier-chart-counselor { grid-template-columns:1fr; }
+    .student-summary-facts { grid-template-columns:1fr; }
     .topbar-actions > button,.topbar-actions > .btn,.topbar-actions > .nav-cta { flex:1 1 auto; }
   }
 </style>
@@ -705,6 +728,7 @@ FINAL_UI_SCRIPT = r'''
   let allowAchalAutofocus = true;
   let pendingAchalCallFocus = false;
   let achalHandoffCompleted = false;
+  let workspaceSwitchUntil = 0;
   let authoritativePanelWrite = false;
   let authoritativeSummaryWrite = false;
   const sampleTimelines = new Map();
@@ -729,6 +753,10 @@ FINAL_UI_SCRIPT = r'''
     const text = message.text ?? message.content ?? '';
     return `<article class="dataset-message ${student ? 'student' : 'asha'}${message.partial ? ' partial' : ''}"><span>${escapeHtml(speaker)}</span><p>${escapeHtml(text)}</p></article>`;
   };
+  const visibleMessages = messages => (messages || []).filter(message => {
+    const availableAt = Number(message.available_at || 0);
+    return !availableAt || availableAt * 1000 <= Date.now();
+  });
 
   function completedSummary(item) {
     return item.summary || `${item.student_name || 'The student'} completed the ${channelLabel(item)} check-in. Review the transcript and follow the recommended support action.`;
@@ -780,10 +808,9 @@ FINAL_UI_SCRIPT = r'''
   function renderUnifiedSummaryCards(items) {
     latestOperationalItems = items;
     const cards = items.map(item => {
-      const tier = String(item.dropout_intent || item.tier || 'MEDIUM').toUpperCase();
       const summary = operationalSummary(item);
       const search = `${item.student_name || ''} ${item.student_id || ''} ${item.factor || ''} ${summary}`.toLowerCase();
-      return `<article class="summary-person" data-summary-student-id="${escapeHtml(item.student_id)}" data-search="${escapeHtml(search)}" tabindex="0" role="button"><div class="mono" style="color:${tier === 'HIGH' ? 'var(--red)' : tier === 'LOW' ? 'var(--green)' : 'var(--amber)'};margin-bottom:8px">${escapeHtml(tier)} RISK</div><h3 style="margin:0 0 8px">${escapeHtml(item.student_name || 'Student')}</h3><p style="margin:0;color:var(--text2);font-size:12px;line-height:1.55">${escapeHtml(summary)}</p></article>`;
+      return `<article class="summary-person" data-summary-student-id="${escapeHtml(item.student_id)}" data-search="${escapeHtml(search)}" tabindex="0" role="button" aria-label="Open complete summary for ${escapeHtml(item.student_name || 'Student')}"><h3 style="margin:0">${escapeHtml(item.student_name || 'Student')}</h3></article>`;
     }).join('') || '<div class="dataset-empty-live">Student summaries will appear after the dataset is uploaded and outreach begins.</div>';
     ['summary-students','admin-summary-grid'].forEach(id => {
       const grid = document.getElementById(id);
@@ -793,8 +820,27 @@ FINAL_UI_SCRIPT = r'''
         finally { authoritativeSummaryWrite = false; }
       }
       grid?.querySelectorAll(':scope > [data-summary-student-id]').forEach(card => {
+        card.removeAttribute('onclick');
+        card.onclick = null;
         if (card.dataset.runtimeSummaryCardProtected) return;
         card.dataset.runtimeSummaryCardProtected = 'true';
+        const nativeSetAttribute = card.setAttribute.bind(card);
+        Object.defineProperty(card, 'setAttribute', {
+          configurable: false,
+          enumerable: false,
+          value(name, value) {
+            if (String(name).toLowerCase() === 'onclick') return;
+            nativeSetAttribute(name, value);
+          },
+        });
+        try {
+          Object.defineProperty(card, 'onclick', {
+            configurable: false,
+            enumerable: true,
+            get() { return null; },
+            set() {},
+          });
+        } catch (_) {}
         const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
         Object.defineProperty(card, 'innerHTML', {
           configurable: true,
@@ -816,10 +862,24 @@ FINAL_UI_SCRIPT = r'''
     if (!item) return;
     const tier = String(item.dropout_intent || item.tier || 'MEDIUM').toUpperCase();
     const summary = operationalSummary(item);
-    showOperationModal(
-      `${item.student_name || 'Student'} - ${tier} risk`,
-      `${summary} Recommended action: ${item.action || 'Review the transcript and schedule the appropriate counselor follow-up.'}`,
-    );
+    const profile = item.academic_profile || item;
+    const fact = (value, fallback = 'Not recorded') => {
+      const text = String(value ?? '').trim();
+      return text && text.toLowerCase() !== 'nan' ? text : fallback;
+    };
+    const modal = showOperationModal(`${item.student_name || 'Student'} - ${tier} risk`, summary);
+    const content = modal.querySelector('.operation-modal > p');
+    if (content) content.outerHTML = `<div class="student-summary-profile"><div class="student-summary-copy"><b>AI student summary</b><br>${escapeHtml(summary)}</div><div class="student-summary-facts">${[
+      ['Student ID', item.student_id],
+      ['Risk score', Number(item.ml_risk_score || 0) ? Number(item.ml_risk_score).toFixed(3) : tier],
+      ['Latest marks', profile.latest_marks],
+      ['Attendance', profile.attendance_rate],
+      ['Course', profile.course],
+      ['Branch', profile.branch],
+      ['Year / semester', `${fact(profile.year, '—')} / ${fact(profile.semester, '—')}`],
+      ['Primary signal', profile.primary_root_cause || profile.top_factor_1 || item.factor],
+      ['Recommended action', profile.final_action || item.action || 'Counselor follow-up'],
+    ].map(([label,value]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(fact(value))}</strong></div>`).join('')}</div></div>`;
   }
 
   function replenishSampleQueue(items, channel) {
@@ -865,12 +925,11 @@ FINAL_UI_SCRIPT = r'''
       const active = !['completed', 'failed', 'canceled', 'interrupted'].includes(String(channelStatus || '').toLowerCase());
       const tone = String(item.tier || 'MEDIUM').toLowerCase() === 'high' ? 'high' : 'medium';
       const key = `${item.student_id}:${channel}`;
-      const isAchal = String(item.student_name || '').trim().toLowerCase() === 'achal sangami';
       const summaryText = channel === 'call' ? (item.call_summary || item.summary) : (item.whatsapp_summary || item.summary);
       const highRisk = String(item.dropout_intent || item.tier || '').toUpperCase() === 'HIGH';
       const riskAssessment = highRisk ? 'High dropout risk flagged' : 'No high dropout risk flag';
       const summary = active ? '' : `<footer class="dataset-contact-summary"><b>AI Summary · ${riskAssessment}</b><p>${escapeHtml(summaryText || completedSummary({...item, status: channelStatus}))}</p></footer>`;
-      const open = openedConversationKey === key || (isAchal && active && !achalHandoffCompleted) || (isAchal && active && allowAchalAutofocus && !openedConversationKey);
+      const open = openedConversationKey === key;
       return `<details class="operation-row dataset-conversation ${tone}" data-conversation-key="${escapeHtml(key)}" data-channel="${channel}" data-message-count="${messages.length}" data-is-sample="${item.is_sample ? 'true' : 'false'}" ${open ? 'open' : ''}><summary><strong>${escapeHtml(item.student_name || 'Student')}</strong><span class="${active ? 'dataset-live' : 'dataset-completed'}">${active ? 'ACTIVE' : 'COMPLETED'}</span>${active ? `<span class="dataset-presence ${tone}"></span>` : ''}<em>${escapeHtml(item.tier || 'MEDIUM')} RISK</em></summary><div class="dataset-thread ${channel}">${messages.map(m => messageMarkup(m, item.student_name || 'Student')).join('')}${summary}</div></details>`;
     }).join('') || `<div class="dataset-empty-live">No ${channel === 'call' ? 'call transcripts' : 'WhatsApp conversations'} yet. New activity will appear here automatically.</div>`;
   }
@@ -887,12 +946,13 @@ FINAL_UI_SCRIPT = r'''
         student_id: id, student_name: session.student_name || 'Student', tier: session.risk_tier || 'HIGH',
         dropout_intent: session.dropout_intent || session.risk_tier || '',
         status: session.status || 'active', call_status: session.status || 'active', call_summary: session.summary || '',
-        started_at: session.started_at, call: session.transcript_events || [], whatsapp: [],
+        ml_risk_score: session.ml_risk_score || 0, academic_profile: session.academic_profile || {},
+        started_at: session.started_at, call: visibleMessages(session.transcript_events), whatsapp: [],
       });
     });
     (whatsappPayload.conversations || []).forEach(conversation => {
       const name = conversation.student_name || conversation.profile_name || 'Student';
-      const messages = conversation.messages || [];
+      const messages = visibleMessages(conversation.messages);
       if (!messages.length) return;
       const normalizedName = String(name).trim().toLowerCase().replace(/\s+/g, ' ');
       let target = byStudent.get(String(conversation.student_id || '')) || [...byStudent.values()].find(item => String(item.student_name).trim().toLowerCase().replace(/\s+/g, ' ') === normalizedName);
@@ -923,21 +983,7 @@ FINAL_UI_SCRIPT = r'''
       return String(b.started_at || '').localeCompare(String(a.started_at || ''));
     });
     renderUnifiedSummaryCards(items);
-    // The live practice contact is the current operational focus. Keep its
-    // active thread expanded and following new turns, without expanding any
-    // other student automatically.
     const achal = items.find(item => String(item.student_name || '').trim().toLowerCase() === 'achal sangami');
-    if (achal && isActive(achal) && achal.call?.length && !achalHandoffCompleted) {
-      openedConversationKey = `${achal.student_id}:call`;
-      allowAchalAutofocus = true;
-    }
-    if (allowAchalAutofocus && achal && !openedConversationKey) {
-      // When a call completes, the active WhatsApp follow-up is the one
-      // operational thread to surface. Otherwise keep the live call focused.
-      if (String(achal.call_status || '').toLowerCase() === 'completed' && String(achal.whatsapp_status || '').toLowerCase() === 'active' && achal.whatsapp?.length) openedConversationKey = `${achal.student_id}:whatsapp`;
-      else if (isActive(achal) && achal.call?.length) openedConversationKey = `${achal.student_id}:call`;
-      else if (achal.whatsapp?.length) openedConversationKey = `${achal.student_id}:whatsapp`;
-    }
     const achalWhatsAppReady = achal && String(achal.call_status || '').toLowerCase() === 'completed' && String(achal.whatsapp_status || '').toLowerCase() === 'active' && achal.whatsapp?.length;
     window.__achalHandoffDebug = {
       ready: Boolean(achalWhatsAppReady),
@@ -1024,8 +1070,10 @@ FINAL_UI_SCRIPT = r'''
             row.dataset.isSample = desired.dataset.isSample || 'false';
             if (currentSummary.innerHTML !== desiredSummary.innerHTML) currentSummary.innerHTML = desiredSummary.innerHTML;
             if (currentThread.innerHTML !== desiredThread.innerHTML) {
+              currentThread.dataset.runtimeProgrammaticScroll = 'true';
               currentThread.innerHTML = desiredThread.innerHTML;
               row.dataset.runtimeContentChanged = 'true';
+              requestAnimationFrame(() => { currentThread.dataset.runtimeProgrammaticScroll = ''; });
             }
             if (row.open !== desired.open) {
               row.dataset.runtimeProgrammaticToggle = 'true';
@@ -1078,8 +1126,21 @@ FINAL_UI_SCRIPT = r'''
       };
       if (row.dataset.runtimeToggleBound !== 'true') {
         row.dataset.runtimeToggleBound = 'true';
+        row.querySelector(':scope > summary')?.addEventListener('click', () => {
+          row.dataset.runtimeUserToggleIntent = 'true';
+          const willOpen = !row.open;
+          if (willOpen) {
+            openedConversationKey = key;
+            if (String(row.querySelector('summary strong')?.textContent || '').trim().toLowerCase() !== 'achal sangami') allowAchalAutofocus = false;
+          } else if (openedConversationKey === key) {
+            openedConversationKey = null;
+            allowAchalAutofocus = false;
+          }
+        });
         row.addEventListener('toggle', () => {
-          if (row.dataset.runtimeProgrammaticToggle === 'true') return;
+          const userIntent = row.dataset.runtimeUserToggleIntent === 'true';
+          row.dataset.runtimeUserToggleIntent = '';
+          if ((row.dataset.runtimeProgrammaticToggle === 'true' || Date.now() < workspaceSwitchUntil) && !userIntent) return;
           if (!row.open) {
             if (openedConversationKey === key && row.closest('.page.active')) openedConversationKey = null;
             allowAchalAutofocus = false;
@@ -1093,8 +1154,7 @@ FINAL_UI_SCRIPT = r'''
             other.open = false;
             setTimeout(() => { other.dataset.runtimeProgrammaticToggle = ''; }, 0);
           });
-          const state = liveThreadFollowState.get(key) || { follow: true, scrollTop: 0 };
-          state.follow = Boolean(row.querySelector('.dataset-live'));
+          const state = liveThreadFollowState.get(key) || { follow: Boolean(row.querySelector('.dataset-live')), scrollTop: 0 };
           if (row.dataset.isSample === 'true') {
             state.midpointAtCount = Number(row.dataset.messageCount || 0);
             state.midpointRatio = .32 + Math.random() * .34;
@@ -1110,11 +1170,9 @@ FINAL_UI_SCRIPT = r'''
       const count = Number(row.dataset.messageCount || 0), previousCount = visibleMessageCounts.get(panelKey);
       visibleMessageCounts.set(panelKey, count);
       const contentChanged = row.dataset.runtimeContentChanged === 'true';
-      if (previousCount !== undefined && count > previousCount && followState.midpointAtCount !== count) {
+      if (previousCount !== undefined && count > previousCount && followState.midpointAtCount !== count && followState.follow) {
         followState.midpointAtCount = null;
-        followState.follow = true;
       }
-      if (contentChanged && row.open && activeThread) followState.follow = true;
       row.dataset.runtimeContentChanged = '';
       if (row.open && activeThread) requestAnimationFrame(restoreThread);
     });
@@ -1226,7 +1284,15 @@ FINAL_UI_SCRIPT = r'''
       const students = (payload.students || []).filter(student => String(student.final_risk_tier || '').toUpperCase() === 'HIGH').slice(0, 12);
       const averageConfidence = students.length ? students.reduce((sum, student) => sum + Number(student.ml_risk_score || 0), 0) / students.length : 0;
       const table = students.map((student, index) => `<tr><td><strong style="color:var(--text)">${index + 1}. ${escapeHtml(student.student_name || 'Student')}</strong><br><span class="mono">${escapeHtml(student.student_id || '')}</span></td><td><span class="tag tag-t1">HIGH</span><br><span class="mono">${(Number(student.ml_risk_score || 0) * 100).toFixed(1)}%</span></td><td>${escapeHtml(student.primary_root_cause || student.top_factor_1 || 'Engagement review')}</td><td>${escapeHtml(student.final_action || 'Immediate counselor review')}</td></tr>`).join('');
-      workspace.innerHTML = `<section class="prediction-hero"><h2>Intervention intelligence for the active cohort</h2><p>Validated four-model scores are translated into an ordered counselor queue. Risk categories, prediction counts, and recommended actions below all come from the same uploaded dataset used by the counselor workspace.</p><div class="prediction-kpis"><article><span>Students scored</span><strong>${total.toLocaleString()}</strong><small>active uploaded cohort</small></article><article><span>Predicted dropouts</span><strong style="color:var(--red)">${predicted.toLocaleString()}</strong><small>model-positive outcomes</small></article><article><span>Immediate review</span><strong style="color:var(--amber)">${high.toLocaleString()}</strong><small>high-risk queue</small></article><article><span>4-model validation</span><strong style="color:var(--green)">${averageConfidence ? `${(averageConfidence * 100).toFixed(1)}%` : 'Ready'}</strong><small>average shown-queue confidence</small></article></div></section><div class="prediction-grid"><section class="prediction-panel"><h3>Risk distribution</h3><p>Mutually exclusive tiers; totals reconcile to ${total.toLocaleString()} students.</p>${[['High',high,'#ef4444'],['Medium',medium,'#f59e0b'],['Low',low,'#22c55e']].map(([label,value,color]) => `<div class="risk-bar"><span>${label}</span><em><i style="width:${total ? value / total * 100 : 0}%;background:${color}"></i></em><b>${value.toLocaleString()}</b></div>`).join('')}<div class="pulse-insight" style="margin-top:18px"><b>Decision support:</b> predictions prioritize outreach; counselors retain the final intervention decision.</div></section><section class="prediction-panel"><h3>Priority prediction queue</h3><p>Highest-confidence high-risk students with the signal and recommended owner action kept together.</p><div class="prediction-table-wrap"><table class="prediction-table"><thead><tr><th style="width:24%">Student</th><th style="width:15%">Risk</th><th style="width:27%">Primary signal</th><th>Recommended action</th></tr></thead><tbody>${table || '<tr><td colspan="4">No high-risk predictions are available.</td></tr>'}</tbody></table></div></section></div>`;
+      const predictionSignature = JSON.stringify([
+        total, high, medium, low, predicted,
+        students.map(student => [student.student_id, student.ml_risk_score, student.primary_root_cause || student.top_factor_1, student.final_action]),
+      ]);
+      const workspaceMarkup = `<section class="prediction-hero"><h2>Intervention intelligence for the active cohort</h2><p>Validated four-model scores are translated into an ordered counselor queue. Risk categories, prediction counts, and recommended actions below all come from the same uploaded dataset used by the counselor workspace.</p><div class="prediction-kpis"><article><span>Students scored</span><strong>${total.toLocaleString()}</strong><small>active uploaded cohort</small></article><article><span>Predicted dropouts</span><strong style="color:var(--red)">${predicted.toLocaleString()}</strong><small>model-positive outcomes</small></article><article><span>Immediate review</span><strong style="color:var(--amber)">${high.toLocaleString()}</strong><small>high-risk queue</small></article><article><span>4-model validation</span><strong style="color:var(--green)">${averageConfidence ? `${(averageConfidence * 100).toFixed(1)}%` : 'Ready'}</strong><small>average shown-queue confidence</small></article></div></section><div class="prediction-grid"><section class="prediction-panel"><h3>Risk distribution</h3><p>Mutually exclusive tiers; totals reconcile to ${total.toLocaleString()} students.</p>${[['High',high,'#ef4444'],['Medium',medium,'#f59e0b'],['Low',low,'#22c55e']].map(([label,value,color]) => `<div class="risk-bar"><span>${label}</span><em><i style="width:${total ? value / total * 100 : 0}%;background:${color}"></i></em><b>${value.toLocaleString()}</b></div>`).join('')}<div class="pulse-insight" style="margin-top:18px"><b>Decision support:</b> predictions prioritize outreach; counselors retain the final intervention decision.</div></section><section class="prediction-panel"><h3>Priority prediction queue</h3><p>Highest-confidence high-risk students with the signal and recommended owner action kept together.</p><div class="prediction-table-wrap"><table class="prediction-table"><thead><tr><th style="width:24%">Student</th><th style="width:15%">Risk</th><th style="width:27%">Primary signal</th><th>Recommended action</th></tr></thead><tbody>${table || '<tr><td colspan="4">No high-risk predictions are available.</td></tr>'}</tbody></table></div></section></div>`;
+      if (workspace.dataset.predictionSignature !== predictionSignature) {
+        workspace.innerHTML = workspaceMarkup;
+        workspace.dataset.predictionSignature = predictionSignature;
+      }
     } catch (error) {
       workspace.innerHTML = '<div class="dataset-empty-live">The prediction workspace could not be loaded. It will retry automatically.</div>';
     }
@@ -1532,9 +1598,23 @@ FINAL_UI_SCRIPT = r'''
   const legacyWorkspaceActivation = window.activateWorkspacePage;
   if (typeof legacyWorkspaceActivation === 'function') {
     window.activateWorkspacePage = (...args) => {
-      closeRuntimeConversations();
-      allowAchalAutofocus = pendingAchalCallFocus && /transcript|whatsapp/i.test(String(args[0] || ''));
-      return legacyWorkspaceActivation(...args);
+      const selectedConversation = openedConversationKey;
+      workspaceSwitchUntil = Date.now() + 400;
+      const rows = [...document.querySelectorAll('details[data-conversation-key]')];
+      rows.forEach(row => { row.dataset.runtimeProgrammaticToggle = 'true'; });
+      const result = legacyWorkspaceActivation(...args);
+      openedConversationKey = selectedConversation;
+      if (selectedConversation) {
+        document.querySelectorAll(`[data-conversation-key="${CSS.escape(selectedConversation)}"]`).forEach(row => {
+          row.dataset.runtimeProgrammaticToggle = 'true';
+          row.open = true;
+        });
+      }
+      setTimeout(() => {
+        rows.forEach(row => { row.dataset.runtimeProgrammaticToggle = ''; });
+        refreshOperations();
+      }, 410);
+      return result;
     };
   }
   const nativeSelectDataLayer = window.selectDataLayer;
@@ -1546,14 +1626,16 @@ FINAL_UI_SCRIPT = r'''
   }
   document.addEventListener('click', event => {
     const summaryCard = event.target.closest('[data-summary-student-id]');
-    if (summaryCard) showUnifiedStudentSummary(summaryCard.dataset.summaryStudentId);
-    if (event.target.closest('.sb-item[data-page], [data-workspace-page]')) {
-      closeRuntimeConversations(); allowAchalAutofocus = pendingAchalCallFocus;
-    }
+    if (!summaryCard) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    showUnifiedStudentSummary(summaryCard.dataset.summaryStudentId);
+  }, true);
+  document.addEventListener('click', event => {
     if (event.target.closest('button') && /call students/i.test(event.target.closest('button').textContent || '')) {
       // The live call hand-off should take priority even if the counselor had
       // previously browsed another conversation.
-      openedConversationKey = null;
+      openedConversationKey = 'STU-ACHAL:call';
       allowAchalAutofocus = true;
       pendingAchalCallFocus = true;
       setTimeout(refreshOperations, 350);
@@ -1574,18 +1656,18 @@ FINAL_UI_SCRIPT = r'''
   async function beginOperationalCall(transcriptPage) {
     // Replace the recovered client-side "manual demo" state machine. The
     // server webhook session is the only source of truth for Achal's row.
-    openedConversationKey = null;
+    openedConversationKey = 'STU-ACHAL:call';
     allowAchalAutofocus = true;
     pendingAchalCallFocus = true;
     achalHandoffCompleted = false;
-    const callingModal = showOperationModal('Asha AI calling high-risk students', 'Achal Sangami is being connected for the five-question support call.');
+    const callingModal = showOperationModal('Asha AI calling high-risk students', 'Starting the five-question outreach call for the high-risk queue.');
     try {
       const response = await fetch('/api/manual-call', {method:'POST'});
       const payload = await response.json();
       if (!response.ok || payload.error) throw new Error(payload.error || 'The call could not be started.');
       window.activateWorkspacePage?.(transcriptPage);
       await refreshOperations();
-      callingModal.querySelector('h2').textContent = 'Achal Sangami is now in Active Calls';
+      callingModal.querySelector('h2').textContent = 'High-risk outreach call is now active';
       callingModal.querySelector('p').textContent = 'The live transcript is open and will update after each complete spoken answer.';
       setTimeout(() => callingModal.remove(), 1200);
       return payload;
@@ -1604,6 +1686,46 @@ FINAL_UI_SCRIPT = r'''
   }
   window.initiateCall = () => beginOperationalCall('transcript');
   window.adminInitiateCall = () => beginOperationalCall('admin-transcript');
+  // The recovered dashboards also attach an obsolete click listener to the
+  // same top-bar button. Intercept the action once and route it exclusively
+  // through the unified call controller so that listener cannot touch a
+  // modal that no longer exists.
+  document.addEventListener('click', event => {
+    const button = event.target.closest('button');
+    if (!button || !/call students/i.test(button.textContent || '')) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    event.composedPath().forEach(node => {
+      if (!(node instanceof HTMLElement)) return;
+      node.removeAttribute('onclick');
+      try { node.onclick = null; } catch (_) {}
+    });
+    const page = document.getElementById('page-admin-transcript') ? 'admin-transcript' : 'transcript';
+    beginOperationalCall(page);
+  }, true);
+  const neutralizeLegacyCallButtons = () => document.querySelectorAll('button').forEach(original => {
+    if (!/call students/i.test(original.textContent || '')) return;
+    let button = original;
+    if (button.dataset.runtimeCallButtonLocked !== 'true') {
+      button = original.cloneNode(true);
+      button.removeAttribute('onclick');
+      original.replaceWith(button);
+    }
+    button.removeAttribute('onclick');
+    if (button.dataset.runtimeCallButtonLocked === 'true') return;
+    button.onclick = null;
+    try {
+      Object.defineProperty(button, 'onclick', {
+        configurable: false,
+        enumerable: true,
+        get() { return null; },
+        set() {},
+      });
+      button.dataset.runtimeCallButtonLocked = 'true';
+    } catch (_) {}
+  });
+  neutralizeLegacyCallButtons();
+  setInterval(neutralizeLegacyCallButtons, 500);
 
   window.loadAtRisk = () => renderAtRisk(false);
   window.loadAdminAtRisk = () => renderAtRisk(true);
@@ -1646,6 +1768,16 @@ FINAL_UI_SCRIPT = r'''
     cursor.className = 'guided-demo-cursor';
     cursor.innerHTML = '<svg viewBox="0 0 24 24" width="42" height="42"><path d="M4 2L11 22l2.5-7.5L21 12 4 2Z" fill="white" stroke="black" stroke-width="1.5" stroke-linejoin="round"/></svg>';
     document.body.appendChild(cursor);
+    try {
+      const saved = JSON.parse(sessionStorage.getItem('dropout-signal-guided-cursor') || 'null');
+      if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) {
+        cursor.style.left = `${Math.max(8, Math.min(window.innerWidth - 50, saved.x))}px`;
+        cursor.style.top = `${Math.max(8, Math.min(window.innerHeight - 50, saved.y))}px`;
+        cursor.style.opacity = '1';
+        window.__guidedDemoCursorOrigin = {x:saved.x,y:saved.y};
+      }
+      sessionStorage.removeItem('dropout-signal-guided-cursor');
+    } catch (_) {}
     const cursorPoint = target => {
       const rect = target?.getBoundingClientRect?.();
       if (!rect) return {x:16,y:16};
@@ -1670,6 +1802,8 @@ FINAL_UI_SCRIPT = r'''
       setTimeout(() => ripple.remove(), 550);
       await wait(260);
       target.classList.remove('guided-demo-target');
+      // Upload and Call Students are visual steps in this browser-owned demo.
+      // Do not invoke their retired inline handlers behind the walkthrough.
     };
     const showDemoUpload = async () => {
       const overlay = document.createElement('div');
@@ -1842,7 +1976,7 @@ FINAL_UI_SCRIPT = r'''
     await clearWorkspaceOnBrowserRefresh();
     protectOperationPanels(); protectSummaryPanels(); protectRiskPresentation();
     renderCohortPulse(); renderCohortBrief(); removeDuplicateTranscriptSearch(); normalizeUploadStages(); normalizeModelPresentation(); removeDemoUi(); swapRiskCards(); refreshOperations(); renderAtRisk(false); renderAtRisk(true); refreshFairness(); augmentModelEvidence(); syncActiveDatasetScope();
-    setInterval(refreshOperations, 1000); setInterval(keepLiveThreadsAtLatestTurn, 500); setInterval(normalizeUploadStages, 500); setInterval(normalizeModelPresentation, 2500); setInterval(removeDemoUi, 2500); setInterval(refreshFairness, 3000); setInterval(renderCohortPulse, 8000); setInterval(renderCohortBrief, 5000); setInterval(removeDuplicateTranscriptSearch, 2500); setInterval(augmentModelEvidence, 3000); setInterval(syncActiveDatasetScope, 3000);
+    setInterval(refreshOperations, 500); setInterval(keepLiveThreadsAtLatestTurn, 500); setInterval(normalizeUploadStages, 500); setInterval(normalizeModelPresentation, 2500); setInterval(removeDemoUi, 2500); setInterval(refreshFairness, 3000); setInterval(renderCohortPulse, 8000); setInterval(renderCohortBrief, 5000); setInterval(removeDuplicateTranscriptSearch, 2500); setInterval(augmentModelEvidence, 3000); setInterval(syncActiveDatasetScope, 3000);
     const resumeOperations = () => { if (!document.hidden) { refreshOperations(); keepLiveThreadsAtLatestTurn(); syncActiveDatasetScope(); } };
     document.addEventListener('visibilitychange', resumeOperations);
     window.addEventListener('pageshow', resumeOperations);
@@ -1940,6 +2074,14 @@ def _manual_call_payload():
     if "ml_risk_score" in records:
         records = records.sort_values("ml_risk_score", ascending=False)
     row = records.iloc[0]
+    def profile_value(*names, default="Not recorded"):
+        for name in names:
+            value = row.get(name)
+            text = str(value or "").strip()
+            if text and text.casefold() not in {"nan", "none"}:
+                return text
+        return default
+
     return {
         # The dashboard's live demo always calls the same consented test
         # contact; the uploaded cohort is used solely as the eligibility gate.
@@ -1947,6 +2089,18 @@ def _manual_call_payload():
         "student_name": "Achal Sangami",
         "ml_risk_score": float(row.get("ml_risk_score") or 0),
         "risk_tier": "HIGH",
+        "academic_profile": {
+            "course": profile_value("course", default="Degree program"),
+            "branch": profile_value("branch"),
+            "year": profile_value("year"),
+            "semester": profile_value("semester"),
+            "attendance_rate": profile_value("attendance_rate"),
+            "latest_marks": profile_value("latest_marks"),
+            "current_gpa": profile_value("current_gpa"),
+            "primary_root_cause": profile_value("primary_root_cause", "top_factor_1"),
+            "top_factor_1": profile_value("top_factor_1"),
+            "final_action": profile_value("final_action", default="Immediate counselor review"),
+        },
     }
 
 
@@ -2183,6 +2337,8 @@ def install(app, namespace):
         )
         achal_summary = voice_server._combined_support_summary(achal_result, achal_whatsapp)
         fields = list(voice_server.EXPORT_FIELDS)
+        if "ai_summary" not in fields:
+            fields.append("ai_summary")
         rows = []
         support_by_cause = {
             "Financial and economic pressure": "financial_aid",
@@ -2199,6 +2355,7 @@ def install(app, namespace):
                     "call_status": "completed",
                     "dropout_intent": "HIGH",
                     "summary": " ".join(achal_summary.split()),
+                    "ai_summary": " ".join(achal_summary.split()),
                 })
                 rows.append(row)
                 continue
@@ -2209,6 +2366,13 @@ def install(app, namespace):
             action = str(student.get("final_action") or "Schedule counselor follow-up")
             score = float(student.get("ml_risk_score") or 0)
             support = support_by_cause.get(cause, "counselor_follow_up")
+            marks = str(student.get("latest_marks") or "not recorded")
+            attendance = str(student.get("attendance_rate") or "not recorded")
+            ai_summary = (
+                f"{name} ({student_id}) is flagged as high dropout risk with a score of {score:.3f}. "
+                f"Latest marks are {marks} and attendance is {attendance}. The primary signal is {factor}; "
+                f"recommended next step: {action}."
+            )
             rows.append({
                 "student_id": student_id,
                 "student_name": name,
@@ -2227,7 +2391,8 @@ def install(app, namespace):
                 "primary_root_cause": cause,
                 "secondary_root_cause": str(student.get("top_factor_2") or "none"),
                 "ai_confidence": round(max(.5, score), 4),
-                "summary": f"{name} ({student_id}) - Call outreach identified {factor}; recommended next step: {action}.",
+                "summary": ai_summary,
+                "ai_summary": ai_summary,
             })
         output = io.StringIO(newline="")
         writer = csv.DictWriter(output, fieldnames=fields, extrasaction="ignore")
@@ -2288,12 +2453,14 @@ def install(app, namespace):
                     "started_at": voice_server.datetime.now().isoformat(),
                     "status": "ringing",
                     "transcript_events": [],
+                    "academic_profile": student.get("academic_profile") or {},
                 }
-                voice_server._append_call_event(provisional, "Asha AI", "ai", "Calling Achal now…")
+                voice_server._append_call_event(provisional, "Asha AI", "ai", "Calling high-risk students...")
                 voice_server.sessions[call_sid] = provisional
             else:
                 provisional.setdefault("risk_tier", student.get("risk_tier", "HIGH"))
                 provisional.setdefault("student_name", student["student_name"])
+                provisional.setdefault("academic_profile", student.get("academic_profile") or {})
             voice_server._persist_live_state()
         return jsonify({**student, **result})
 
@@ -2440,6 +2607,8 @@ def install(app, namespace):
                 .replace("Send WhatsApp Demo", "Send WhatsApp Follow-up")
                 .replace("WhatsApp Demo", "WhatsApp Follow-up")
                 .replace("Demo Call", "Start Call")
+                .replace('onclick="initiateCall()"', '')
+                .replace('onclick="adminInitiateCall()"', '')
                 .replace("Uploading file...", "Uploading dataset...")
                 .replace("Uploading file…", "Uploading dataset…")
             )
@@ -2458,4 +2627,7 @@ def install(app, namespace):
         ).replace(
             "left:${rect.left+rect.width*.55}px;top:${rect.top+rect.height*.55}px;",
             "left:${cursorX}px;top:${cursorY}px;",
+        ).replace(
+            "()=>document.getElementById('loginForm').requestSubmit()",
+            "()=>{const r=cursor.getBoundingClientRect();sessionStorage.setItem('dropout-signal-guided-cursor',JSON.stringify({x:r.left,y:r.top}));document.getElementById('loginForm').requestSubmit()}",
         )

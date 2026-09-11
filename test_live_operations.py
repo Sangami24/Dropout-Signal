@@ -88,6 +88,9 @@ class VoiceTranscriptTests(unittest.TestCase):
             1,
         )
         self.assertEqual(voice_server.sessions["CA-test"]["current_question"], voice_server.QUESTIONS[1])
+        self.assertGreater(
+            events[-1].get("available_at", 0), voice_server.time.time() + 0.7
+        )
 
         duplicate = client.post(
             "/voice/respond?q=0&sid=CA-test",
@@ -225,8 +228,12 @@ class UnifiedDashboardTests(VoiceTranscriptTests):
             self.assertIn("runtimeToggleBound", template)
             self.assertIn("4 Models Ensembled", template)
             self.assertIn("professional-risk-workspace", template)
+            self.assertIn("Reading earlier messages deliberately pauses", template)
+            self.assertIn("student-summary-profile", template)
+            self.assertIn("calling high-risk students", template)
         self.assertIn("guided-demo-login-cursor", self.unified.LOGIN_HTML)
         self.assertIn("Math.min(window.innerWidth-50", self.unified.LOGIN_HTML)
+        self.assertIn("dropout-signal-guided-cursor", self.unified.LOGIN_HTML)
 
     def test_export_requires_achal_then_matches_high_risk_row_count(self):
         import pandas as pd
@@ -260,7 +267,9 @@ class UnifiedDashboardTests(VoiceTranscriptTests):
         self.assertEqual(len(rows), 3)
         self.assertEqual(rows[0]["student_name"], "Achal Sangami")
         self.assertIn("WhatsApp", rows[0]["summary"])
+        self.assertEqual(rows[0]["ai_summary"], rows[0]["summary"])
         self.assertEqual(len({row["summary"] for row in rows}), 3)
+        self.assertTrue(all(row["ai_summary"] for row in rows))
         self.assertTrue(all(row["dropout_intent"] == "HIGH" for row in rows))
 
 
