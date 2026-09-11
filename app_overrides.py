@@ -643,6 +643,11 @@ FINAL_UI_SCRIPT = r'''
   .operation-modal h2 { margin:0 0 9px; font-size:18px; } .operation-modal p { margin:0; color:var(--text2); line-height:1.55; }
   .operation-modal-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:20px; }
   .operation-modal button,.operation-modal a { border:0; border-radius:7px; padding:9px 13px; color:#fff; background:#ef4444; text-decoration:none; cursor:pointer; font:inherit; }
+  .guided-demo-cursor { position:fixed; z-index:23000; width:42px; height:42px; left:16px; top:16px; opacity:0; pointer-events:none; transition:left .55s cubic-bezier(.2,.9,.2,1),top .55s cubic-bezier(.2,.9,.2,1),opacity .16s,transform .12s; filter:drop-shadow(0 3px 5px rgba(0,0,0,.75)); }
+  .guided-demo-target { position:relative; z-index:18001!important; box-shadow:0 0 0 3px rgba(255,75,75,.22),0 0 26px rgba(255,75,75,.25)!important; }
+  .guided-upload-track { height:11px; margin-top:20px; overflow:hidden; border-radius:999px; background:#282833; }
+  .guided-upload-fill { width:0; height:100%; border-radius:inherit; background:linear-gradient(90deg,var(--red),var(--purple)); transition:width .08s linear; }
+  .guided-upload-percent { display:block; margin-top:9px; color:var(--text2); font:12px var(--mono); text-align:right; }
   .ensemble-context { margin:14px 0; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
   .ensemble-context section { padding:13px; border:1px solid var(--border); border-radius:9px; background:var(--surface2); }
   .ensemble-context h3 { margin:0 0 7px; font-size:12px; letter-spacing:.06em; text-transform:uppercase; } .ensemble-context p { margin:0; font-size:12px; color:var(--text2); line-height:1.55; }
@@ -663,12 +668,15 @@ FINAL_UI_SCRIPT = r'''
 <script>
 (() => {
   const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+  const notify = (message, tone) => { if (typeof window.toast === 'function') window.toast(message, tone); };
   let operationalSignature = '';
   let operationsRequest = 0;
   let operationsInFlight = false;
   let fairnessRequest = 0;
   let latestCall = null;
   let activeDatasetRunId = null;
+  let latestDatasetStatus = null;
+  let riskRepairQueued = false;
   // One open conversation across both channels.  A call and WhatsApp thread
   // represent the same student journey, so opening either must close every
   // other thread in both workspaces.
@@ -716,10 +724,14 @@ FINAL_UI_SCRIPT = r'''
     if (!timeline) {
       // Each sample begins at a different, genuinely random point in the
       // conversation while preserving the greeting at the top of the thread.
-      const minimum = Math.min(messages.length, Math.max(2, Math.floor(messages.length * .35)));
-      const maximum = Math.max(minimum, Math.min(messages.length - 1, Math.floor(messages.length * .65)));
+      const pairCount = Math.max(1, Math.floor(messages.length / 2));
+      const minimumPairs = Math.max(1, Math.floor(pairCount * .35));
+      const maximumPairs = Math.max(minimumPairs, Math.min(pairCount - 1, Math.floor(pairCount * .65)));
       timeline = {
-        initial: minimum + Math.floor(Math.random() * (maximum - minimum + 1)),
+        // Keep the midpoint aligned to an Asha/student exchange. New sample
+        // turns therefore arrive as a simultaneous pair instead of leaving a
+        // question or answer stranded on its own.
+        initial: Math.min(messages.length, (minimumPairs + Math.floor(Math.random() * (maximumPairs - minimumPairs + 1))) * 2),
         startedAt: null,
       };
       sampleTimelines.set(key, timeline);
@@ -729,7 +741,7 @@ FINAL_UI_SCRIPT = r'''
     // finish off-screen. Date-based progress catches this selected thread up
     // immediately after the browser throttles a background tab.
     if (openedConversationKey === key && !timeline.startedAt) timeline.startedAt = Date.now();
-    const exchanges = timeline.startedAt ? Math.floor((Date.now() - timeline.startedAt) / 2000) : 0;
+    const exchanges = timeline.startedAt ? Math.floor((Date.now() - timeline.startedAt) / 2500) : 0;
     const count = Math.min(messages.length, timeline.initial + exchanges * 2);
     return {count, completed: count >= messages.length};
   }
@@ -750,12 +762,13 @@ FINAL_UI_SCRIPT = r'''
   function panelMarkup(items, channel) {
     if (!items.length) return `<div class="dataset-empty-live">No ${channel === 'call' ? 'call transcripts' : 'WhatsApp conversations'} yet. New activity will appear here automatically.</div>`;
     const channelItems = items.filter(item => (channel === 'call' ? item.call : item.whatsapp)?.length).sort((a, b) => {
+      const activeA = !['completed', 'failed', 'canceled', 'interrupted'].includes(String(effectiveChannelStatus(a, channel) || '').toLowerCase());
+      const activeB = !['completed', 'failed', 'canceled', 'interrupted'].includes(String(effectiveChannelStatus(b, channel) || '').toLowerCase());
+      if (activeA !== activeB) return activeA ? -1 : 1;
       const achalA = String(a.student_name || '').trim().toLowerCase() === 'achal sangami';
       const achalB = String(b.student_name || '').trim().toLowerCase() === 'achal sangami';
       if (achalA !== achalB) return achalA ? -1 : 1;
-      const activeA = !['completed', 'failed', 'canceled', 'interrupted'].includes(String(effectiveChannelStatus(a, channel) || '').toLowerCase());
-      const activeB = !['completed', 'failed', 'canceled', 'interrupted'].includes(String(effectiveChannelStatus(b, channel) || '').toLowerCase());
-      return activeA === activeB ? String(b.started_at || '').localeCompare(String(a.started_at || '')) : (activeA ? -1 : 1);
+      return String(b.started_at || '').localeCompare(String(a.started_at || ''));
     });
     return channelItems.map(item => {
       const messages = progressiveMessages(item, channel);
@@ -859,17 +872,63 @@ FINAL_UI_SCRIPT = r'''
       }
     }
     latestCall = items.find(item => item.call.length) || latestCall;
-    const signature = JSON.stringify(items.map(item => [item.student_id, effectiveChannelStatus(item, 'call'), effectiveChannelStatus(item, 'whatsapp'), progressiveMessages(item, 'call').length, progressiveMessages(item, 'whatsapp').length, item.call.at(-1)?.text, item.whatsapp.at(-1)?.content]));
+    const signature = JSON.stringify(items.map(item => [item.student_id, effectiveChannelStatus(item, 'call'), effectiveChannelStatus(item, 'whatsapp'), progressiveMessages(item, 'call').length, progressiveMessages(item, 'whatsapp').length, item.call.at(-1)?.text, item.whatsapp.at(-1)?.content, item.call_summary || item.summary || '', item.whatsapp_summary || '']));
     operationalSignature = signature;
     const callHtml = panelMarkup(items, 'call'), waHtml = panelMarkup(items, 'whatsapp');
     const renderPanel = (id, channel, html) => {
       const panel = document.getElementById(id);
       if (!panel) return;
       const panelSignature = `${signature}:${channel}:${openedConversationKey || ''}`;
-      if (panel.dataset.runtimeOperationSignature === panelSignature) return;
-      authoritativePanelWrite = true;
-      try { panel.innerHTML = html; }
-      finally { authoritativePanelWrite = false; }
+      const template = document.createElement('template');
+      template.innerHTML = html;
+      const desiredRows = [...template.content.children].filter(node => node.matches?.('details[data-conversation-key]'));
+      if (!desiredRows.length) {
+        authoritativePanelWrite = true;
+        try { panel.innerHTML = html; }
+        finally { authoritativePanelWrite = false; }
+        panel.dataset.runtimeOperationSignature = panelSignature;
+        return;
+      }
+      const existing = new Map([...panel.querySelectorAll(':scope > details[data-conversation-key]')].map(row => [row.dataset.conversationKey, row]));
+      const retained = new Set();
+      desiredRows.forEach((desired, index) => {
+        const key = desired.dataset.conversationKey;
+        let row = existing.get(key);
+        if (!row) {
+          row = desired.cloneNode(true);
+          row.dataset.runtimeContentChanged = 'true';
+        } else {
+          const currentSummary = row.querySelector(':scope > summary');
+          const desiredSummary = desired.querySelector(':scope > summary');
+          const currentThread = row.querySelector(':scope > .dataset-thread');
+          const desiredThread = desired.querySelector(':scope > .dataset-thread');
+          if (!currentSummary || !desiredSummary || !currentThread || !desiredThread) {
+            const legacyRow = row;
+            row = desired.cloneNode(true);
+            row.dataset.runtimeContentChanged = 'true';
+            legacyRow.replaceWith(row);
+          } else {
+            row.className = desired.className;
+            row.dataset.channel = desired.dataset.channel || channel;
+            row.dataset.messageCount = desired.dataset.messageCount || '0';
+            row.dataset.isSample = desired.dataset.isSample || 'false';
+            if (currentSummary.innerHTML !== desiredSummary.innerHTML) currentSummary.innerHTML = desiredSummary.innerHTML;
+            if (currentThread.innerHTML !== desiredThread.innerHTML) {
+              currentThread.innerHTML = desiredThread.innerHTML;
+              row.dataset.runtimeContentChanged = 'true';
+            }
+            if (row.open !== desired.open) {
+              row.dataset.runtimeProgrammaticToggle = 'true';
+              row.open = desired.open;
+              setTimeout(() => { row.dataset.runtimeProgrammaticToggle = ''; }, 0);
+            }
+          }
+        }
+        retained.add(row);
+        const rowAtIndex = panel.children[index];
+        if (rowAtIndex !== row) panel.insertBefore(row, rowAtIndex || null);
+      });
+      [...panel.children].forEach(child => { if (!retained.has(child)) child.remove(); });
       panel.dataset.runtimeOperationSignature = panelSignature;
     };
     ['full-transcript-panel', 'transcript-panel', 'admin-transcript-panel'].forEach(id => renderPanel(id, 'call', callHtml));
@@ -884,7 +943,8 @@ FINAL_UI_SCRIPT = r'''
         followState = { follow: true, scrollTop: 0 };
         liveThreadFollowState.set(key, followState);
       }
-      if (thread) {
+      if (thread && row.dataset.runtimeScrollBound !== 'true') {
+        row.dataset.runtimeScrollBound = 'true';
         thread.addEventListener('scroll', () => {
           if (thread.dataset.runtimeProgrammaticScroll === 'true') return;
           const state = liveThreadFollowState.get(key) || { follow: true, scrollTop: 0 };
@@ -896,41 +956,56 @@ FINAL_UI_SCRIPT = r'''
       const restoreThread = () => {
         if (!thread || !row.open) return;
         const state = liveThreadFollowState.get(key) || { follow: true, scrollTop: 0 };
+        const isActiveNow = Boolean(row.querySelector('.dataset-live'));
         thread.dataset.runtimeProgrammaticScroll = 'true';
         const count = Number(row.dataset.messageCount || 0);
         if (state.midpointAtCount === count) {
           const maxScroll = Math.max(0, thread.scrollHeight - thread.clientHeight);
           thread.scrollTop = Math.round(maxScroll * (state.midpointRatio || .46));
-        } else if (activeThread && state.follow) thread.scrollTop = thread.scrollHeight;
+        } else if (isActiveNow && state.follow) thread.scrollTop = thread.scrollHeight;
         else thread.scrollTop = Math.min(state.scrollTop, Math.max(0, thread.scrollHeight - thread.clientHeight));
         requestAnimationFrame(() => { thread.dataset.runtimeProgrammaticScroll = ''; });
       };
-      row.addEventListener('toggle', () => {
-        // A selected conversation stays expanded. It is closed only when the
-        // user selects another student or moves to another workspace tab.
-        if (!row.open) {
-          if (openedConversationKey === key) { row.open = true; return; }
-          return;
-        }
-        if (String(row.querySelector('summary strong')?.textContent || '').trim().toLowerCase() !== 'achal sangami') allowAchalAutofocus = false;
-        openedConversationKey = key;
-        document.querySelectorAll('details[data-conversation-key]').forEach(other => { if (other !== row) other.open = false; });
-        const state = liveThreadFollowState.get(key) || { follow: true, scrollTop: 0 };
-        state.follow = activeThread;
-        if (row.dataset.isSample === 'true') {
-          state.midpointAtCount = Number(row.dataset.messageCount || 0);
-          state.midpointRatio = .32 + Math.random() * .34;
-        } else {
-          state.midpointAtCount = null;
-          if (!activeThread) state.scrollTop = 0;
-        }
-        liveThreadFollowState.set(key, state);
-        requestAnimationFrame(restoreThread);
-      });
+      if (row.dataset.runtimeToggleBound !== 'true') {
+        row.dataset.runtimeToggleBound = 'true';
+        row.addEventListener('toggle', () => {
+          if (row.dataset.runtimeProgrammaticToggle === 'true') return;
+          if (!row.open) {
+            if (openedConversationKey === key && row.closest('.page.active')) openedConversationKey = null;
+            allowAchalAutofocus = false;
+            return;
+          }
+          if (String(row.querySelector('summary strong')?.textContent || '').trim().toLowerCase() !== 'achal sangami') allowAchalAutofocus = false;
+          openedConversationKey = key;
+          document.querySelectorAll('.page.active details[data-conversation-key]').forEach(other => {
+            if (other === row || !other.open) return;
+            other.dataset.runtimeProgrammaticToggle = 'true';
+            other.open = false;
+            setTimeout(() => { other.dataset.runtimeProgrammaticToggle = ''; }, 0);
+          });
+          const state = liveThreadFollowState.get(key) || { follow: true, scrollTop: 0 };
+          state.follow = Boolean(row.querySelector('.dataset-live'));
+          if (row.dataset.isSample === 'true') {
+            state.midpointAtCount = Number(row.dataset.messageCount || 0);
+            state.midpointRatio = .32 + Math.random() * .34;
+          } else {
+            state.midpointAtCount = null;
+            if (!Boolean(row.querySelector('.dataset-live'))) state.scrollTop = 0;
+          }
+          liveThreadFollowState.set(key, state);
+          requestAnimationFrame(restoreThread);
+        });
+      }
       const panelKey = `${row.closest('[id]')?.id || 'operations'}:${key}`;
       const count = Number(row.dataset.messageCount || 0), previousCount = visibleMessageCounts.get(panelKey);
       visibleMessageCounts.set(panelKey, count);
-      if (previousCount !== undefined && count > previousCount && followState.midpointAtCount !== count) followState.midpointAtCount = null;
+      const contentChanged = row.dataset.runtimeContentChanged === 'true';
+      if (previousCount !== undefined && count > previousCount && followState.midpointAtCount !== count) {
+        followState.midpointAtCount = null;
+        followState.follow = true;
+      }
+      if (contentChanged && row.open && activeThread) followState.follow = true;
+      row.dataset.runtimeContentChanged = '';
       if (row.open && activeThread) requestAnimationFrame(restoreThread);
     });
     const activeCalls = items.filter(item => item.call?.length && !['completed', 'failed', 'canceled', 'interrupted'].includes(String(effectiveChannelStatus(item, 'call') || '').toLowerCase())).length;
@@ -990,6 +1065,7 @@ FINAL_UI_SCRIPT = r'''
   }
 
   function applySharedDatasetStatus(status) {
+    latestDatasetStatus = status || null;
     const loaded = Boolean(status?.dataset_loaded);
     const tiers = Object.fromEntries((status?.tier_breakdown || []).map(row => [String(row.final_risk_tier || '').toUpperCase(), Number(row.cnt || 0)]));
     const total = Number(status?.record_count || 0);
@@ -999,7 +1075,7 @@ FINAL_UI_SCRIPT = r'''
     setDatasetCounts(['s-bronze','cd-calls','student-directory-nav-count','sb-student-count'], display);
     setDatasetCounts(['s-gold','cd-med','admin-risk-count','sb-risk-count'], loaded ? atRisk.toLocaleString() : '–');
     setDatasetCounts(['s-avgrisk','cd-high'], loaded ? predicted.toLocaleString() : '–');
-    document.querySelectorAll('.risk-fixed-badge').forEach(node => { node.textContent = loaded ? `${atRisk.toLocaleString()} at risk` : '– at risk'; });
+    document.querySelectorAll('.risk-fixed-badge').forEach(node => { node.textContent = loaded ? `${predicted.toLocaleString()} predicted dropouts` : '– predicted dropouts'; });
     const label = document.getElementById('dataset-active-label');
     if (label) label.textContent = loaded ? `${status.dataset_name || status.source_label || 'Active dataset'} · ${display} students` : 'No dataset loaded';
     renderAuthoritativeAdminOverview(status);
@@ -1012,15 +1088,18 @@ FINAL_UI_SCRIPT = r'''
     const chart = document.getElementById('tier-chart');
     if (chart) {
       const highEnd = total ? high / total * 100 : 0, mediumEnd = total ? (high + medium) / total * 100 : 0;
-      chart.innerHTML = `<div class="d-chart-container"><div class="admin-risk-donut" style="background:conic-gradient(#ef4444 0 ${highEnd}%,#f59e0b ${highEnd}% ${mediumEnd}%,#22c55e ${mediumEnd}% 100%)"><div class="admin-risk-hole"><strong>${total.toLocaleString()}</strong><span>students</span></div></div></div><div class="d-legend"><div class="dl-item"><span class="dl-left"><span class="dl-dot" style="background:#ef4444"></span>High risk</span><strong>${high.toLocaleString()}</strong></div><div class="dl-item"><span class="dl-left"><span class="dl-dot" style="background:#f59e0b"></span>Medium risk</span><strong>${medium.toLocaleString()}</strong></div><div class="dl-item"><span class="dl-left"><span class="dl-dot" style="background:#22c55e"></span>Low risk</span><strong>${low.toLocaleString()}</strong></div></div>`;
+      const chartMarkup = `<div class="d-chart-container"><div class="admin-risk-donut" style="background:conic-gradient(#ef4444 0 ${highEnd}%,#f59e0b ${highEnd}% ${mediumEnd}%,#22c55e ${mediumEnd}% 100%)"><div class="admin-risk-hole"><strong>${total.toLocaleString()}</strong><span>students</span></div></div></div><div class="d-legend"><div class="dl-item"><span class="dl-left"><span class="dl-dot" style="background:#ef4444"></span>High risk</span><strong>${high.toLocaleString()}</strong></div><div class="dl-item"><span class="dl-left"><span class="dl-dot" style="background:#f59e0b"></span>Medium risk</span><strong>${medium.toLocaleString()}</strong></div><div class="dl-item"><span class="dl-left"><span class="dl-dot" style="background:#22c55e"></span>Low risk</span><strong>${low.toLocaleString()}</strong></div></div>`;
+      if (chart.innerHTML !== chartMarkup) chart.innerHTML = chartMarkup;
     }
     const trendCard = [...document.querySelectorAll('.card-new')].find(card => /^(Risk Trend|Outreach Priorities|Risk Prediction)\b/i.test(card.querySelector('h3')?.textContent || ''));
     const trendBody = trendCard?.querySelector('.card-new-b');
     if (trendCard && trendBody) {
       const heading = trendCard.querySelector('h3');
       const predicted = Number(status.predicted_dropouts || high);
-      if (heading) heading.innerHTML = `Risk Prediction <span class="risk-fixed-badge">${predicted.toLocaleString()} predicted dropouts</span>`;
-      trendBody.innerHTML = `<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:8px 2px"><section style="padding:13px;border:1px solid var(--border);border-radius:9px;background:var(--surface2)"><h3 style="margin:0 0 7px;color:#ef4444">${predicted.toLocaleString()}</h3><p style="margin:0;color:var(--text2);font-size:12px;line-height:1.5">students currently predicted to need intervention.</p></section><section style="padding:13px;border:1px solid var(--border);border-radius:9px;background:var(--surface2)"><h3 style="margin:0 0 7px;color:#f59e0b">${high.toLocaleString()}</h3><p style="margin:0;color:var(--text2);font-size:12px;line-height:1.5">high-confidence cases requiring immediate review.</p></section><section style="padding:13px;border:1px solid var(--border);border-radius:9px;background:var(--surface2)"><h3 style="margin:0 0 7px;color:#bc8cff">${medium.toLocaleString()}</h3><p style="margin:0;color:var(--text2);font-size:12px;line-height:1.5">students in the proactive support watchlist.</p></section></div>`;
+      const headingMarkup = `Risk Prediction <span class="risk-fixed-badge">${predicted.toLocaleString()} predicted dropouts</span>`;
+      const predictionMarkup = `<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:8px 2px"><section style="padding:13px;border:1px solid var(--border);border-radius:9px;background:var(--surface2)"><h3 style="margin:0 0 7px;color:#ef4444">${predicted.toLocaleString()}</h3><p style="margin:0;color:var(--text2);font-size:12px;line-height:1.5">students currently predicted to need intervention.</p></section><section style="padding:13px;border:1px solid var(--border);border-radius:9px;background:var(--surface2)"><h3 style="margin:0 0 7px;color:#f59e0b">${high.toLocaleString()}</h3><p style="margin:0;color:var(--text2);font-size:12px;line-height:1.5">high-confidence cases requiring immediate review.</p></section><section style="padding:13px;border:1px solid var(--border);border-radius:9px;background:var(--surface2)"><h3 style="margin:0 0 7px;color:#bc8cff">${medium.toLocaleString()}</h3><p style="margin:0;color:var(--text2);font-size:12px;line-height:1.5">students in the proactive support watchlist.</p></section></div>`;
+      if (heading && heading.innerHTML !== headingMarkup) heading.innerHTML = headingMarkup;
+      if (trendBody.innerHTML !== predictionMarkup) trendBody.innerHTML = predictionMarkup;
     }
     swapRiskCards();
   }
@@ -1031,10 +1110,25 @@ FINAL_UI_SCRIPT = r'''
       const grid = distribution?.parentElement;
       if (!distribution || !grid) return;
       const heading = distribution.querySelector('.card-new-h h3,.card-h h3,h3');
-      if (heading) heading.textContent = 'Risk Distribution';
+      if (heading && heading.textContent.trim() !== 'Risk Distribution') heading.textContent = 'Risk Distribution';
       const prediction = [...grid.children].find(card => card !== distribution && /^Risk Prediction\b/i.test(card.querySelector('h3')?.textContent || ''));
-      if (prediction && distribution.previousElementSibling !== prediction) grid.insertBefore(prediction, distribution);
+      // Keep Risk Distribution above Risk Prediction, including after the
+      // recovered dashboard refreshes the card contents.
+      if (prediction && distribution.nextElementSibling !== prediction) grid.insertBefore(distribution, prediction);
     });
+  }
+
+  function protectRiskPresentation() {
+    if (!document.body || document.body.dataset.runtimeRiskProtected) return;
+    document.body.dataset.runtimeRiskProtected = 'true';
+    new MutationObserver(() => {
+      if (!latestDatasetStatus?.dataset_loaded || riskRepairQueued) return;
+      riskRepairQueued = true;
+      queueMicrotask(() => {
+        riskRepairQueued = false;
+        renderAuthoritativeAdminOverview(latestDatasetStatus);
+      });
+    }).observe(document.body, {subtree:true,childList:true,characterData:true});
   }
 
   async function syncActiveDatasetScope() {
@@ -1182,6 +1276,7 @@ FINAL_UI_SCRIPT = r'''
   }
 
   function removeDemoUi() {
+    if (window.__guidedDemoActive) return;
     document.querySelectorAll('.operation-row,.summary-person').forEach(node => { if (/\bdemo\b/i.test(node.textContent || '')) node.remove(); });
     document.querySelectorAll('button').forEach(button => { if (/\bdemo\b/i.test(button.textContent || '')) button.textContent = button.textContent.replace(/\bdemo\b\s*/ig, '').replace(/\s{2,}/g, ' ').trim(); });
   }
@@ -1300,18 +1395,18 @@ FINAL_UI_SCRIPT = r'''
     openedConversationKey = null;
     allowAchalAutofocus = true;
     pendingAchalCallFocus = true;
-    window.toast?.('Calling Achal Sangami...', 'info');
+    notify('Calling Achal Sangami...', 'info');
     try {
       const response = await fetch('/api/manual-call', {method:'POST'});
       const payload = await response.json();
       if (!response.ok || payload.error) throw new Error(payload.error || 'The call could not be started.');
       window.activateWorkspacePage?.(transcriptPage);
       await refreshOperations();
-      window.toast?.('Achal is now in Active Calls.', 'ok');
+      notify('Achal is now in Active Calls.', 'ok');
       return payload;
     } catch (error) {
       pendingAchalCallFocus = false;
-      window.toast?.(error.message || 'The call could not be started.', 'err');
+      notify(error.message || 'The call could not be started.', 'err');
       return null;
     }
   }
@@ -1321,14 +1416,14 @@ FINAL_UI_SCRIPT = r'''
   window.loadAtRisk = () => renderAtRisk(false);
   window.loadAdminAtRisk = () => renderAtRisk(true);
   const sendCallFollowUp = async () => {
-    if (!latestCall) { window.toast?.('Start a call before sending a WhatsApp follow-up.', 'info'); return; }
+    if (!latestCall) { notify('Start a call before sending a WhatsApp follow-up.', 'info'); return; }
     try {
       const response = await fetch('/whatsapp/demo', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({student_name: latestCall.student_name})});
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Unable to send the WhatsApp follow-up.');
-      window.toast?.('Call follow-up sent on WhatsApp.', 'ok');
+      notify('Call follow-up sent on WhatsApp.', 'ok');
       refreshOperations();
-    } catch (error) { window.toast?.(error.message || 'Unable to send the WhatsApp follow-up.', 'err'); }
+    } catch (error) { notify(error.message || 'Unable to send the WhatsApp follow-up.', 'err'); }
   };
   window.waDemo = sendCallFollowUp;
   window.adminWaDemo = sendCallFollowUp;
@@ -1355,6 +1450,53 @@ FINAL_UI_SCRIPT = r'''
 
     const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
     const waitUntil = async target => { const remaining = target - Date.now(); if (remaining > 0) await wait(remaining); };
+    const cursor = document.createElement('div');
+    cursor.className = 'guided-demo-cursor';
+    cursor.innerHTML = '<svg viewBox="0 0 24 24" width="42" height="42"><path d="M4 2L11 22l2.5-7.5L21 12 4 2Z" fill="white" stroke="black" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+    document.body.appendChild(cursor);
+    const cursorPoint = target => {
+      const rect = target?.getBoundingClientRect?.();
+      if (!rect) return {x:16,y:16};
+      return {
+        x: Math.max(8, Math.min(window.innerWidth - 50, rect.left + rect.width * .55)),
+        y: Math.max(8, Math.min(window.innerHeight - 50, rect.top + rect.height * .55)),
+      };
+    };
+    const demoClick = async target => {
+      if (!target) return;
+      target.scrollIntoView({block:'center',inline:'nearest'});
+      await wait(100);
+      const point = cursorPoint(target);
+      cursor.style.left = `${point.x}px`; cursor.style.top = `${point.y}px`; cursor.style.opacity = '1';
+      target.classList.add('guided-demo-target');
+      await wait(650);
+      cursor.style.transform = 'scale(.78)'; await wait(130); cursor.style.transform = 'scale(1)';
+      const ripple = document.createElement('span');
+      ripple.style.cssText = `position:fixed;left:${point.x}px;top:${point.y}px;width:24px;height:24px;border:2px solid #ff4b4b;border-radius:50%;z-index:22999;pointer-events:none;transform:translate(-50%,-50%) scale(.3);opacity:1;transition:transform .5s,opacity .5s`;
+      document.body.appendChild(ripple);
+      requestAnimationFrame(() => { ripple.style.transform='translate(-50%,-50%) scale(2.6)'; ripple.style.opacity='0'; });
+      setTimeout(() => ripple.remove(), 550);
+      await wait(260);
+      target.classList.remove('guided-demo-target');
+    };
+    const showDemoUpload = async () => {
+      const overlay = document.createElement('div');
+      overlay.id = 'guided-demo-upload'; overlay.className = 'guided-demo-popup';
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:19000;background:rgba(0,0,0,.72);display:grid;place-items:center;padding:20px';
+      overlay.innerHTML = `<section style="width:min(560px,100%);background:var(--bg);border:1px solid var(--purple);border-radius:16px;padding:28px"><h2 style="font-size:23px;margin:0 0 10px">Uploading Dataset</h2><p style="font-size:13px;line-height:1.65;color:var(--text2);margin:0">Uploading and validating the student cohort before risk scoring.</p><div class="guided-upload-track"><div class="guided-upload-fill"></div></div><span class="guided-upload-percent">0%</span></section>`;
+      document.body.appendChild(overlay);
+      const fill = overlay.querySelector('.guided-upload-fill'), percent = overlay.querySelector('.guided-upload-percent');
+      const started = Date.now();
+      await new Promise(resolve => {
+        const update = () => {
+          const progress = Math.min(100, ((Date.now() - started) / 4000) * 100);
+          fill.style.width = `${progress}%`; percent.textContent = `${Math.floor(progress)}%`;
+          if (progress >= 100) { clearInterval(timer); resolve(); }
+        };
+        const timer = setInterval(update, 50); update();
+      });
+      await wait(180); overlay.remove();
+    };
     const popup = (title, copy, color = 'var(--border)') => {
       const node = document.createElement('div'); node.className = 'guided-demo-popup';
       node.style.cssText = 'position:fixed;inset:0;z-index:19000;background:rgba(0,0,0,.72);display:grid;place-items:center;padding:20px';
@@ -1378,11 +1520,20 @@ FINAL_UI_SCRIPT = r'''
     }).join('');
     const renderGuided = (panel, channel, turns, active, summary = '') => {
       const summaryMarkup = summary ? `<footer class="dataset-contact-summary"><b>AI Summary · High dropout risk flagged</b><p>${escapeHtml(summary)}</p></footer>` : '';
-      authoritativePanelWrite = true;
-      try {
-        panel.innerHTML = `<details open class="operation-row dataset-conversation high" data-conversation-key="guided-demo:${channel}" data-channel="${channel}" data-message-count="${turns.length}"><summary><strong>Demo Student</strong><span class="${active ? 'dataset-live' : 'dataset-completed'}">${active ? 'ACTIVE' : 'COMPLETED'}</span>${active ? '<span class="dataset-presence high"></span>' : ''}<em>HIGH RISK</em></summary><div class="dataset-thread ${channel}">${turns.map(turn => messageMarkup(turn, 'Demo Student')).join('')}${summaryMarkup}</div></details>${dummyRows(channel)}`;
-      } finally { authoritativePanelWrite = false; }
-      const thread = panel.querySelector('.dataset-thread');
+      const key = `guided-demo:${channel}`;
+      let row = panel.querySelector(`[data-conversation-key="${key}"]`);
+      if (!row) {
+        authoritativePanelWrite = true;
+        try {
+          panel.innerHTML = `<details open class="operation-row dataset-conversation high" data-conversation-key="${key}" data-channel="${channel}" data-message-count="0"><summary></summary><div class="dataset-thread ${channel}"></div></details>${dummyRows(channel)}`;
+        } finally { authoritativePanelWrite = false; }
+        row = panel.querySelector(`[data-conversation-key="${key}"]`);
+      }
+      row.open = true;
+      row.dataset.messageCount = String(turns.length);
+      row.querySelector('summary').innerHTML = `<strong>Demo Student</strong><span class="${active ? 'dataset-live' : 'dataset-completed'}">${active ? 'ACTIVE' : 'COMPLETED'}</span>${active ? '<span class="dataset-presence high"></span>' : ''}<em>HIGH RISK</em>`;
+      const thread = row.querySelector('.dataset-thread');
+      thread.innerHTML = `${turns.map(turn => messageMarkup(turn, 'Demo Student')).join('')}${summaryMarkup}`;
       if (thread) requestAnimationFrame(() => { thread.scrollTop = thread.scrollHeight; });
     };
     const setCounts = (callCount, waCount) => {
@@ -1390,12 +1541,20 @@ FINAL_UI_SCRIPT = r'''
     };
 
     try {
-      const preparing = popup('Loading demo student cohort', 'Preparing the guided call and support workflow…', 'var(--purple)');
-      await wait(900); preparing.remove();
+      window.activateWorkspacePage?.('dashboard');
+      await wait(450);
+      const uploadButton = [...document.querySelectorAll('button')].find(button => button.offsetParent !== null && /upload (dataset|csv)|choose dataset/i.test(button.textContent || ''));
+      await demoClick(uploadButton);
+      await showDemoUpload();
       if (window.__guidedDemoCancelled) return;
-      const calling = popup('Calling Demo Student', 'Connecting Asha AI and opening the live transcript…', 'var(--red)');
-      await wait(1200); calling.remove();
+      const modeled = popup('4 Models Ensembled', 'Logistic Regression, XGBoost, Random Forest, and HistGradientBoosting have been validated and combined for this cohort.', 'var(--purple)');
+      await wait(1700); modeled.remove();
+      const callButton = [...document.querySelectorAll('button')].find(button => button.offsetParent !== null && /call students/i.test(button.textContent || ''));
+      await demoClick(callButton);
+      const calling = popup('Asha AI Calling High-Risk Students', 'Opening a live five-question support call with Demo Student…', 'var(--red)');
+      await wait(1400); calling.remove();
       window.activateWorkspacePage?.('transcript');
+      await wait(350);
       const callPanel = document.getElementById('full-transcript-panel') || document.getElementById('transcript-panel');
       if (!callPanel) throw new Error('Transcript panel unavailable');
       const questions = [
@@ -1417,9 +1576,9 @@ FINAL_UI_SCRIPT = r'''
         {speaker:'Demo Student',side:'student',text:answers[index]},
       ]);
       const shownCall = [];
-      const slowCallStart = Date.now();
       for (let index=0; index<callTurns.length; index++) {
-        if (index < 3) await waitUntil(slowCallStart + index * 2000); else await wait(240);
+        if (index === 1) await wait(2000);
+        else if (index > 1) await wait(220);
         if (window.__guidedDemoCancelled) return;
         shownCall.push(callTurns[index]); renderGuided(callPanel, 'call', shownCall, true); setCounts(3, 0);
       }
@@ -1451,9 +1610,9 @@ FINAL_UI_SCRIPT = r'''
       const selected = waVariants[Math.floor(Math.random() * waVariants.length)];
       const waTurns = selected.map(([side,text]) => ({speaker:side === 'ai' ? 'Asha AI' : 'Demo Student',side,text}));
       const shownWa = [];
-      const slowWaStart = Date.now();
       for (let index=0; index<waTurns.length; index++) {
-        if (index < 3) await waitUntil(slowWaStart + index * 2000); else await wait(240);
+        if (index === 1 || index === 2) await wait(2000);
+        else if (index > 2) await wait(220);
         if (window.__guidedDemoCancelled) return;
         shownWa.push(waTurns[index]); renderGuided(waPanel, 'whatsapp', shownWa, true); setCounts(2, 3);
       }
@@ -1461,20 +1620,20 @@ FINAL_UI_SCRIPT = r'''
       renderGuided(waPanel, 'whatsapp', shownWa, false, waSummary); setCounts(2, 2);
       const helped = popup('Demo Student has been helped', 'Financial-aid and academic-planning support have been arranged, and the student has a clear next step.', 'var(--green)');
       await wait(1800); helped.remove();
-      const ended = popup('Demo Ended', 'The intervention flow is complete.', 'var(--border)');
+      const ended = popup('Ending Demo', 'The intervention flow is complete. Returning to the home screen.', 'var(--border)');
       await wait(1200); ended.remove();
       window.location.href = '/logout';
     } catch (error) {
       console.error('Watch Demo error:', error);
-      window.toast?.('Demo could not start. Please refresh and try again.', 'err');
+      notify('Demo could not start. Please refresh and try again.', 'err');
     } finally {
       window.__guidedDemoActive = false;
-      lock.remove(); endButton.remove();
+      lock.remove(); endButton.remove(); cursor.remove();
     }
   };
 
   document.addEventListener('DOMContentLoaded', () => {
-    protectOperationPanels();
+    protectOperationPanels(); protectRiskPresentation();
     renderCohortPulse(); renderCohortBrief(); removeDuplicateTranscriptSearch(); normalizeUploadStages(); normalizeModelPresentation(); removeDemoUi(); swapRiskCards(); refreshOperations(); renderAtRisk(false); renderAtRisk(true); refreshFairness(); augmentModelEvidence(); syncActiveDatasetScope();
     setInterval(refreshOperations, 1000); setInterval(keepLiveThreadsAtLatestTurn, 500); setInterval(normalizeUploadStages, 500); setInterval(normalizeModelPresentation, 2500); setInterval(removeDemoUi, 2500); setInterval(refreshFairness, 3000); setInterval(renderCohortPulse, 8000); setInterval(renderCohortBrief, 5000); setInterval(removeDuplicateTranscriptSearch, 2500); setInterval(augmentModelEvidence, 3000); setInterval(syncActiveDatasetScope, 3000);
     const resumeOperations = () => { if (!document.hidden) { refreshOperations(); keepLiveThreadsAtLatestTurn(); syncActiveDatasetScope(); } };
@@ -2005,3 +2164,18 @@ def install(app, namespace):
                 .replace("Uploading file…", "Uploading dataset…")
             )
             namespace[key] = template.replace("</body>", LIVE_UI_SCRIPT + FINAL_UI_SCRIPT + "</body>")
+
+    # The login walkthrough uses a fixed visual cursor. Clamp its hotspot to
+    # the viewport so it cannot disappear beyond an edge on narrow screens.
+    login_template = namespace.get("LOGIN_HTML")
+    if isinstance(login_template, str):
+        namespace["LOGIN_HTML"] = login_template.replace(
+            "const cursor=document.createElement('div');\n  cursor.style.cssText=",
+            "const cursor=document.createElement('div');\n  cursor.className='guided-demo-login-cursor';\n  cursor.style.cssText=",
+        ).replace(
+            "cursor.style.left=(rect.left+rect.width*.55)+'px';cursor.style.top=(rect.top+rect.height*.55)+'px';",
+            "const cursorX=Math.max(8,Math.min(window.innerWidth-50,rect.left+rect.width*.55));const cursorY=Math.max(8,Math.min(window.innerHeight-50,rect.top+rect.height*.55));cursor.style.left=cursorX+'px';cursor.style.top=cursorY+'px';",
+        ).replace(
+            "left:${rect.left+rect.width*.55}px;top:${rect.top+rect.height*.55}px;",
+            "left:${cursorX}px;top:${cursorY}px;",
+        )

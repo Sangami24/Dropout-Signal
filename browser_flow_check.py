@@ -60,11 +60,15 @@ def main():
         threading.Thread(target=server.serve_forever, daemon=True).start()
         base_url = f"http://127.0.0.1:{server.server_port}"
 
-        with flask_app.test_client() as client:
-            with client.session_transaction() as session:
-                session["role"] = "counselor"
-                session["user"] = "browser-check"
-            session_cookie = client.get_cookie("session").value
+        def role_cookie(role):
+            with flask_app.test_client() as client:
+                with client.session_transaction() as session:
+                    session["role"] = role
+                    session["user"] = f"browser-check-{role}"
+                return client.get_cookie("session").value
+
+        session_cookie = role_cookie("counselor")
+        admin_session_cookie = role_cookie("admin")
 
         debug_socket = socket.socket()
         debug_socket.bind(("127.0.0.1", 0))
@@ -93,6 +97,7 @@ def main():
             "DROPOUT_SIGNAL_BROWSER_BASE": base_url,
             "DROPOUT_SIGNAL_DEBUG_PORT": str(debug_port),
             "DROPOUT_SIGNAL_SESSION_COOKIE": session_cookie,
+            "DROPOUT_SIGNAL_ADMIN_SESSION_COOKIE": admin_session_cookie,
         })
         completed = None
         try:

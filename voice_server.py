@@ -2583,8 +2583,11 @@ def _auto_whatsapp_outreach(results):
 # --- Mock student profiles (for demo; in production, read from Gold table) ---
 DEMO_STUDENTS = {
     DEMO_PHONE: {
-        "student_id": "2847",
-        "student_name": "Demo Student",
+        # DEMO_PHONE is the consented live test contact used by the counselor
+        # dashboard. Keep the identity stable even when WhatsApp supplies a
+        # different profile label or the message arrives before a call result.
+        "student_id": "STU-ACHAL",
+        "student_name": "Achal Sangami",
         "ml_risk_score": 0.87,
         "dropout_intent": "HIGH",
         "primary_root_cause": "financial",
@@ -2598,6 +2601,21 @@ DEMO_STUDENTS = {
         "intervention_tier": "TIER 1 — IMMEDIATE",
     },
 }
+
+
+def _normalize_demo_whatsapp_identity(phone):
+    """Keep the consented live test handset attached to Achal's identity."""
+    clean_phone = str(phone or "").replace("whatsapp:", "")
+    configured_phone = str(DEMO_PHONE or "").replace("whatsapp:", "")
+    session = wa_sessions.get(clean_phone)
+    if not session or not configured_phone or clean_phone != configured_phone:
+        return session
+    profile = session.setdefault("profile", {})
+    profile["student_id"] = "STU-ACHAL"
+    profile["student_name"] = "Achal Sangami"
+    session["profile_name"] = "Achal Sangami"
+    session["spoken_name"] = "Achal Sangami"
+    return session
 
 WA_SYSTEM_PROMPT = """You are a compassionate, professional university student wellness counselor chatting via WhatsApp.
 Your name is Asha (meaning 'hope') — you are part of the university's Student Retention & Support initiative.
@@ -2819,6 +2837,11 @@ def whatsapp_webhook():
             resp.message(welcome)
             print(f"   → Sent welcome to {name}")
             return str(resp), 200, {"Content-Type": "text/xml"}
+
+    # The configured demo handset is the real Achal test contact. Normalize
+    # old persisted sessions too, so an earlier WhatsApp profile name can
+    # never relabel the live dashboard conversation.
+    _normalize_demo_whatsapp_identity(phone_clean)
 
     # Append user message immediately so UI sees it before the AI replies
     wa_sessions[phone_clean]["messages"].append({"role": "user", "content": incoming_msg})

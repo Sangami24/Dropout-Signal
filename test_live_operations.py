@@ -110,6 +110,20 @@ class VoiceTranscriptTests(unittest.TestCase):
         persisted = json.loads(voice_server._LIVE_STATE_FILE.read_text(encoding="utf-8"))
         self.assertEqual(len(persisted["wa_sessions"][phone]["messages"]), 2)
 
+    def test_demo_handset_is_always_labeled_achal_sangami(self):
+        phone = "+910000000002"
+        voice_server.wa_sessions[phone] = {
+            "messages": [{"role": "assistant", "content": "Hello"}],
+            "profile": {"student_id": "old", "student_name": "Old Profile"},
+            "profile_name": "Old Profile",
+            "status": "active",
+        }
+        with patch.object(voice_server, "DEMO_PHONE", phone):
+            voice_server._normalize_demo_whatsapp_identity(f"whatsapp:{phone}")
+        self.assertEqual(voice_server.wa_sessions[phone]["profile"]["student_id"], "STU-ACHAL")
+        self.assertEqual(voice_server.wa_sessions[phone]["profile"]["student_name"], "Achal Sangami")
+        self.assertEqual(voice_server.wa_sessions[phone]["profile_name"], "Achal Sangami")
+
 
 class UnifiedDashboardTests(VoiceTranscriptTests):
     @classmethod
@@ -171,6 +185,11 @@ class UnifiedDashboardTests(VoiceTranscriptTests):
             self.assertIn("function effectiveChannelStatus", template)
             self.assertIn("window.startGuidedDemo = async", template)
             self.assertIn("function swapRiskCards", template)
+            self.assertIn("/ 2500", template)
+            self.assertIn("runtimeToggleBound", template)
+            self.assertIn("4 Models Ensembled", template)
+        self.assertIn("guided-demo-login-cursor", self.unified.LOGIN_HTML)
+        self.assertIn("Math.min(window.innerWidth-50", self.unified.LOGIN_HTML)
 
 
 if __name__ == "__main__":
