@@ -3,6 +3,16 @@ const debugPort = process.env.DROPOUT_SIGNAL_DEBUG_PORT;
 const sessionCookie = process.env.DROPOUT_SIGNAL_SESSION_COOKIE;
 const adminSessionCookie = process.env.DROPOUT_SIGNAL_ADMIN_SESSION_COOKIE;
 
+process.on('uncaughtException', error => {
+  console.error(error?.stack || error);
+  process.exit(1);
+});
+process.on('unhandledRejection', error => {
+  console.error(error?.stack || error);
+  process.exit(1);
+});
+console.log('START browser workflow');
+
 function assert(condition, detail) {
   if (!condition) throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
 }
@@ -47,16 +57,26 @@ class DevTools {
       for (const {reject} of this.pending.values()) reject(new Error(`DevTools socket closed (${event.code}: ${event.reason})`));
       this.pending.clear();
     });
-    await new Promise((resolve, reject) => {
-      this.socket.addEventListener('open', resolve, {once: true});
-      this.socket.addEventListener('error', reject, {once: true});
-    });
+    await Promise.race([
+      new Promise((resolve, reject) => {
+        this.socket.addEventListener('open', resolve, {once: true});
+        this.socket.addEventListener('error', reject, {once: true});
+      }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('DevTools WebSocket connection timed out')), 5000)),
+    ]);
   }
 
   call(method, params = {}) {
     const id = ++this.nextId;
     return new Promise((resolve, reject) => {
-      this.pending.set(id, {resolve, reject});
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(`DevTools command timed out: ${method}`));
+      }, 10000);
+      this.pending.set(id, {
+        resolve: value => { clearTimeout(timer); resolve(value); },
+        reject: error => { clearTimeout(timer); reject(error); },
+      });
       this.socket.send(JSON.stringify({id, method, params}));
     });
   }
@@ -87,7 +107,7 @@ async function postForm(path, values) {
 
 const targets = await waitFor(
   'Chrome debugger',
-  async () => (await fetch(`http://127.0.0.1:${debugPort}/json/list`)).json(),
+  async () => (await fetch(`http://127.0.0.1:${debugPort}/json/list`, {signal:AbortSignal.timeout(1500)})).json(),
   value => value.some(target => target.type === 'page'),
 );
 const target = targets.find(item => item.type === 'page');
@@ -101,28 +121,27 @@ await waitFor('counselor dashboard', () => devtools.evaluate("document.readyStat
 await new Promise(resolve => setTimeout(resolve, 1500));
 
 const layout = await devtools.evaluate(`(() => {
-  const headings=[...document.querySelectorAll('h1,h2,h3,.card-h,.card-new-h')];
-  const find=text=>headings.find(node=>node.textContent.trim().toLowerCase().startsWith(text.toLowerCase()));
-  const prediction=find('Risk Prediction'), distribution=find('Risk Distribution');
-  const pCard=prediction?.closest('.card,.card-new,.card-b,.card-new-b');
-  const dCard=distribution?.closest('.card,.card-new,.card-b,.card-new-b');
-  const predictionBadge=prediction?.querySelector('.risk-fixed-badge')?.textContent||'';
-  const predictionValue=prediction?.closest('.card,.card-new')?.querySelector('.card-new-b h3,.card-b h3')?.textContent||'';
+  const prediction=document.querySelector('.runtime-risk-prediction');
+  const distribution=document.querySelector('.runtime-risk-distribution');
+  const distributionValues=Object.fromEntries([...distribution?.querySelectorAll('.risk-bar')||[]].map(row=>[row.querySelector('span')?.textContent.trim(),row.querySelector('b')?.textContent.trim()]));
+  const predictionValues=Object.fromEntries([...prediction?.querySelectorAll('.pulse-stat')||[]].map(row=>[row.querySelector('span')?.textContent.trim(),row.querySelector('b')?.textContent.trim()]));
   return {
     viewport: innerWidth,
     documentWidth: document.documentElement.scrollWidth,
     bodyWidth: document.body.scrollWidth,
     predictionFound: !!prediction,
     distributionFound: !!distribution,
-    distributionBeforePrediction: !!(pCard && dCard && (dCard.compareDocumentPosition(pCard) & Node.DOCUMENT_POSITION_FOLLOWING)),
-    predictionBadge,
-    predictionValue
+    distributionAbovePrediction: !!(prediction && distribution && distribution.getBoundingClientRect().top < prediction.getBoundingClientRect().top),
+    distributionValues,
+    predictionValues,
+    cards:[...document.querySelectorAll('.card-new')].slice(0,8).map(card=>({heading:card.querySelector('h3')?.textContent.trim(),bodyClass:card.querySelector('.card-new-b')?.firstElementChild?.className||'',bodyText:(card.querySelector('.card-new-b')?.innerText||'').slice(0,90)}))
   };
 })()`);
 assert(layout.documentWidth <= layout.viewport + 1, layout);
 assert(layout.bodyWidth <= layout.viewport + 1, layout);
-assert(layout.predictionFound && layout.distributionFound && layout.distributionBeforePrediction, layout);
-assert((layout.predictionBadge.match(/[\d,]+/)||[])[0] === (layout.predictionValue.match(/[\d,]+/)||[])[0], layout);
+assert(layout.predictionFound && layout.distributionFound && layout.distributionAbovePrediction, layout);
+assert(layout.distributionValues.High === layout.predictionValues['High-confidence review'], layout);
+assert(layout.distributionValues.Medium === layout.predictionValues['Proactive watchlist'], layout);
 for (const width of [1024, 768, 390]) {
   await devtools.call('Emulation.setDeviceMetricsOverride', {width, height: 1000, deviceScaleFactor: 1, mobile: width < 600});
   await new Promise(resolve => setTimeout(resolve, 100));
@@ -135,7 +154,10 @@ for (const width of [1024, 768, 390]) {
   assert(widths.documentWidth <= widths.viewport + 1 && widths.bodyWidth <= widths.viewport + 1, widths);
 }
 await devtools.call('Emulation.setDeviceMetricsOverride', {width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false});
-console.log('PASS responsive widths, Distribution/Prediction order, and matching prediction totals', layout);
+console.log('PASS responsive widths, swapped Distribution/Prediction positions, and matching totals', layout);
+
+const emptyExport = await fetch(baseUrl + '/api/operations/export.csv', {cache:'no-store'});
+assert(emptyExport.status === 400 && /no calls done yet/i.test(await emptyExport.text()), 'Export should be blocked before calls');
 
 await devtools.evaluate("window.activateWorkspacePage('transcript')");
 const sampleState = await waitFor(
@@ -159,16 +181,24 @@ const midpoint = await waitFor(
   value => value && value.open && (value.max === 0 || value.top > 0),
 );
 const progressed = await waitFor(
-  'two-second selected sample exchange',
+  'first sequential selected sample turn',
   () => devtools.evaluate("Object.fromEntries([...document.querySelectorAll('#full-transcript-panel details[data-is-sample=true]')].map(r=>[r.dataset.conversationKey,+r.dataset.messageCount]))"),
-  counts => (counts[selectedKey] || 0) >= beforeCounts[selectedKey] + 2,
-  6500,
+  counts => (counts[selectedKey] || 0) === beforeCounts[selectedKey] + 1,
+  4500,
+);
+const progressedAgain = await waitFor(
+  'second sequential selected sample turn',
+  () => devtools.evaluate("Object.fromEntries([...document.querySelectorAll('#full-transcript-panel details[data-is-sample=true]')].map(r=>[r.dataset.conversationKey,+r.dataset.messageCount]))"),
+  counts => (counts[selectedKey] || 0) === beforeCounts[selectedKey] + 2,
+  3500,
 );
 const changedOthers = Object.keys(beforeCounts).filter(key => key !== selectedKey && progressed[key] !== beforeCounts[key]);
 assert(changedOthers.length === 0, {changedOthers, beforeCounts, progressed});
+const callTurnOrder = await devtools.evaluate(`([...document.querySelectorAll('#full-transcript-panel [data-conversation-key='+CSS.escape(${selectedLiteral})+'] .dataset-message')].slice(0,3).map(node=>node.classList.contains('asha')?'ai':'student'))`);
+assert(callTurnOrder.join(',') === 'ai,student,ai', callTurnOrder);
 const stableSampleRow = await devtools.evaluate(`(() => {const row=document.querySelector('#full-transcript-panel [data-conversation-key='+CSS.escape(${selectedLiteral})+']'); return {stable:row?.__stableRowToken==='selected-sample',openRows:document.querySelectorAll('#full-transcript-panel details[open]').length,bound:row?.dataset.runtimeToggleBound};})()`);
 assert(stableSampleRow.stable && stableSampleRow.openRows === 1 && stableSampleRow.bound === 'true', stableSampleRow);
-console.log('PASS selected sample starts midway, advances as a pair every 2.5 seconds, and keeps one stable row', midpoint, stableSampleRow);
+console.log('PASS selected sample starts midway, advances one alternating turn every 2 seconds, and keeps one stable row', midpoint, stableSampleRow, progressedAgain[selectedKey]);
 
 await devtools.evaluate("window.activateWorkspacePage('dashboard')");
 await new Promise(resolve => setTimeout(resolve, 2500));
@@ -176,10 +206,57 @@ await devtools.evaluate("window.activateWorkspacePage('transcript')");
 const resumedCount = await waitFor(
   'background-tab sample progress',
   () => devtools.evaluate(`+document.querySelector('#full-transcript-panel [data-conversation-key='+CSS.escape(${selectedLiteral})+']')?.dataset.messageCount || 0`),
-  value => value >= progressed[selectedKey] + 2,
+  value => value >= progressedAgain[selectedKey] + 1,
   4000,
 );
 console.log('PASS transcript remains responsive and catches up after tab changes', resumedCount);
+const waitingSampleKeys = samples.filter(item => item.status === 'COMPLETED').map(item => item.key);
+if (waitingSampleKeys.length) {
+  await waitFor(
+    'selected sample completion',
+    () => devtools.evaluate(`document.querySelector('#full-transcript-panel [data-conversation-key='+CSS.escape(${selectedLiteral})+'] summary span')?.textContent.trim()||''`),
+    value => value === 'COMPLETED',
+    18000,
+  );
+  const promotedSample = await waitFor(
+    'replacement active sample call',
+    () => devtools.evaluate(`(() => {const waiting=${JSON.stringify(waitingSampleKeys)};return [...document.querySelectorAll('#full-transcript-panel details[data-is-sample=true]')].find(row=>waiting.includes(row.dataset.conversationKey)&&row.querySelector('summary span')?.textContent.trim()==='ACTIVE')?.dataset.conversationKey||'';})()`),
+    Boolean,
+    4000,
+  );
+  console.log('PASS a newly active call replaces a completed sample call', promotedSample);
+}
+
+await devtools.evaluate("window.activateWorkspacePage('whatsapp')");
+const waSamples = await waitFor(
+  'sample WhatsApp rows',
+  () => devtools.evaluate(`([...document.querySelectorAll('#wa-convos-panel details[data-is-sample=true]')].map(row=>({key:row.dataset.conversationKey,count:+row.dataset.messageCount,status:row.querySelector('summary span')?.textContent.trim()})))`),
+  value => value.length >= 2,
+);
+const activeWaSample = waSamples.find(item => item.status === 'ACTIVE');
+assert(activeWaSample, waSamples);
+const activeWaLiteral = JSON.stringify(activeWaSample.key);
+assert(await devtools.evaluate(`(() => {const row=document.querySelector('#wa-convos-panel [data-conversation-key='+CSS.escape(${activeWaLiteral})+']');if(!row)return false;row.querySelector('summary').click();return true;})()`), 'Could not open a sample WhatsApp row');
+const waSequentialOne = await waitFor(
+  'first sequential sample WhatsApp turn',
+  () => devtools.evaluate(`+document.querySelector('#wa-convos-panel [data-conversation-key='+CSS.escape(${activeWaLiteral})+']')?.dataset.messageCount||0`),
+  value => value === activeWaSample.count + 1,
+  4500,
+);
+const waSequentialTwo = await waitFor(
+  'second sequential sample WhatsApp turn',
+  () => devtools.evaluate(`+document.querySelector('#wa-convos-panel [data-conversation-key='+CSS.escape(${activeWaLiteral})+']')?.dataset.messageCount||0`),
+  value => value === activeWaSample.count + 2,
+  3500,
+);
+const waTurnOrder = await devtools.evaluate(`([...document.querySelectorAll('#wa-convos-panel [data-conversation-key='+CSS.escape(${activeWaLiteral})+'] .dataset-message')].slice(0,3).map(node=>node.classList.contains('asha')?'ai':'student'))`);
+assert(waTurnOrder.join(',') === 'ai,student,ai', waTurnOrder);
+const waitingWaKeys = waSamples.filter(item => item.status === 'COMPLETED').map(item => item.key);
+if (waitingWaKeys.length) {
+  await waitFor('sample WhatsApp completion', () => devtools.evaluate(`document.querySelector('#wa-convos-panel [data-conversation-key='+CSS.escape(${activeWaLiteral})+'] summary span')?.textContent.trim()||''`), value => value === 'COMPLETED', 15000);
+  await waitFor('replacement active sample WhatsApp', () => devtools.evaluate(`(() => {const waiting=${JSON.stringify(waitingWaKeys)};return [...document.querySelectorAll('#wa-convos-panel details[data-is-sample=true]')].some(row=>waiting.includes(row.dataset.conversationKey)&&row.querySelector('summary span')?.textContent.trim()==='ACTIVE');})()`), Boolean, 4000);
+}
+console.log('PASS sample WhatsApp advances AI/student turns every 2 seconds and replenishes its active queue', waSequentialOne, waSequentialTwo, waTurnOrder);
 
 await devtools.evaluate("window.activateWorkspacePage('dashboard')");
 assert(await devtools.evaluate("(() => {const button=[...document.querySelectorAll('button')].find(node=>/call students/i.test(node.textContent)); if(!button)return false; button.click(); return true;})()"), 'Call Students button missing');
@@ -201,13 +278,11 @@ const firstCompleted = statuses.includes('COMPLETED') ? statuses.indexOf('COMPLE
 assert(statuses.slice(1, firstCompleted).every(status => status === 'ACTIVE'), callRows);
 
 const partialText = 'I am struggling with attendance and tuition this semester';
+const beforePartialCount = await devtools.evaluate(`(() => {const row=[...document.querySelectorAll('#full-transcript-panel details')].find(r=>r.querySelector('summary strong')?.textContent.trim()==='Achal Sangami');return row?.querySelectorAll('.dataset-message').length||0;})()`);
 await postForm('/voice/partial?q=0&sid=CA-BROWSER-CHECK', {CallSid: 'CA-BROWSER-CHECK', UnstableSpeechResult: partialText});
-const partialView = await waitFor(
-  'live partial speech in Achal open row',
-  () => devtools.evaluate(`(() => {const row=[...document.querySelectorAll('#full-transcript-panel details')].find(r=>r.querySelector('summary strong')?.textContent.trim()==='Achal Sangami'); return row?{open:row.open,last:row.querySelector('.dataset-message:last-child p')?.textContent.trim(),partial:row.querySelector('.dataset-message:last-child')?.classList.contains('partial'),top:row.querySelector('.dataset-thread')?.scrollTop}:null;})()`),
-  value => value?.open && value.partial && value.last.includes(partialText),
-  4000,
-);
+await new Promise(resolve => setTimeout(resolve, 700));
+const partialView = await devtools.evaluate(`(() => {const row=[...document.querySelectorAll('#full-transcript-panel details')].find(r=>r.querySelector('summary strong')?.textContent.trim()==='Achal Sangami'); return row?{open:row.open,count:row.querySelectorAll('.dataset-message').length,hasPartial:!!row.querySelector('.dataset-message.partial'),text:row.innerText}:null;})()`);
+assert(partialView?.open && partialView.count === beforePartialCount && !partialView.hasPartial && !partialView.text.includes(partialText), partialView);
 const questions = [
   'How has this semester been going for you so far?',
   'What has been the most challenging part of college life recently?',
@@ -222,7 +297,12 @@ const answers = [
   'I need financial aid advice and a study recovery plan.',
   'A counselor call tomorrow would help me stay enrolled.',
 ];
-for (let index = 0; index < answers.length; index += 1) {
+await postForm('/voice/respond?q=0&sid=CA-BROWSER-CHECK', {CallSid:'CA-BROWSER-CHECK',SpeechResult:answers[0],Confidence:'0.95'});
+await waitFor('final answer appears after speech completes', () => devtools.evaluate(`(() => {const row=[...document.querySelectorAll('#full-transcript-panel details')].find(r=>r.querySelector('summary strong')?.textContent.trim()==='Achal Sangami');return row?.querySelector('.dataset-message:last-of-type:nth-last-of-type(n)')?row.innerText.includes(${JSON.stringify(partialText)}):false;})()`));
+await postForm('/voice/respond?q=0&sid=CA-BROWSER-CHECK', {CallSid:'CA-BROWSER-CHECK',SpeechResult:'stale answer that must not repeat',Confidence:'0.99'});
+await new Promise(resolve => setTimeout(resolve, 450));
+assert(!(await devtools.evaluate(`document.body.innerText.includes('stale answer that must not repeat')`)), 'A duplicate call webhook repeated an old answer');
+for (let index = 1; index < answers.length; index += 1) {
   await postForm(`/voice/respond?q=${index}&sid=CA-BROWSER-CHECK`, {CallSid: 'CA-BROWSER-CHECK', SpeechResult: answers[index], Confidence: '0.95'});
 }
 const completedPayload = await waitFor(
@@ -239,22 +319,43 @@ await waitFor(
   conversations => conversations.some(item => item.student_name === 'Achal Sangami'),
   5000,
 );
+const centeredFlag = await waitFor(
+  'centered high-risk handoff',
+  () => devtools.evaluate(`(() => {const modal=document.getElementById('operation-action-modal');if(!modal||!/flagged Achal Sangami as high risk/i.test(modal.innerText))return window.__lastRiskHandoff||{debug:window.__achalHandoffDebug||null,modal:modal?.innerText||'',page:document.querySelector('.page.active')?.id||''};const r=modal.querySelector('.operation-modal').getBoundingClientRect();return {dx:Math.abs((r.left+r.right)/2-innerWidth/2),dy:Math.abs((r.top+r.bottom)/2-innerHeight/2),debug:window.__achalHandoffDebug};})()`),
+  value => value && value.dx < 10 && value.dy < 10,
+  5000,
+);
 const handoff = await waitFor(
   'automatic open WhatsApp handoff',
   () => devtools.evaluate(`(() => {const row=[...document.querySelectorAll('#wa-convos-panel details')].find(r=>r.querySelector('summary strong')?.textContent.trim()==='Achal Sangami'); const call=[...document.querySelectorAll('#full-transcript-panel details')].find(r=>r.querySelector('summary strong')?.textContent.trim()==='Achal Sangami'); return {page:document.querySelector('.page.active')?.id||'',waOpen:!!row?.open,waStatus:row?.querySelector('summary span')?.textContent.trim(),callSummary:call?.querySelector('.dataset-contact-summary')?.innerText||''};})()`),
   value => value.page.includes('whatsapp') && value.waOpen && value.callSummary.includes('High dropout risk flagged'),
   7000,
 );
-console.log('PASS real call partial input, five questions, summary, risk flag, and WhatsApp handoff', partialView, handoff);
+await devtools.evaluate("window.activateWorkspacePage('transcript')");
+assert(await devtools.evaluate(`(() => {const row=[...document.querySelectorAll('#full-transcript-panel details')].find(r=>r.querySelector('summary strong')?.textContent.trim()==='Achal Sangami');if(!row)return false;row.querySelector('summary').click();return true;})()`), 'Completed Achal call row could not be opened');
+const reopenedCall = await waitFor(
+  'completed Achal call remains open',
+  () => devtools.evaluate(`(() => {const row=[...document.querySelectorAll('#full-transcript-panel details')].find(r=>r.querySelector('summary strong')?.textContent.trim()==='Achal Sangami');return row?{open:row.open,status:row.querySelector('summary span')?.textContent.trim(),summary:row.querySelector('.dataset-contact-summary')?.innerText||''}:null;})()`),
+  value => value?.open && value.status === 'COMPLETED' && value.summary.toLowerCase().includes('high dropout risk flagged'),
+);
+await new Promise(resolve => setTimeout(resolve, 1300));
+assert(await devtools.evaluate(`(() => {const row=[...document.querySelectorAll('#full-transcript-panel details')].find(r=>r.querySelector('summary strong')?.textContent.trim()==='Achal Sangami');return !!row?.open;})()`), 'Completed Achal call closed during refresh');
+await devtools.evaluate("window.activateWorkspacePage('whatsapp')");
+await waitFor('Achal WhatsApp row after reopening call', () => devtools.evaluate(`(() => {const row=[...document.querySelectorAll('#wa-convos-panel details')].find(r=>r.querySelector('summary strong')?.textContent.trim()==='Achal Sangami');if(!row)return false;if(!row.open)row.querySelector('summary').click();return row.open;})()`));
+console.log('PASS real call final-only speech, duplicate suppression, five questions, summary, risk flag, and WhatsApp handoff', partialView, handoff);
 
-await postForm('/whatsapp/webhook', {From: 'whatsapp:+15550123456', Body: 'Please help me with financial aid.'});
+await postForm('/whatsapp/webhook', {From: 'whatsapp:+15550123456', Body: 'Please help me with financial aid.', MessageSid:'SM-BROWSER-1'});
 const waCount = await waitFor(
   'live WhatsApp reply',
   () => devtools.evaluate(`(() => {const row=[...document.querySelectorAll('#wa-convos-panel details')].find(r=>r.querySelector('summary strong')?.textContent.trim()==='Achal Sangami'); return row?+row.dataset.messageCount:0;})()`),
   value => value >= 3,
   4000,
 );
-await postForm('/whatsapp/webhook', {From: 'whatsapp:+15550123456', Body: 'Goodbye'});
+await postForm('/whatsapp/webhook', {From: 'whatsapp:+15550123456', Body: 'Please help me with financial aid.', MessageSid:'SM-BROWSER-1'});
+await new Promise(resolve => setTimeout(resolve, 600));
+const afterDuplicateWhatsApp = await devtools.evaluate(`(() => {const row=[...document.querySelectorAll('#wa-convos-panel details')].find(r=>r.querySelector('summary strong')?.textContent.trim()==='Achal Sangami');return row?+row.dataset.messageCount:0;})()`);
+assert(afterDuplicateWhatsApp === waCount, {waCount,afterDuplicateWhatsApp});
+await postForm('/whatsapp/webhook', {From: 'whatsapp:+15550123456', Body: 'Goodbye', MessageSid:'SM-BROWSER-2'});
 const waCompleted = await waitFor(
   'completed WhatsApp summary',
   () => devtools.evaluate(`(() => {const row=[...document.querySelectorAll('#wa-convos-panel details')].find(r=>r.querySelector('summary strong')?.textContent.trim()==='Achal Sangami'); return row?{status:row.querySelector('summary span')?.textContent.trim(),summary:row.querySelector('.dataset-contact-summary')?.innerText||'',count:+row.dataset.messageCount}:null;})()`),
@@ -262,6 +363,16 @@ const waCompleted = await waitFor(
   5000,
 );
 console.log('PASS live WhatsApp updates, isolated auto-scroll, completion, and AI summary', waCount, waCompleted);
+
+const counselorSummaryState = await devtools.evaluate(`(() => {const grid=document.getElementById('summary-students');const card=grid?.querySelector('[data-summary-student-id="STU-ACHAL"]');return {summary:card?.querySelector('p')?.textContent.trim()||'',text:card?.innerText||'',cardHtml:(card?.innerHTML||'').slice(0,900),cards:grid?.querySelectorAll('[data-summary-student-id]').length||0,ids:[...(grid?.querySelectorAll('[data-summary-student-id]')||[])].slice(0,4).map(node=>node.dataset.summaryStudentId),html:(grid?.innerHTML||'').slice(0,300)};})()`);
+const counselorAchalSummary = counselorSummaryState.summary;
+assert(counselorAchalSummary.includes('Call:') && counselorAchalSummary.includes('WhatsApp follow-up completed'), counselorSummaryState);
+const exportResponse = await fetch(baseUrl + '/api/operations/export.csv', {cache:'no-store'});
+const exportText = await exportResponse.text();
+const datasetStatus = await (await fetch(baseUrl + '/api/dataset/status', {cache:'no-store'})).json();
+const highRiskCount = Number((datasetStatus.tier_breakdown||[]).find(row=>String(row.final_risk_tier).toUpperCase()==='HIGH')?.cnt||0);
+const exportLines = exportText.trim().split(/\r?\n/);
+assert(exportResponse.ok && exportLines.length === highRiskCount + 1 && exportLines[1].includes('Achal Sangami'), {status:exportResponse.status,lines:exportLines.length,highRiskCount,first:exportLines[1]});
 
 // Re-run the operational path through the administrator workspace. This is a
 // behavior check, not a static button-presence check: the admin must receive
@@ -271,19 +382,19 @@ await devtools.call('Page.navigate', {url: baseUrl + '/admin'});
 await waitFor('administrator dashboard', () => devtools.evaluate("document.readyState === 'complete' && !!document.getElementById('page-overview')"));
 await new Promise(resolve => setTimeout(resolve, 1800));
 const adminLayout = await devtools.evaluate(`(() => {
-  const headings=[...document.querySelectorAll('h1,h2,h3,.card-h,.card-new-h')];
-  const find=text=>headings.find(node=>node.textContent.trim().toLowerCase().startsWith(text.toLowerCase()));
-  const prediction=find('Risk Prediction'),distribution=find('Risk Distribution');
-  const pCard=prediction?.closest('.card,.card-new,.card-b,.card-new-b'),dCard=distribution?.closest('.card,.card-new,.card-b,.card-new-b');
-  const badge=prediction?.querySelector('.risk-fixed-badge')?.textContent||'';
-  const value=prediction?.closest('.card,.card-new')?.querySelector('.card-new-b h3,.card-b h3')?.textContent||'';
+  const prediction=document.querySelector('.runtime-risk-prediction'),distribution=document.querySelector('.runtime-risk-distribution');
+  const distributionValues=Object.fromEntries([...(distribution?.querySelectorAll('.risk-bar')||[])].map(row=>[row.querySelector('span')?.textContent.trim(),row.querySelector('b')?.textContent.trim()]));
+  const predictionValues=Object.fromEntries([...(prediction?.querySelectorAll('.pulse-stat')||[])].map(row=>[row.querySelector('span')?.textContent.trim(),row.querySelector('b')?.textContent.trim()]));
   const buttons=[...document.querySelectorAll('button')].filter(node=>node.offsetParent!==null).map(node=>node.textContent.trim());
-  return {viewport:innerWidth,documentWidth:document.documentElement.scrollWidth,bodyWidth:document.body.scrollWidth,distributionBeforePrediction:!!(pCard&&dCard&&(dCard.compareDocumentPosition(pCard)&Node.DOCUMENT_POSITION_FOLLOWING)),badge,value,call:buttons.some(x=>/call students/i.test(x)),analyze:buttons.some(x=>/analyze calls/i.test(x)),export:buttons.some(x=>/export csv/i.test(x)),whatsapp:buttons.some(x=>/whatsapp follow-up/i.test(x)),upload:!!document.getElementById('dataset-file-input')};
+  return {viewport:innerWidth,documentWidth:document.documentElement.scrollWidth,bodyWidth:document.body.scrollWidth,distributionAbovePrediction:!!(prediction&&distribution&&distribution.getBoundingClientRect().top<prediction.getBoundingClientRect().top),distributionValues,predictionValues,call:buttons.some(x=>/call students/i.test(x)),analyze:buttons.some(x=>/analyze calls/i.test(x)),export:buttons.some(x=>/export csv/i.test(x)),whatsapp:buttons.some(x=>/whatsapp follow-up/i.test(x)),upload:!!document.getElementById('dataset-file-input')};
 })()`);
 assert(adminLayout.documentWidth <= adminLayout.viewport + 1 && adminLayout.bodyWidth <= adminLayout.viewport + 1, adminLayout);
-assert(adminLayout.distributionBeforePrediction, adminLayout);
-assert((adminLayout.badge.match(/[\d,]+/)||[])[0] === (adminLayout.value.match(/[\d,]+/)||[])[0], adminLayout);
+assert(adminLayout.distributionAbovePrediction, adminLayout);
+assert(adminLayout.distributionValues.High === adminLayout.predictionValues['High-confidence review'], adminLayout);
 assert(adminLayout.call && adminLayout.analyze && adminLayout.export && adminLayout.whatsapp && adminLayout.upload, adminLayout);
+await devtools.evaluate("window.activateWorkspacePage('pipeline')");
+const predictionWorkspace = await waitFor('professional administrator risk prediction workspace', () => devtools.evaluate(`(() => {const host=document.getElementById('professional-risk-workspace');return host?{hero:!!host.querySelector('.prediction-hero'),kpis:host.querySelectorAll('.prediction-kpis article').length,rows:host.querySelectorAll('.prediction-table tbody tr').length,width:document.documentElement.scrollWidth,viewport:innerWidth,text:host.innerText}:null;})()`), value => value?.hero && value.kpis === 4 && value.rows > 0);
+assert(predictionWorkspace.width <= predictionWorkspace.viewport + 1 && /Decision support/i.test(predictionWorkspace.text), predictionWorkspace);
 await devtools.evaluate("window.activateWorkspacePage('admin-transcript')");
 const adminHistory = await waitFor(
   'administrator completed call history',
@@ -291,6 +402,15 @@ const adminHistory = await waitFor(
   value => value.callStatus === 'COMPLETED' && value.callSummary.includes('High dropout risk flagged') && value.waStatus === 'COMPLETED' && value.waSummary.includes('WhatsApp follow-up completed'),
   6000,
 );
+const adminAchalSummary = await devtools.evaluate(`document.querySelector('#admin-summary-grid [data-summary-student-id="STU-ACHAL"] p')?.textContent.trim()||''`);
+assert(adminAchalSummary === counselorAchalSummary, {counselorAchalSummary,adminAchalSummary});
+assert(await devtools.evaluate(`(() => {const row=[...document.querySelectorAll('#admin-transcript-panel details')].find(item=>item.querySelector('summary strong')?.textContent.trim()==='Achal Sangami');if(!row)return false;row.querySelector('summary').click();return row.open;})()`), 'Administrator could not open completed Achal transcript');
+await new Promise(resolve => setTimeout(resolve, 1300));
+assert(await devtools.evaluate(`(() => {const row=[...document.querySelectorAll('#admin-transcript-panel details')].find(item=>item.querySelector('summary strong')?.textContent.trim()==='Achal Sangami');return !!row?.open;})()`), 'Administrator completed Achal transcript auto-closed');
+
+await devtools.evaluate("window.activateWorkspacePage('model-evidence')");
+const fairness = await waitFor('stable administrator fairness audit', () => devtools.evaluate(`(() => {const body=document.getElementById('fairness-runtime-rows');const wrap=body?.closest('.fairness-table');return body?{rows:body.querySelectorAll('tr').length,statuses:body.querySelectorAll('.fairness-status').length,note:!!wrap?.previousElementSibling?.classList.contains('fairness-audit-note'),width:document.documentElement.scrollWidth,viewport:innerWidth}:null;})()`), value => value?.rows > 0 && value.statuses > 0 && value.note, 8000);
+assert(fairness.width <= fairness.viewport + 1, fairness);
 
 await fetch(baseUrl + '/api/reset', {method:'POST'});
 await new Promise(resolve => setTimeout(resolve, 1200));
@@ -305,8 +425,10 @@ const adminLive = await waitFor(
   value => value.page === 'page-admin-transcript' && value.open && value.status === 'ACTIVE' && value.first === 'Achal Sangami',
   7000,
 );
+const adminBeforePartial = await devtools.evaluate(`(() => {const row=[...document.querySelectorAll('#admin-transcript-panel details')].find(item=>item.querySelector('summary strong')?.textContent.trim()==='Achal Sangami');return row?.querySelectorAll('.dataset-message').length||0;})()`);
 await postForm('/voice/partial?q=0&sid=CA-BROWSER-CHECK', {CallSid:'CA-BROWSER-CHECK',UnstableSpeechResult:partialText});
-await waitFor('administrator partial speech', () => devtools.evaluate(`(() => {const row=[...document.querySelectorAll('#admin-transcript-panel details')].find(item=>item.querySelector('summary strong')?.textContent.trim()==='Achal Sangami');const last=row?.querySelector('.dataset-message:last-child');return !!(row?.open&&last?.classList.contains('partial')&&last.textContent.includes(${JSON.stringify(partialText)}));})()`));
+await new Promise(resolve => setTimeout(resolve, 700));
+assert(await devtools.evaluate(`(() => {const row=[...document.querySelectorAll('#admin-transcript-panel details')].find(item=>item.querySelector('summary strong')?.textContent.trim()==='Achal Sangami');return row?.querySelectorAll('.dataset-message').length===${adminBeforePartial}&&!row?.querySelector('.dataset-message.partial');})()`), 'Administrator rendered interim speech');
 for (let index=0; index<answers.length; index+=1) await postForm(`/voice/respond?q=${index}&sid=CA-BROWSER-CHECK`, {CallSid:'CA-BROWSER-CHECK',SpeechResult:answers[index],Confidence:'0.95'});
 const adminHandoff = await waitFor(
   'administrator automatic WhatsApp handoff',
@@ -316,6 +438,21 @@ const adminHandoff = await waitFor(
 );
 console.log('PASS administrator parity: layout, controls, call history, live Achal transcript, risk summary, and WhatsApp handoff', adminLayout, adminHistory, adminLive, adminHandoff);
 
+await devtools.call('Page.reload', {ignoreCache:true});
+await waitFor('administrator dashboard after hard refresh', () => devtools.evaluate("document.readyState === 'complete' && !!document.getElementById('page-overview')"));
+const clearedOnRefresh = await waitFor(
+  'refresh-only workspace reset',
+  async () => {
+    const status = await (await fetch(baseUrl + '/api/dataset/status', {cache:'no-store'})).json();
+    const sessions = await (await fetch(baseUrl + '/api/transcripts', {cache:'no-store'})).json();
+    const whatsapp = await (await fetch(baseUrl + '/whatsapp/conversations', {cache:'no-store'})).json();
+    return {loaded:!!status.dataset_loaded,calls:Object.keys(sessions.sessions||{}).length,whatsapp:(whatsapp.conversations||[]).length};
+  },
+  value => !value.loaded && value.calls === 0 && value.whatsapp === 0,
+  7000,
+);
+console.log('PASS hard refresh clears the uploaded cohort and Achal operation state; role switch preserved it beforehand', clearedOnRefresh);
+
 await devtools.call('Page.navigate', {url: baseUrl + '/logout'});
 await waitFor('landing page', () => devtools.evaluate("document.readyState === 'complete' && /watch demo/i.test(document.body.innerText)"));
 assert(await devtools.evaluate("(() => {const button=[...document.querySelectorAll('button')].find(node=>/watch demo/i.test(node.textContent)); if(!button)return false; button.click(); return true;})()"), 'Watch Demo button missing');
@@ -323,10 +460,12 @@ await waitFor('guided login cursor', () => devtools.evaluate(`(() => {const curs
 await waitFor('guided demo start', () => devtools.evaluate('window.__guidedDemoActive === true'), Boolean, 10000);
 const uploadStarted = performance.now();
 const initialUpload = await waitFor('four-second guided dataset upload', () => devtools.evaluate(`(() => {const overlay=document.getElementById('guided-demo-upload');return overlay?{percent:+(overlay.querySelector('.guided-upload-percent')?.textContent||'0').replace('%',''),page:document.querySelector('.page.active')?.id||''}:null;})()`), value => value && value.page.includes('dashboard'));
+const uploadAppearanceDelay = performance.now() - uploadStarted;
 const progressedUpload = await waitFor('progressive guided upload bar', () => devtools.evaluate(`+document.querySelector('#guided-demo-upload .guided-upload-percent')?.textContent.replace('%','')||0`), value => value > initialUpload.percent + 20, 3000);
 await waitFor('4 Models Ensembled confirmation', () => devtools.evaluate("[...document.querySelectorAll('.guided-demo-popup')].some(node=>/4 Models Ensembled/i.test(node.textContent))"), Boolean, 6000);
 const uploadDuration = performance.now() - uploadStarted;
 assert(uploadDuration >= 3800, {uploadDuration, initialUpload, progressedUpload});
+assert(uploadAppearanceDelay >= 1900, {uploadAppearanceDelay});
 
 async function collectGuidedCounts(panelId, expected, timeoutMs) {
   const observations = [];
@@ -346,8 +485,9 @@ async function collectGuidedCounts(panelId, expected, timeoutMs) {
 
 const callTiming = await collectGuidedCounts('full-transcript-panel', 10, 20000);
 const positiveCall = callTiming.filter(([count]) => count > 0);
-assert(positiveCall.length >= 2, callTiming);
+assert(positiveCall.length >= 3, callTiming);
 assert(positiveCall[1][1] - positiveCall[0][1] >= 1500, callTiming);
+assert(positiveCall[2][1] - positiveCall[1][1] >= 1500, callTiming);
 const waTiming = await collectGuidedCounts('wa-convos-panel', 6, 12000);
 const positiveWa = waTiming.filter(([count]) => count > 0);
 assert(positiveWa.length >= 3, waTiming);

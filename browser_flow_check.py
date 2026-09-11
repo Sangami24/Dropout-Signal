@@ -10,6 +10,7 @@ import tempfile
 import threading
 from pathlib import Path
 
+from flask import jsonify
 from werkzeug.serving import make_server
 
 import app as app_module
@@ -54,6 +55,28 @@ def main():
         }
 
         flask_app = app_module.app
+        refresh_state = {"cleared": False}
+        route_by_path = {rule.rule: rule.endpoint for rule in flask_app.url_map.iter_rules()}
+        original_status = flask_app.view_functions[route_by_path["/api/dataset/status"]]
+        original_experience = flask_app.view_functions[route_by_path["/api/dataset/experience"]]
+
+        def isolated_dataset_reset():
+            refresh_state["cleared"] = True
+            return jsonify({"ok": True, "dataset_loaded": False})
+
+        def isolated_dataset_status():
+            if refresh_state["cleared"]:
+                return jsonify({"dataset_loaded": False, "record_count": 0, "tier_breakdown": [], "predicted_dropouts": 0})
+            return original_status()
+
+        def isolated_dataset_experience():
+            if refresh_state["cleared"]:
+                return jsonify({"dataset_loaded": False, "conversations": [], "summary_students": []})
+            return original_experience()
+
+        flask_app.view_functions[route_by_path["/api/dataset/reset"]] = isolated_dataset_reset
+        flask_app.view_functions[route_by_path["/api/dataset/status"]] = isolated_dataset_status
+        flask_app.view_functions[route_by_path["/api/dataset/experience"]] = isolated_dataset_experience
         flask_app.logger.disabled = True
         logging.getLogger("werkzeug").setLevel(logging.ERROR)
         server = make_server("127.0.0.1", 0, flask_app, threaded=True)
@@ -101,14 +124,21 @@ def main():
         })
         completed = None
         try:
-            completed = subprocess.run(
-                ["node", "browser_flow_check.mjs"],
-                cwd=Path(__file__).resolve().parent,
-                env=environment,
-                text=True,
-                capture_output=True,
-                timeout=100,
-            )
+            try:
+                completed = subprocess.run(
+                    ["node", "browser_flow_check.mjs"],
+                    cwd=Path(__file__).resolve().parent,
+                    env=environment,
+                    text=True,
+                    capture_output=True,
+                    timeout=150,
+                )
+            except subprocess.TimeoutExpired as exc:
+                if exc.stdout:
+                    print(exc.stdout.decode(errors="replace") if isinstance(exc.stdout, bytes) else exc.stdout, end="")
+                if exc.stderr:
+                    print(exc.stderr.decode(errors="replace") if isinstance(exc.stderr, bytes) else exc.stderr, end="")
+                raise
             if completed.stdout:
                 print(completed.stdout, end="")
             if completed.stderr:

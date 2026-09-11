@@ -99,7 +99,7 @@ QUESTION_SPEECH_HINTS = [
 
 
 def _speech_gather(question_index, call_sid):
-    """Create a consistently tuned Gather for each answer turn."""
+    """Create a consistently tuned Gather that publishes final speech only."""
     hints = ", ".join(("Achal Sangami", QUESTION_SPEECH_HINTS[question_index]))
     options = dict(
         input="speech",
@@ -109,8 +109,6 @@ def _speech_gather(question_index, call_sid):
         timeout=12,
         action=f"{WEBHOOK_BASE_URL}/voice/respond?q={question_index}&sid={call_sid}",
         method="POST",
-        partial_result_callback=f"{WEBHOOK_BASE_URL}/voice/partial?q={question_index}&sid={call_sid}",
-        partial_result_callback_method="POST",
     )
     if SPEECH_MODEL:
         options["speech_model"] = SPEECH_MODEL
@@ -1142,7 +1140,10 @@ def voice_respond():
     Store the answer, then ask the next question or end the call.
     """
     call_sid = request.args.get("sid", request.form.get("CallSid", ""))
-    q_index = int(request.args.get("q", "0"))
+    try:
+        q_index = max(0, min(int(request.args.get("q", "0")), len(QUESTIONS) - 1))
+    except (TypeError, ValueError):
+        q_index = 0
     no_speech = request.args.get("nospeech", "0") == "1"
 
     session = _get_live_session(call_sid)
@@ -1152,9 +1153,30 @@ def voice_respond():
         resp.hangup()
         return str(resp), 200, {"Content-Type": "text/xml"}
 
-    # A partial-result callback may already be displaying an unstable preview.
-    # Replace it atomically with Twilio's final transcription.
+    # Older in-flight calls may still deliver a retired partial callback.
+    # Always remove it; only the final SpeechResult belongs in the transcript.
     _clear_partial_call_event(session)
+
+    # Twilio retries webhooks when a network response is delayed. Processing
+    # the same question twice used to append the previous answer beneath the
+    # next question and could advance the call incorrectly. An answered key is
+    # immutable: acknowledge the retry with a silent gather for the current
+    # unanswered turn and do not touch transcript state.
+    if Q_KEYS[q_index] in session.setdefault("answers", {}):
+        duplicate = VoiceResponse()
+        next_unanswered = next(
+            (index for index, key in enumerate(Q_KEYS) if key not in session["answers"]),
+            None,
+        )
+        if next_unanswered is None or str(session.get("status") or "").lower() == "completed":
+            duplicate.hangup()
+        else:
+            duplicate.append(_speech_gather(next_unanswered, call_sid))
+            duplicate.redirect(
+                f"{WEBHOOK_BASE_URL}/voice/respond?q={next_unanswered}&sid={call_sid}&nospeech=1",
+                method="POST",
+            )
+        return str(duplicate), 200, {"Content-Type": "text/xml"}
 
     # Store the answer
     if not no_speech:
@@ -1304,19 +1326,7 @@ def voice_respond():
 
 @app.route("/voice/partial", methods=["POST"])
 def voice_partial():
-    """Publish interim recognition so the selected transcript updates live."""
-    call_sid = request.args.get("sid", request.form.get("CallSid", ""))
-    try:
-        q_index = int(request.args.get("q", "0"))
-    except (TypeError, ValueError):
-        q_index = 0
-    session = _get_live_session(call_sid)
-    if session is None:
-        return "", 204
-    q_index = max(0, min(q_index, len(QUESTIONS) - 1))
-    session["current_question"] = QUESTIONS[q_index]
-    _upsert_partial_call_event(session, request.form.get("UnstableSpeechResult", ""))
-    _persist_live_state()
+    """Retired callback retained as a no-op for already-running Twilio calls."""
     return "", 204
 
 
@@ -1344,7 +1354,10 @@ def _store_call_analysis(call_data, result):
         ]
         analyzed_results.append(result)
         intent = str(result.get("dropout_intent") or "LOW").upper()
-        canonical_call["summary"] = str(result.get("summary") or "Completed call analyzed for counselor follow-up.")
+        call_summary = str(result.get("summary") or "Completed call analyzed for counselor follow-up.")
+        result["call_only_summary"] = call_summary
+        canonical_call["call_only_summary"] = call_summary
+        canonical_call["summary"] = call_summary
         canonical_call["analysis_status"] = "complete"
         canonical_call["dropout_intent"] = intent
         canonical_call["dropout_probability"] = float(result.get("dropout_probability") or 0)
@@ -2453,7 +2466,12 @@ def _call_followup_greeting(result):
     """Build a concise WhatsApp opener from the completed call result."""
     name = str(result.get("student_name") or result.get("spoken_name") or "Student").strip()
     first_name = name.split()[0] if name else "there"
-    cause = str(result.get("primary_root_cause") or "the concern you raised").replace("_", " ")
+    cause = str(
+        result.get("q4_root_cause_detail")
+        or result.get("q2_stressor")
+        or result.get("primary_root_cause")
+        or "the concern you raised"
+    ).replace("_", " ")
     support = str(result.get("q3_support_need") or "the support discussed on the call").replace("_", " ")
     if result.get("summary"):
         # Keep the summary private in the counselor record. The student sees a
@@ -2466,6 +2484,43 @@ def _call_followup_greeting(result):
     return (
         f"Hi {first_name}, Asha AI here 👋 I’m following up on our call about {cause}. "
         f"I can help with {support}. Would you like to continue today?"
+    )
+
+
+def _combined_support_summary(call_result=None, whatsapp_session=None):
+    """Return one counselor-ready line grounded in both contact channels."""
+    call_result = call_result or {}
+    whatsapp_session = whatsapp_session or {}
+    profile = whatsapp_session.get("profile") or {}
+    name = str(
+        call_result.get("student_name")
+        or profile.get("student_name")
+        or whatsapp_session.get("profile_name")
+        or "Student"
+    ).strip()
+    call_summary = str(
+        profile.get("call_summary")
+        or call_result.get("call_only_summary")
+        or call_result.get("summary")
+        or "Call completed and reviewed."
+    ).strip().replace("\n", " ")
+    user_turns = [
+        " ".join(str(message.get("content") or "").split())
+        for message in whatsapp_session.get("messages", [])
+        if message.get("role") == "user" and str(message.get("content") or "").strip()
+    ]
+    latest_update = next(
+        (turn for turn in reversed(user_turns) if not _is_whatsapp_goodbye(turn)),
+        "No further WhatsApp support detail was provided.",
+    )
+    concern = str(
+        call_result.get("primary_root_cause")
+        or profile.get("primary_root_cause")
+        or "student support"
+    ).replace("_", " ")
+    return (
+        f"{name} - Call: {call_summary[:320]} "
+        f"WhatsApp follow-up completed: addressed {concern}; latest student update: {latest_update[:220]}"
     )
 
 
@@ -2789,10 +2844,22 @@ def _complete_whatsapp_conversation(phone, user_msg):
     session["messages"].append({"role": "assistant", "content": closing})
     session["status"] = "completed"
     session["completed_at"] = datetime.now().isoformat()
-    session["summary"] = (
+    call_result = _call_result_for_profile(profile, profile.get("student_name", ""))
+    channel_summary = (
         f"WhatsApp follow-up completed. The conversation focused on {concern}. "
         f"Latest student update: {detail[:220]}"
     )
+    session["channel_summary"] = channel_summary
+    session["summary"] = _combined_support_summary(call_result, session)
+    if call_result:
+        call_result.setdefault("call_only_summary", call_result.get("summary", ""))
+        call_result["combined_summary"] = session["summary"]
+        call_result["summary"] = session["summary"]
+        student_id = str(call_result.get("student_id") or "")
+        for call in sessions.values():
+            if str(call.get("student_id") or "") == student_id:
+                call.setdefault("call_only_summary", call.get("summary", ""))
+                call["summary"] = session["summary"]
     _persist_live_state()
     return closing
 
@@ -2808,6 +2875,7 @@ def whatsapp_webhook():
     incoming_msg = request.form.get("Body", "").strip()
     from_number = request.form.get("From", "")  # e.g. whatsapp:+919876543210
     profile_name = request.form.get("ProfileName", "")
+    message_sid = request.form.get("MessageSid", "").strip()
 
     print(f"💬 WhatsApp from {profile_name or from_number}: \"{incoming_msg[:80]}\"")
 
@@ -2842,6 +2910,17 @@ def whatsapp_webhook():
     # old persisted sessions too, so an earlier WhatsApp profile name can
     # never relabel the live dashboard conversation.
     _normalize_demo_whatsapp_identity(phone_clean)
+
+    # Twilio retries message webhooks when delivery acknowledgements are
+    # delayed. Store each MessageSid once so neither the student line nor the
+    # Asha reply can be duplicated in the live thread.
+    processed = wa_sessions[phone_clean].setdefault("processed_message_sids", [])
+    if message_sid and message_sid in processed:
+        resp = MessagingResponse()
+        return str(resp), 200, {"Content-Type": "text/xml"}
+    if message_sid:
+        processed.append(message_sid)
+        del processed[:-100]
 
     # Append user message immediately so UI sees it before the AI replies
     wa_sessions[phone_clean]["messages"].append({"role": "user", "content": incoming_msg})

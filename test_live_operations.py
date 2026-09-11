@@ -1,4 +1,6 @@
 import copy
+import csv
+import io
 import json
 import tempfile
 import unittest
@@ -52,15 +54,15 @@ class VoiceTranscriptTests(unittest.TestCase):
         voice_server._persist_live_state()
         return session
 
-    def test_gather_uses_live_partial_results_and_supported_auto_model(self):
+    def test_gather_publishes_only_final_speech_and_uses_supported_auto_model(self):
         xml = str(voice_server._speech_gather(0, "CA-test"))
-        self.assertIn("partialResultCallback=", xml)
-        self.assertIn("/voice/partial", xml)
+        self.assertNotIn("partialResultCallback=", xml)
+        self.assertNotIn("/voice/partial", xml)
         self.assertIn('language="en-IN"', xml)
         self.assertIn('speechTimeout="auto"', xml)
         self.assertNotIn("speechModel=", xml)
 
-    def test_partial_speech_is_replaced_by_final_answer(self):
+    def test_partial_speech_is_not_published_and_final_answer_is_stored_once(self):
         session = self._session()
         client = voice_server.app.test_client()
         response = client.post(
@@ -68,7 +70,7 @@ class VoiceTranscriptTests(unittest.TestCase):
             data={"CallSid": "CA-test", "UnstableSpeechResult": "I am finding this semester hard"},
         )
         self.assertEqual(response.status_code, 204)
-        self.assertTrue(session["transcript_events"][-1]["partial"])
+        self.assertEqual(len(session["transcript_events"]), 1)
 
         response = client.post(
             "/voice/respond?q=0&sid=CA-test",
@@ -86,6 +88,15 @@ class VoiceTranscriptTests(unittest.TestCase):
             1,
         )
         self.assertEqual(voice_server.sessions["CA-test"]["current_question"], voice_server.QUESTIONS[1])
+
+        duplicate = client.post(
+            "/voice/respond?q=0&sid=CA-test",
+            data={"CallSid": "CA-test", "SpeechResult": "a stale repeated answer", "Confidence": "0.99"},
+        )
+        self.assertEqual(duplicate.status_code, 200)
+        events = voice_server.sessions["CA-test"]["transcript_events"]
+        self.assertFalse(any(event.get("text") == "a stale repeated answer" for event in events))
+        self.assertEqual(voice_server.sessions["CA-test"]["answers"][voice_server.Q_KEYS[0]]["text"], "I am finding this semester hard")
 
     def test_restore_treats_disk_as_authoritative(self):
         self._session("CA-stale")
@@ -123,6 +134,30 @@ class VoiceTranscriptTests(unittest.TestCase):
         self.assertEqual(voice_server.wa_sessions[phone]["profile"]["student_id"], "STU-ACHAL")
         self.assertEqual(voice_server.wa_sessions[phone]["profile"]["student_name"], "Achal Sangami")
         self.assertEqual(voice_server.wa_sessions[phone]["profile_name"], "Achal Sangami")
+
+    def test_whatsapp_completion_builds_one_combined_summary(self):
+        phone = "+910000000003"
+        result = {
+            "student_id": "STU-ACHAL", "student_name": "Achal Sangami",
+            "call_status": "completed", "summary": "Call found academic workload pressure.",
+            "primary_root_cause": "academic", "dropout_intent": "HIGH",
+        }
+        voice_server.analyzed_results.append(result)
+        self._session("CA-summary")["summary"] = result["summary"]
+        voice_server.wa_sessions[phone] = {
+            "messages": [
+                {"role": "assistant", "content": "Following up on academic workload."},
+                {"role": "user", "content": "A tutor and a weekly plan would help."},
+                {"role": "user", "content": "bye"},
+            ],
+            "profile": {"student_id": "STU-ACHAL", "student_name": "Achal Sangami", "primary_root_cause": "academic", "call_summary": result["summary"]},
+            "status": "active",
+        }
+        voice_server._complete_whatsapp_conversation(phone, "bye")
+        summary = voice_server.wa_sessions[phone]["summary"]
+        self.assertIn("Call found academic workload pressure", summary)
+        self.assertIn("A tutor and a weekly plan would help", summary)
+        self.assertEqual(voice_server.sessions["CA-summary"]["summary"], summary)
 
 
 class UnifiedDashboardTests(VoiceTranscriptTests):
@@ -185,11 +220,48 @@ class UnifiedDashboardTests(VoiceTranscriptTests):
             self.assertIn("function effectiveChannelStatus", template)
             self.assertIn("window.startGuidedDemo = async", template)
             self.assertIn("function swapRiskCards", template)
-            self.assertIn("/ 2500", template)
+            self.assertIn("/ 2000", template)
+            self.assertIn("elapsedTurns", template)
             self.assertIn("runtimeToggleBound", template)
             self.assertIn("4 Models Ensembled", template)
+            self.assertIn("professional-risk-workspace", template)
         self.assertIn("guided-demo-login-cursor", self.unified.LOGIN_HTML)
         self.assertIn("Math.min(window.innerWidth-50", self.unified.LOGIN_HTML)
+
+    def test_export_requires_achal_then_matches_high_risk_row_count(self):
+        import pandas as pd
+        import app_overrides
+
+        client = self.unified.app.test_client()
+        empty = client.get("/api/operations/export.csv")
+        self.assertEqual(empty.status_code, 400)
+        self.assertIn("No calls done yet", empty.get_json()["error"])
+
+        voice_server.analyzed_results.append({
+            "student_id": "STU-ACHAL", "student_name": "Achal Sangami",
+            "call_status": "completed", "summary": "Call identified coursework pressure.",
+            "call_only_summary": "Call identified coursework pressure.",
+            "dropout_intent": "HIGH", "ml_risk_score": .91,
+        })
+        voice_server.wa_sessions["+910000000004"] = {
+            "messages": [{"role": "user", "content": "I accepted the tutor appointment."}],
+            "profile": {"student_id": "STU-ACHAL", "student_name": "Achal Sangami", "primary_root_cause": "academic", "call_summary": "Call identified coursework pressure."},
+        }
+        cohort = pd.DataFrame([
+            {"student_id": "H-1", "student_name": "One", "final_risk_tier": "HIGH", "ml_risk_score": .99, "top_factor_1": "Attendance", "final_action": "Attendance plan"},
+            {"student_id": "H-2", "student_name": "Two", "final_risk_tier": "HIGH", "ml_risk_score": .92, "top_factor_1": "Coursework", "final_action": "Tutor"},
+            {"student_id": "H-3", "student_name": "Three", "final_risk_tier": "HIGH", "ml_risk_score": .88, "top_factor_1": "Fees", "final_action": "Financial aid"},
+            {"student_id": "L-1", "student_name": "Low", "final_risk_tier": "LOW", "ml_risk_score": .10},
+        ])
+        with patch.object(app_overrides, "active_records", return_value=cohort):
+            response = client.get("/api/operations/export.csv")
+        self.assertEqual(response.status_code, 200)
+        rows = list(csv.DictReader(io.StringIO(response.get_data(as_text=True))))
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(rows[0]["student_name"], "Achal Sangami")
+        self.assertIn("WhatsApp", rows[0]["summary"])
+        self.assertEqual(len({row["summary"] for row in rows}), 3)
+        self.assertTrue(all(row["dropout_intent"] == "HIGH" for row in rows))
 
 
 if __name__ == "__main__":

@@ -7,6 +7,8 @@ webhook state to the existing counselor and administrator screens.
 from __future__ import annotations
 
 import json as _json
+import csv
+import io
 import os
 import time
 import threading
@@ -651,6 +653,22 @@ FINAL_UI_SCRIPT = r'''
   .ensemble-context { margin:14px 0; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
   .ensemble-context section { padding:13px; border:1px solid var(--border); border-radius:9px; background:var(--surface2); }
   .ensemble-context h3 { margin:0 0 7px; font-size:12px; letter-spacing:.06em; text-transform:uppercase; } .ensemble-context p { margin:0; font-size:12px; color:var(--text2); line-height:1.55; }
+  .prediction-workspace { display:grid; gap:16px; }
+  .prediction-hero { padding:22px; border:1px solid rgba(188,140,255,.3); border-radius:14px; background:linear-gradient(130deg,rgba(188,140,255,.13),rgba(18,18,27,.96) 55%,rgba(239,68,68,.07)); }
+  .prediction-hero h2 { margin:0 0 7px; font-size:20px; } .prediction-hero p { margin:0; max-width:850px; color:var(--text2); font-size:12px; line-height:1.65; }
+  .prediction-kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-top:18px; }
+  .prediction-kpis article { padding:14px; border:1px solid var(--border); border-radius:10px; background:rgba(12,12,18,.76); }
+  .prediction-kpis span { display:block; color:var(--text3); font:10px var(--mono); letter-spacing:.08em; text-transform:uppercase; }
+  .prediction-kpis strong { display:block; margin:7px 0 3px; font-size:22px; } .prediction-kpis small { color:var(--text2); font-size:10px; }
+  .prediction-grid { display:grid; grid-template-columns:minmax(0,1.05fr) minmax(0,1.95fr); gap:14px; }
+  .prediction-panel { min-width:0; padding:18px; border:1px solid var(--border); border-radius:12px; background:var(--surface2); }
+  .prediction-panel h3 { margin:0 0 5px; font-size:13px; } .prediction-panel > p { margin:0 0 16px; color:var(--text3); font-size:11px; line-height:1.55; }
+  .prediction-table-wrap,.fairness-table { width:100%; max-width:100%; overflow-x:auto; }
+  .prediction-table { width:100%; border-collapse:collapse; table-layout:fixed; }
+  .prediction-table th,.prediction-table td { padding:11px 9px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; overflow-wrap:anywhere; }
+  .prediction-table th { color:var(--text3); font:9px var(--mono); letter-spacing:.08em; text-transform:uppercase; }
+  .prediction-table td { color:var(--text2); font-size:11px; line-height:1.45; }
+  .fairness-audit-note { margin:0 0 12px; padding:11px 13px; border-left:3px solid var(--purple); color:var(--text2); background:rgba(188,140,255,.07); font-size:11px; line-height:1.55; }
   @media (max-width:1200px) {
     .topbar { flex-wrap:wrap; align-items:flex-start; gap:12px; }
     .topbar-title { flex:1 1 100%; min-width:0; }
@@ -661,7 +679,7 @@ FINAL_UI_SCRIPT = r'''
   }
   @media (max-width:800px) {
     .main { width:100%; max-width:100%; }
-    .grid-3,.cohort-pulse,.stat-grid-4 { grid-template-columns:1fr; }
+    .grid-3,.cohort-pulse,.stat-grid-4,.prediction-grid,.prediction-kpis { grid-template-columns:1fr; }
     .topbar-actions > button,.topbar-actions > .btn,.topbar-actions > .nav-cta { flex:1 1 auto; }
   }
 </style>
@@ -673,7 +691,9 @@ FINAL_UI_SCRIPT = r'''
   let operationsRequest = 0;
   let operationsInFlight = false;
   let fairnessRequest = 0;
+  let predictionRequest = 0;
   let latestCall = null;
+  let latestOperationalItems = [];
   let activeDatasetRunId = null;
   let latestDatasetStatus = null;
   let riskRepairQueued = false;
@@ -684,7 +704,9 @@ FINAL_UI_SCRIPT = r'''
   const visibleMessageCounts = new Map();
   let allowAchalAutofocus = true;
   let pendingAchalCallFocus = false;
+  let achalHandoffCompleted = false;
   let authoritativePanelWrite = false;
+  let authoritativeSummaryWrite = false;
   const sampleTimelines = new Map();
   const liveThreadFollowState = new Map();
 
@@ -717,33 +739,99 @@ FINAL_UI_SCRIPT = r'''
   function sampleTimeline(item, channel) {
     const messages = channel === 'call' ? item.call : item.whatsapp;
     const key = `${item.student_id}:${channel}`;
-    if (!item.is_sample || String(item.status).toLowerCase() === 'completed') {
+    if (!item.is_sample) {
       return {count: messages.length, completed: String(item.status).toLowerCase() === 'completed'};
     }
     let timeline = sampleTimelines.get(key);
     if (!timeline) {
-      // Each sample begins at a different, genuinely random point in the
-      // conversation while preserving the greeting at the top of the thread.
-      const pairCount = Math.max(1, Math.floor(messages.length / 2));
-      const minimumPairs = Math.max(1, Math.floor(pairCount * .35));
-      const maximumPairs = Math.max(minimumPairs, Math.min(pairCount - 1, Math.floor(pairCount * .65)));
+      const minimum = Math.max(1, Math.floor(messages.length * .35));
+      const maximum = Math.max(minimum, Math.min(messages.length - 1, Math.floor(messages.length * .65)));
       timeline = {
-        // Keep the midpoint aligned to an Asha/student exchange. New sample
-        // turns therefore arrive as a simultaneous pair instead of leaving a
-        // question or answer stranded on its own.
-        initial: Math.min(messages.length, (minimumPairs + Math.floor(Math.random() * (maximumPairs - minimumPairs + 1))) * 2),
+        // Preserve the greeting in the scrollable history, open at a random
+        // middle point, then reveal exactly one alternating turn at a time.
+        initial: Math.min(messages.length, minimum + Math.floor(Math.random() * (maximum - minimum + 1))),
         startedAt: null,
+        phase: String(item.status || '').toLowerCase() === 'completed' ? 'waiting' : 'active',
       };
       sampleTimelines.set(key, timeline);
     }
+    if (timeline.phase !== 'active') return {count: messages.length, completed: true};
     // A closed sample stays live at its randomized midpoint. Selecting it
     // starts that conversation's own clock, so other rows neither jump nor
     // finish off-screen. Date-based progress catches this selected thread up
     // immediately after the browser throttles a background tab.
     if (openedConversationKey === key && !timeline.startedAt) timeline.startedAt = Date.now();
-    const exchanges = timeline.startedAt ? Math.floor((Date.now() - timeline.startedAt) / 2500) : 0;
-    const count = Math.min(messages.length, timeline.initial + exchanges * 2);
-    return {count, completed: count >= messages.length};
+    const elapsedTurns = timeline.startedAt ? Math.floor((Date.now() - timeline.startedAt) / 2000) : 0;
+    const count = Math.min(messages.length, timeline.initial + elapsedTurns);
+    if (count >= messages.length) timeline.phase = 'completed';
+    return {count, completed: timeline.phase === 'completed'};
+  }
+
+  function operationalSummary(item) {
+    if (item.whatsapp_summary) return item.whatsapp_summary;
+    if (item.call_summary) return item.call_summary;
+    if (item.summary) return item.summary;
+    const active = !['completed','failed','canceled','interrupted'].includes(String(item.call_status || item.status || '').toLowerCase());
+    return active
+      ? `${item.student_name || 'The student'} has a live support conversation in progress.`
+      : completedSummary(item);
+  }
+
+  function renderUnifiedSummaryCards(items) {
+    latestOperationalItems = items;
+    const cards = items.map(item => {
+      const tier = String(item.dropout_intent || item.tier || 'MEDIUM').toUpperCase();
+      const summary = operationalSummary(item);
+      const search = `${item.student_name || ''} ${item.student_id || ''} ${item.factor || ''} ${summary}`.toLowerCase();
+      return `<article class="summary-person" data-summary-student-id="${escapeHtml(item.student_id)}" data-search="${escapeHtml(search)}" tabindex="0" role="button"><div class="mono" style="color:${tier === 'HIGH' ? 'var(--red)' : tier === 'LOW' ? 'var(--green)' : 'var(--amber)'};margin-bottom:8px">${escapeHtml(tier)} RISK</div><h3 style="margin:0 0 8px">${escapeHtml(item.student_name || 'Student')}</h3><p style="margin:0;color:var(--text2);font-size:12px;line-height:1.55">${escapeHtml(summary)}</p></article>`;
+    }).join('') || '<div class="dataset-empty-live">Student summaries will appear after the dataset is uploaded and outreach begins.</div>';
+    ['summary-students','admin-summary-grid'].forEach(id => {
+      const grid = document.getElementById(id);
+      if (grid && grid.innerHTML !== cards) {
+        authoritativeSummaryWrite = true;
+        try { grid.innerHTML = cards; }
+        finally { authoritativeSummaryWrite = false; }
+      }
+      grid?.querySelectorAll(':scope > [data-summary-student-id]').forEach(card => {
+        if (card.dataset.runtimeSummaryCardProtected) return;
+        card.dataset.runtimeSummaryCardProtected = 'true';
+        const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
+        Object.defineProperty(card, 'innerHTML', {
+          configurable: true,
+          get() { return descriptor.get.call(this); },
+          set(markup) {
+            if (!authoritativeSummaryWrite) return;
+            descriptor.set.call(this, markup);
+          },
+        });
+      });
+    });
+    [['summary-count',items.length],['admin-summary-count',items.length]].forEach(([id,count]) => {
+      const node = document.getElementById(id); if (node) node.textContent = `${count} shared summaries`;
+    });
+  }
+
+  function showUnifiedStudentSummary(studentId) {
+    const item = latestOperationalItems.find(entry => String(entry.student_id) === String(studentId));
+    if (!item) return;
+    const tier = String(item.dropout_intent || item.tier || 'MEDIUM').toUpperCase();
+    const summary = operationalSummary(item);
+    showOperationModal(
+      `${item.student_name || 'Student'} - ${tier} risk`,
+      `${summary} Recommended action: ${item.action || 'Review the transcript and schedule the appropriate counselor follow-up.'}`,
+    );
+  }
+
+  function replenishSampleQueue(items, channel) {
+    const samples = items.filter(item => item.is_sample && (channel === 'call' ? item.call : item.whatsapp)?.length);
+    samples.forEach(item => sampleTimeline(item, channel));
+    const activeCount = samples.filter(item => sampleTimelines.get(`${item.student_id}:${channel}`)?.phase === 'active').length;
+    const target = Math.min(7, samples.length);
+    samples.filter(item => sampleTimelines.get(`${item.student_id}:${channel}`)?.phase === 'waiting').slice(0, Math.max(0, target - activeCount)).forEach(item => {
+      const timeline = sampleTimelines.get(`${item.student_id}:${channel}`);
+      timeline.phase = 'active';
+      timeline.startedAt = null;
+    });
   }
 
   function progressiveMessages(item, channel) {
@@ -753,7 +841,7 @@ FINAL_UI_SCRIPT = r'''
 
   function effectiveChannelStatus(item, channel) {
     const original = channel === 'call' ? (item.call_status || item.status) : (item.whatsapp_status || item.status);
-    if (item.is_sample && !['completed', 'failed', 'canceled', 'interrupted'].includes(String(original || '').toLowerCase())) {
+    if (item.is_sample) {
       return sampleTimeline(item, channel).completed ? 'completed' : 'active';
     }
     return original;
@@ -782,7 +870,7 @@ FINAL_UI_SCRIPT = r'''
       const highRisk = String(item.dropout_intent || item.tier || '').toUpperCase() === 'HIGH';
       const riskAssessment = highRisk ? 'High dropout risk flagged' : 'No high dropout risk flag';
       const summary = active ? '' : `<footer class="dataset-contact-summary"><b>AI Summary · ${riskAssessment}</b><p>${escapeHtml(summaryText || completedSummary({...item, status: channelStatus}))}</p></footer>`;
-      const open = openedConversationKey === key || (isAchal && active && allowAchalAutofocus && !openedConversationKey);
+      const open = openedConversationKey === key || (isAchal && active && !achalHandoffCompleted) || (isAchal && active && allowAchalAutofocus && !openedConversationKey);
       return `<details class="operation-row dataset-conversation ${tone}" data-conversation-key="${escapeHtml(key)}" data-channel="${channel}" data-message-count="${messages.length}" data-is-sample="${item.is_sample ? 'true' : 'false'}" ${open ? 'open' : ''}><summary><strong>${escapeHtml(item.student_name || 'Student')}</strong><span class="${active ? 'dataset-live' : 'dataset-completed'}">${active ? 'ACTIVE' : 'COMPLETED'}</span>${active ? `<span class="dataset-presence ${tone}"></span>` : ''}<em>${escapeHtml(item.tier || 'MEDIUM')} RISK</em></summary><div class="dataset-thread ${channel}">${messages.map(m => messageMarkup(m, item.student_name || 'Student')).join('')}${summary}</div></details>`;
     }).join('') || `<div class="dataset-empty-live">No ${channel === 'call' ? 'call transcripts' : 'WhatsApp conversations'} yet. New activity will appear here automatically.</div>`;
   }
@@ -824,6 +912,8 @@ FINAL_UI_SCRIPT = r'''
       if (!id || byStudent.has(id)) return;
       byStudent.set(id, {...item, call: item.call || [], whatsapp: item.whatsapp || []});
     });
+    replenishSampleQueue([...byStudent.values()], 'call');
+    replenishSampleQueue([...byStudent.values()], 'whatsapp');
     const isActive = item => !['completed', 'failed', 'canceled', 'interrupted'].includes(String(item.call_status || item.status || '').toLowerCase());
     const items = [...byStudent.values()].sort((a, b) => {
       const achalA = String(a.student_name || '').trim().toLowerCase() === 'achal sangami';
@@ -832,10 +922,15 @@ FINAL_UI_SCRIPT = r'''
       if (isActive(a) !== isActive(b)) return isActive(a) ? -1 : 1;
       return String(b.started_at || '').localeCompare(String(a.started_at || ''));
     });
+    renderUnifiedSummaryCards(items);
     // The live practice contact is the current operational focus. Keep its
     // active thread expanded and following new turns, without expanding any
     // other student automatically.
     const achal = items.find(item => String(item.student_name || '').trim().toLowerCase() === 'achal sangami');
+    if (achal && isActive(achal) && achal.call?.length && !achalHandoffCompleted) {
+      openedConversationKey = `${achal.student_id}:call`;
+      allowAchalAutofocus = true;
+    }
     if (allowAchalAutofocus && achal && !openedConversationKey) {
       // When a call completes, the active WhatsApp follow-up is the one
       // operational thread to surface. Otherwise keep the live call focused.
@@ -844,32 +939,47 @@ FINAL_UI_SCRIPT = r'''
       else if (achal.whatsapp?.length) openedConversationKey = `${achal.student_id}:whatsapp`;
     }
     const achalWhatsAppReady = achal && String(achal.call_status || '').toLowerCase() === 'completed' && String(achal.whatsapp_status || '').toLowerCase() === 'active' && achal.whatsapp?.length;
-    if (achalWhatsAppReady && openedConversationKey === `${achal.student_id}:call`) openedConversationKey = `${achal.student_id}:whatsapp`;
-    if (achalWhatsAppReady && pendingAchalCallFocus) {
-      openedConversationKey = `${achal.student_id}:whatsapp`;
-      allowAchalAutofocus = true;
-      const pageName = document.getElementById('page-admin-whatsapp') ? 'admin-whatsapp' : 'whatsapp';
-      if (!document.getElementById(`page-${pageName}`)?.classList.contains('active')) {
-        queueMicrotask(async () => {
-          window.activateWorkspacePage?.(pageName);
-          openedConversationKey = `${achal.student_id}:whatsapp`;
-          allowAchalAutofocus = true;
-          pendingAchalCallFocus = false;
-          await refreshOperations();
-          const focusWhatsApp = () => {
-            document.querySelectorAll(`.page.active details[data-channel="whatsapp"]`).forEach(row => {
-              if (String(row.querySelector('summary strong')?.textContent || '').trim().toLowerCase() !== 'achal sangami') return;
-              row.open = true;
-              const thread = row.querySelector('.dataset-thread');
-              if (thread) thread.scrollTop = thread.scrollHeight;
-            });
-          };
-          requestAnimationFrame(focusWhatsApp);
-          setTimeout(focusWhatsApp, 80);
-        });
-      } else {
-        pendingAchalCallFocus = false;
-      }
+    window.__achalHandoffDebug = {
+      ready: Boolean(achalWhatsAppReady),
+      pending: pendingAchalCallFocus,
+      completed: achalHandoffCompleted,
+      callStatus: achal?.call_status || '',
+      whatsappStatus: achal?.whatsapp_status || '',
+      whatsappMessages: achal?.whatsapp?.length || 0,
+    };
+    if (achalWhatsAppReady && pendingAchalCallFocus && !achalHandoffCompleted) {
+      pendingAchalCallFocus = false;
+      achalHandoffCompleted = true;
+      const riskMessage = achal.call_summary || achal.summary || 'The completed call indicates that immediate counselor follow-up is appropriate.';
+      const riskModal = showOperationModal('Asha AI has flagged Achal Sangami as high risk', riskMessage);
+      requestAnimationFrame(() => {
+        const rect = riskModal.querySelector('.operation-modal')?.getBoundingClientRect();
+        if (!rect) return;
+        window.__lastRiskHandoff = {
+          title: riskModal.querySelector('h2')?.textContent || '',
+          dx: Math.abs((rect.left + rect.right) / 2 - innerWidth / 2),
+          dy: Math.abs((rect.top + rect.bottom) / 2 - innerHeight / 2),
+          shownAt: Date.now(),
+        };
+      });
+      setTimeout(async () => {
+        riskModal.remove();
+        const pageName = document.getElementById('page-admin-whatsapp') ? 'admin-whatsapp' : 'whatsapp';
+        window.activateWorkspacePage?.(pageName);
+        openedConversationKey = `${achal.student_id}:whatsapp`;
+        allowAchalAutofocus = true;
+        await refreshOperations();
+        const focusWhatsApp = () => {
+          document.querySelectorAll(`.page.active details[data-channel="whatsapp"]`).forEach(row => {
+            if (String(row.querySelector('summary strong')?.textContent || '').trim().toLowerCase() !== 'achal sangami') return;
+            row.open = true;
+            const thread = row.querySelector('.dataset-thread');
+            if (thread) thread.scrollTop = thread.scrollHeight;
+          });
+        };
+        requestAnimationFrame(focusWhatsApp);
+        setTimeout(focusWhatsApp, 80);
+      }, 4000);
     }
     latestCall = items.find(item => item.call.length) || latestCall;
     const signature = JSON.stringify(items.map(item => [item.student_id, effectiveChannelStatus(item, 'call'), effectiveChannelStatus(item, 'whatsapp'), progressiveMessages(item, 'call').length, progressiveMessages(item, 'whatsapp').length, item.call.at(-1)?.text, item.whatsapp.at(-1)?.content, item.call_summary || item.summary || '', item.whatsapp_summary || '']));
@@ -1041,6 +1151,11 @@ FINAL_UI_SCRIPT = r'''
     try {
       const status = await fetch('/api/dataset/status', {cache:'no-store'}).then(r => r.json());
       if (!status.dataset_loaded) return;
+      // This request often resolves before the larger legacy dashboard
+      // refresh. Make it the early authoritative source for the swapped top
+      // card, then let the mutation guard preserve that presentation.
+      latestDatasetStatus = status;
+      renderAuthoritativeAdminOverview(status);
       const tiers = Object.fromEntries((status.tier_breakdown || []).map(row => [String(row.final_risk_tier).toUpperCase(), Number(row.cnt || 0)]));
       const total = Number(status.record_count || 0), high = tiers.HIGH || 0, medium = tiers.MEDIUM || 0, low = tiers.LOW || 0, atRisk = high + medium;
       const duplicatePanels = [...document.querySelectorAll('#cohort-pulse')];
@@ -1048,7 +1163,8 @@ FINAL_UI_SCRIPT = r'''
       const existing = document.getElementById('cohort-pulse');
       const section = existing || document.createElement('section');
       section.id = 'cohort-pulse'; section.className = 'cohort-pulse';
-      section.innerHTML = `<section><h3>Cohort snapshot</h3><div class="pulse-stat"><span>Scored students</span><b>${total.toLocaleString()}</b></div><div class="pulse-stat"><span>Students needing support</span><b>${atRisk.toLocaleString()}</b></div><div class="pulse-stat"><span>Predicted dropouts</span><b>${Number(status.predicted_dropouts || 0).toLocaleString()}</b></div></section><section><h3>Risk distribution</h3>${[['High',high,'#ef4444'],['Medium',medium,'#f59e0b'],['Low',low,'#22c55e']].map(([label,value,color]) => `<div class="risk-bar"><span>${label}</span><em><i style="width:${total ? value / total * 100 : 0}%;background:${color}"></i></em><b>${value.toLocaleString()}</b></div>`).join('')}</section><section><h3>Outreach priorities</h3><p class="pulse-insight"><b>Priority outreach:</b> contact ${high.toLocaleString()} high-risk students within the next review window.</p><p class="pulse-insight" style="margin-top:10px"><b>Proactive follow-up:</b> schedule check-ins for ${medium.toLocaleString()} medium-risk students.</p><p class="pulse-insight" style="margin-top:10px"><b>Live support:</b> monitor ongoing calls and WhatsApp replies, then record the agreed next action.</p></section>`;
+      const predicted = Number(status.predicted_dropouts || high);
+      section.innerHTML = `<section><h3>Cohort snapshot</h3><div class="pulse-stat"><span>Scored students</span><b>${total.toLocaleString()}</b></div><div class="pulse-stat"><span>Students needing support</span><b>${atRisk.toLocaleString()}</b></div><div class="pulse-stat"><span>Low-risk students</span><b>${low.toLocaleString()}</b></div></section><section class="runtime-risk-prediction"><h3>Risk prediction</h3><div class="pulse-stat"><span>Predicted dropouts</span><b style="color:#ef4444">${predicted.toLocaleString()}</b></div><div class="pulse-stat"><span>High-confidence review</span><b style="color:#f59e0b">${high.toLocaleString()}</b></div><div class="pulse-stat"><span>Proactive watchlist</span><b style="color:#bc8cff">${medium.toLocaleString()}</b></div></section><section><h3>Outreach priorities</h3><p class="pulse-insight"><b>Priority outreach:</b> contact ${high.toLocaleString()} high-risk students within the next review window.</p><p class="pulse-insight" style="margin-top:10px"><b>Proactive follow-up:</b> schedule check-ins for ${medium.toLocaleString()} medium-risk students.</p><p class="pulse-insight" style="margin-top:10px"><b>Live support:</b> monitor ongoing calls and WhatsApp replies, then record the agreed next action.</p></section>`;
       if (!existing) anchor.insertAdjacentElement('afterend', section);
     } catch (_) {}
   }
@@ -1079,25 +1195,64 @@ FINAL_UI_SCRIPT = r'''
     const label = document.getElementById('dataset-active-label');
     if (label) label.textContent = loaded ? `${status.dataset_name || status.source_label || 'Active dataset'} · ${display} students` : 'No dataset loaded';
     renderAuthoritativeAdminOverview(status);
+    renderProfessionalRiskPredictions(status);
+  }
+
+  async function renderProfessionalRiskPredictions(status) {
+    const page = document.getElementById('page-pipeline');
+    if (!page) return;
+    const requestId = ++predictionRequest;
+    const header = page.querySelector(':scope > .page-hdr');
+    let workspace = page.querySelector(':scope > #professional-risk-workspace');
+    if (!workspace) {
+      workspace = document.createElement('section');
+      workspace.id = 'professional-risk-workspace';
+      workspace.className = 'prediction-workspace';
+      header?.insertAdjacentElement('afterend', workspace);
+    }
+    [...page.children].forEach(child => {
+      if (child !== header && child !== workspace) child.hidden = true;
+    });
+    if (!status?.dataset_loaded) {
+      workspace.innerHTML = '<div class="dataset-empty-live">Upload a dataset to build the college-wide prediction workspace.</div>';
+      return;
+    }
+    try {
+      const payload = await fetch('/api/students?limit=40&at_risk=1', {cache:'no-store'}).then(response => response.ok ? response.json() : {students:[]});
+      if (requestId !== predictionRequest) return;
+      const tiers = Object.fromEntries((status.tier_breakdown || []).map(row => [String(row.final_risk_tier || '').toUpperCase(), Number(row.cnt || 0)]));
+      const total = Number(status.record_count || 0), high = tiers.HIGH || 0, medium = tiers.MEDIUM || 0, low = tiers.LOW || 0;
+      const predicted = Number(status.predicted_dropouts || high);
+      const students = (payload.students || []).filter(student => String(student.final_risk_tier || '').toUpperCase() === 'HIGH').slice(0, 12);
+      const averageConfidence = students.length ? students.reduce((sum, student) => sum + Number(student.ml_risk_score || 0), 0) / students.length : 0;
+      const table = students.map((student, index) => `<tr><td><strong style="color:var(--text)">${index + 1}. ${escapeHtml(student.student_name || 'Student')}</strong><br><span class="mono">${escapeHtml(student.student_id || '')}</span></td><td><span class="tag tag-t1">HIGH</span><br><span class="mono">${(Number(student.ml_risk_score || 0) * 100).toFixed(1)}%</span></td><td>${escapeHtml(student.primary_root_cause || student.top_factor_1 || 'Engagement review')}</td><td>${escapeHtml(student.final_action || 'Immediate counselor review')}</td></tr>`).join('');
+      workspace.innerHTML = `<section class="prediction-hero"><h2>Intervention intelligence for the active cohort</h2><p>Validated four-model scores are translated into an ordered counselor queue. Risk categories, prediction counts, and recommended actions below all come from the same uploaded dataset used by the counselor workspace.</p><div class="prediction-kpis"><article><span>Students scored</span><strong>${total.toLocaleString()}</strong><small>active uploaded cohort</small></article><article><span>Predicted dropouts</span><strong style="color:var(--red)">${predicted.toLocaleString()}</strong><small>model-positive outcomes</small></article><article><span>Immediate review</span><strong style="color:var(--amber)">${high.toLocaleString()}</strong><small>high-risk queue</small></article><article><span>4-model validation</span><strong style="color:var(--green)">${averageConfidence ? `${(averageConfidence * 100).toFixed(1)}%` : 'Ready'}</strong><small>average shown-queue confidence</small></article></div></section><div class="prediction-grid"><section class="prediction-panel"><h3>Risk distribution</h3><p>Mutually exclusive tiers; totals reconcile to ${total.toLocaleString()} students.</p>${[['High',high,'#ef4444'],['Medium',medium,'#f59e0b'],['Low',low,'#22c55e']].map(([label,value,color]) => `<div class="risk-bar"><span>${label}</span><em><i style="width:${total ? value / total * 100 : 0}%;background:${color}"></i></em><b>${value.toLocaleString()}</b></div>`).join('')}<div class="pulse-insight" style="margin-top:18px"><b>Decision support:</b> predictions prioritize outreach; counselors retain the final intervention decision.</div></section><section class="prediction-panel"><h3>Priority prediction queue</h3><p>Highest-confidence high-risk students with the signal and recommended owner action kept together.</p><div class="prediction-table-wrap"><table class="prediction-table"><thead><tr><th style="width:24%">Student</th><th style="width:15%">Risk</th><th style="width:27%">Primary signal</th><th>Recommended action</th></tr></thead><tbody>${table || '<tr><td colspan="4">No high-risk predictions are available.</td></tr>'}</tbody></table></div></section></div>`;
+    } catch (error) {
+      workspace.innerHTML = '<div class="dataset-empty-live">The prediction workspace could not be loaded. It will retry automatically.</div>';
+    }
   }
 
   function renderAuthoritativeAdminOverview(status) {
     if (!status?.dataset_loaded) return;
     const tiers = Object.fromEntries((status.tier_breakdown || []).map(row => [String(row.final_risk_tier || '').toUpperCase(), Number(row.cnt || 0)]));
     const total = Number(status.record_count || 0), high = tiers.HIGH || 0, medium = tiers.MEDIUM || 0, low = tiers.LOW || 0;
-    const chart = document.getElementById('tier-chart');
-    if (chart) {
+    ['tier-chart','tier-chart-counselor'].forEach(chartId => {
+      const chart = document.getElementById(chartId);
+      if (!chart) return;
       const highEnd = total ? high / total * 100 : 0, mediumEnd = total ? (high + medium) / total * 100 : 0;
       const chartMarkup = `<div class="d-chart-container"><div class="admin-risk-donut" style="background:conic-gradient(#ef4444 0 ${highEnd}%,#f59e0b ${highEnd}% ${mediumEnd}%,#22c55e ${mediumEnd}% 100%)"><div class="admin-risk-hole"><strong>${total.toLocaleString()}</strong><span>students</span></div></div></div><div class="d-legend"><div class="dl-item"><span class="dl-left"><span class="dl-dot" style="background:#ef4444"></span>High risk</span><strong>${high.toLocaleString()}</strong></div><div class="dl-item"><span class="dl-left"><span class="dl-dot" style="background:#f59e0b"></span>Medium risk</span><strong>${medium.toLocaleString()}</strong></div><div class="dl-item"><span class="dl-left"><span class="dl-dot" style="background:#22c55e"></span>Low risk</span><strong>${low.toLocaleString()}</strong></div></div>`;
       if (chart.innerHTML !== chartMarkup) chart.innerHTML = chartMarkup;
-    }
-    const trendCard = [...document.querySelectorAll('.card-new')].find(card => /^(Risk Trend|Outreach Priorities|Risk Prediction)\b/i.test(card.querySelector('h3')?.textContent || ''));
+    });
+    const visibleTierChart = document.getElementById('tier-chart') || document.getElementById('tier-chart-counselor');
+    const compositionCard = visibleTierChart?.closest('.card-new');
+    const dashboardGrid = compositionCard?.parentElement;
+    const trendCard = [...document.querySelectorAll('.card-new')].find(card => /^(Risk Trend|Outreach Priorities|Risk Prediction|Risk Distribution)\b/i.test(card.querySelector('h3')?.textContent || '') && !card.querySelector('#tier-chart,#tier-chart-counselor'))
+      || [...(dashboardGrid?.children || [])].find(card => card !== compositionCard && card.querySelector?.('.card-new-b'));
     const trendBody = trendCard?.querySelector('.card-new-b');
     if (trendCard && trendBody) {
       const heading = trendCard.querySelector('h3');
-      const predicted = Number(status.predicted_dropouts || high);
-      const headingMarkup = `Risk Prediction <span class="risk-fixed-badge">${predicted.toLocaleString()} predicted dropouts</span>`;
-      const predictionMarkup = `<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:8px 2px"><section style="padding:13px;border:1px solid var(--border);border-radius:9px;background:var(--surface2)"><h3 style="margin:0 0 7px;color:#ef4444">${predicted.toLocaleString()}</h3><p style="margin:0;color:var(--text2);font-size:12px;line-height:1.5">students currently predicted to need intervention.</p></section><section style="padding:13px;border:1px solid var(--border);border-radius:9px;background:var(--surface2)"><h3 style="margin:0 0 7px;color:#f59e0b">${high.toLocaleString()}</h3><p style="margin:0;color:var(--text2);font-size:12px;line-height:1.5">high-confidence cases requiring immediate review.</p></section><section style="padding:13px;border:1px solid var(--border);border-radius:9px;background:var(--surface2)"><h3 style="margin:0 0 7px;color:#bc8cff">${medium.toLocaleString()}</h3><p style="margin:0;color:var(--text2);font-size:12px;line-height:1.5">students in the proactive support watchlist.</p></section></div>`;
+      const headingMarkup = `Risk Distribution <span class="risk-fixed-badge">${total.toLocaleString()} students</span>`;
+      const predictionMarkup = `<div class="runtime-risk-distribution" style="display:grid;gap:14px;padding:8px 2px">${[['High',high,'#ef4444'],['Medium',medium,'#f59e0b'],['Low',low,'#22c55e']].map(([label,value,color]) => `<div class="risk-bar"><span>${label}</span><em><i style="width:${total ? value / total * 100 : 0}%;background:${color}"></i></em><b>${value.toLocaleString()}</b></div>`).join('')}</div>`;
       if (heading && heading.innerHTML !== headingMarkup) heading.innerHTML = headingMarkup;
       if (trendBody.innerHTML !== predictionMarkup) trendBody.innerHTML = predictionMarkup;
     }
@@ -1106,15 +1261,9 @@ FINAL_UI_SCRIPT = r'''
 
   function swapRiskCards() {
     ['tier-chart', 'tier-chart-counselor'].forEach(id => {
-      const distribution = document.getElementById(id)?.closest('.card-new,.card');
-      const grid = distribution?.parentElement;
-      if (!distribution || !grid) return;
-      const heading = distribution.querySelector('.card-new-h h3,.card-h h3,h3');
-      if (heading && heading.textContent.trim() !== 'Risk Distribution') heading.textContent = 'Risk Distribution';
-      const prediction = [...grid.children].find(card => card !== distribution && /^Risk Prediction\b/i.test(card.querySelector('h3')?.textContent || ''));
-      // Keep Risk Distribution above Risk Prediction, including after the
-      // recovered dashboard refreshes the card contents.
-      if (prediction && distribution.nextElementSibling !== prediction) grid.insertBefore(distribution, prediction);
+      const overview = document.getElementById(id)?.closest('.card-new,.card');
+      const heading = overview?.querySelector('.card-new-h h3,.card-h h3,h3');
+      if (heading && heading.textContent.trim() !== 'Cohort Composition') heading.textContent = 'Cohort Composition';
     });
   }
 
@@ -1205,6 +1354,23 @@ FINAL_UI_SCRIPT = r'''
     });
   }
 
+  function protectSummaryPanels() {
+    ['summary-students','admin-summary-grid'].forEach(id => {
+      const grid = document.getElementById(id);
+      if (!grid || grid.dataset.runtimeSummaryProtected) return;
+      grid.dataset.runtimeSummaryProtected = 'true';
+      const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
+      Object.defineProperty(grid, 'innerHTML', {
+        configurable: true,
+        get() { return descriptor.get.call(this); },
+        set(markup) {
+          if (!authoritativeSummaryWrite) return;
+          descriptor.set.call(this, markup);
+        },
+      });
+    });
+  }
+
   function removeDuplicateTranscriptSearch() {
     ['page-transcript', 'page-admin-transcript'].forEach(id => {
       const page = document.getElementById(id); if (!page) return;
@@ -1264,14 +1430,21 @@ FINAL_UI_SCRIPT = r'''
 
   async function refreshFairness() {
     const body = document.getElementById('fairness-runtime-rows'); if (!body) return;
+    const tableWrap = body.closest('.fairness-table');
+    if (tableWrap && !tableWrap.previousElementSibling?.classList.contains('fairness-audit-note')) {
+      const note = document.createElement('p');
+      note.className = 'fairness-audit-note';
+      note.textContent = 'Ratios near 1.000 indicate comparable outcomes between the displayed groups. Review marks evidence that needs human investigation; they do not automatically change a student prediction.';
+      tableWrap.insertAdjacentElement('beforebegin', note);
+    }
     const request = ++fairnessRequest;
     try {
       const payload = await fetch('/api/fairness', {cache: 'no-store'}).then(r => r.json());
       if (request !== fairnessRequest) return;
-      body.innerHTML = (payload.fairness || []).map(row => {
-        const status = value => value === 'YES' ? '<span class="fairness-status ok">Within range</span>' : '<span class="fairness-status review">Review</span>';
-        return `<tr><td>${escapeHtml(row.protected_attribute)}: ${escapeHtml(row.group_a)} vs ${escapeHtml(row.group_b)}</td><td>${Number(row.demographic_parity_ratio).toFixed(3)} ${status(row.dp_is_fair)}</td><td>${Number(row.equal_opportunity_ratio).toFixed(3)} ${status(row.eo_is_fair)}</td><td>${Number(row.predictive_parity_ratio).toFixed(3)} ${status(row.pp_is_fair)}</td></tr>`;
-      }).join('') || '<tr><td colspan="4">No comparison was available.</td></tr>';
+      const metric = value => Number.isFinite(Number(value)) ? Number(value).toFixed(3) : 'â€“';
+      const status = value => String(value || '').toUpperCase() === 'YES' ? '<span class="fairness-status ok">Within range</span>' : '<span class="fairness-status review">Review</span>';
+      const markup = (payload.fairness || []).map(row => `<tr><td><strong>${escapeHtml(row.protected_attribute || 'Group')}</strong><br><span>${escapeHtml(row.group_a)} vs ${escapeHtml(row.group_b)}</span></td><td><span class="mono">${metric(row.demographic_parity_ratio)}</span> ${status(row.dp_is_fair)}</td><td><span class="mono">${metric(row.equal_opportunity_ratio)}</span> ${status(row.eo_is_fair)}</td><td><span class="mono">${metric(row.predictive_parity_ratio)}</span> ${status(row.pp_is_fair)}</td></tr>`).join('') || '<tr><td colspan="4">No comparison was available for this dataset.</td></tr>';
+      if (body.innerHTML !== markup) body.innerHTML = markup;
     } catch (_) {}
   }
 
@@ -1351,7 +1524,7 @@ FINAL_UI_SCRIPT = r'''
       const controls = modal.querySelector('.operation-modal-actions');
       const link = document.createElement('a'); link.href = '/api/operations/export.csv'; link.textContent = 'Download CSV'; controls.prepend(link);
     } catch (error) {
-      modal.querySelector('h2').textContent = 'CSV export status';
+      modal.querySelector('h2').textContent = /no calls done yet/i.test(error.message || '') ? 'No calls done yet' : 'CSV export status';
       modal.querySelector('p').textContent = error.message || 'The export could not be prepared.';
     }
   }
@@ -1372,6 +1545,8 @@ FINAL_UI_SCRIPT = r'''
     };
   }
   document.addEventListener('click', event => {
+    const summaryCard = event.target.closest('[data-summary-student-id]');
+    if (summaryCard) showUnifiedStudentSummary(summaryCard.dataset.summaryStudentId);
     if (event.target.closest('.sb-item[data-page], [data-workspace-page]')) {
       closeRuntimeConversations(); allowAchalAutofocus = pendingAchalCallFocus;
     }
@@ -1386,6 +1561,13 @@ FINAL_UI_SCRIPT = r'''
       setTimeout(refreshOperations, 3200);
     }
   });
+  document.addEventListener('keydown', event => {
+    if (!['Enter',' '].includes(event.key)) return;
+    const summaryCard = event.target.closest('[data-summary-student-id]');
+    if (!summaryCard) return;
+    event.preventDefault();
+    showUnifiedStudentSummary(summaryCard.dataset.summaryStudentId);
+  });
   window.runAnalysis = analyzeCallsWithModal;
   window.exportCSV = exportCallsWithModal;
 
@@ -1395,18 +1577,28 @@ FINAL_UI_SCRIPT = r'''
     openedConversationKey = null;
     allowAchalAutofocus = true;
     pendingAchalCallFocus = true;
-    notify('Calling Achal Sangami...', 'info');
+    achalHandoffCompleted = false;
+    const callingModal = showOperationModal('Asha AI calling high-risk students', 'Achal Sangami is being connected for the five-question support call.');
     try {
       const response = await fetch('/api/manual-call', {method:'POST'});
       const payload = await response.json();
       if (!response.ok || payload.error) throw new Error(payload.error || 'The call could not be started.');
       window.activateWorkspacePage?.(transcriptPage);
       await refreshOperations();
-      notify('Achal is now in Active Calls.', 'ok');
+      callingModal.querySelector('h2').textContent = 'Achal Sangami is now in Active Calls';
+      callingModal.querySelector('p').textContent = 'The live transcript is open and will update after each complete spoken answer.';
+      setTimeout(() => callingModal.remove(), 1200);
       return payload;
     } catch (error) {
-      pendingAchalCallFocus = false;
-      notify(error.message || 'The call could not be started.', 'err');
+      setTimeout(async () => {
+        try {
+          const payload = await fetch('/api/transcripts', {cache:'no-store'}).then(response => response.json());
+          const activeAchal = Object.values(payload.sessions || {}).some(session => String(session.student_name || '').trim().toLowerCase() === 'achal sangami' && !['completed','failed','canceled','interrupted'].includes(String(session.status || '').toLowerCase()));
+          if (!activeAchal) pendingAchalCallFocus = false;
+        } catch (_) { pendingAchalCallFocus = false; }
+      }, 1800);
+      callingModal.querySelector('h2').textContent = 'Call could not start';
+      callingModal.querySelector('p').textContent = error.message || 'The call could not be started.';
       return null;
     }
   }
@@ -1542,8 +1734,8 @@ FINAL_UI_SCRIPT = r'''
 
     try {
       window.activateWorkspacePage?.('dashboard');
-      await wait(450);
-      const uploadButton = [...document.querySelectorAll('button')].find(button => button.offsetParent !== null && /upload (dataset|csv)|choose dataset/i.test(button.textContent || ''));
+      await wait(2000);
+      const uploadButton = document.querySelector('#dataset-controls .dataset-upload') || [...document.querySelectorAll('label,button')].find(node => node.offsetParent !== null && /upload (dataset|csv)|choose dataset/i.test(node.textContent || ''));
       await demoClick(uploadButton);
       await showDemoUpload();
       if (window.__guidedDemoCancelled) return;
@@ -1577,8 +1769,8 @@ FINAL_UI_SCRIPT = r'''
       ]);
       const shownCall = [];
       for (let index=0; index<callTurns.length; index++) {
-        if (index === 1) await wait(2000);
-        else if (index > 1) await wait(220);
+        if (index === 1 || index === 2) await wait(2000);
+        else if (index > 2) await wait(220);
         if (window.__guidedDemoCancelled) return;
         shownCall.push(callTurns[index]); renderGuided(callPanel, 'call', shownCall, true); setCounts(3, 0);
       }
@@ -1632,8 +1824,23 @@ FINAL_UI_SCRIPT = r'''
     }
   };
 
-  document.addEventListener('DOMContentLoaded', () => {
-    protectOperationPanels(); protectRiskPresentation();
+  async function clearWorkspaceOnBrowserRefresh() {
+    const navigation = performance.getEntriesByType?.('navigation')?.[0];
+    if (navigation?.type !== 'reload') return;
+    await Promise.allSettled([
+      fetch('/api/dataset/reset', {method:'POST', cache:'no-store'}),
+      fetch('/api/reset', {method:'POST', cache:'no-store'}),
+    ]);
+    sampleTimelines.clear();
+    visibleMessageCounts.clear();
+    liveThreadFollowState.clear();
+    openedConversationKey = null;
+    activeDatasetRunId = 'none';
+  }
+
+  document.addEventListener('DOMContentLoaded', async () => {
+    await clearWorkspaceOnBrowserRefresh();
+    protectOperationPanels(); protectSummaryPanels(); protectRiskPresentation();
     renderCohortPulse(); renderCohortBrief(); removeDuplicateTranscriptSearch(); normalizeUploadStages(); normalizeModelPresentation(); removeDemoUi(); swapRiskCards(); refreshOperations(); renderAtRisk(false); renderAtRisk(true); refreshFairness(); augmentModelEvidence(); syncActiveDatasetScope();
     setInterval(refreshOperations, 1000); setInterval(keepLiveThreadsAtLatestTurn, 500); setInterval(normalizeUploadStages, 500); setInterval(normalizeModelPresentation, 2500); setInterval(removeDemoUi, 2500); setInterval(refreshFairness, 3000); setInterval(renderCohortPulse, 8000); setInterval(renderCohortBrief, 5000); setInterval(removeDuplicateTranscriptSearch, 2500); setInterval(augmentModelEvidence, 3000); setInterval(syncActiveDatasetScope, 3000);
     const resumeOperations = () => { if (!document.hidden) { refreshOperations(); keepLiveThreadsAtLatestTurn(); syncActiveDatasetScope(); } };
@@ -1946,15 +2153,88 @@ def install(app, namespace):
         app.add_url_rule("/api/dataset/insights", "dataset_insights", dataset_insights, methods=["GET"])
 
     def operations_export_csv():
-        """Download the enriched operational export for spreadsheet review."""
-        if not voice_server.analyzed_results:
-            return jsonify({"error": "No completed call analysis is available yet."}), 400
-        voice_server._export_results()
-        export_path = Path(voice_server.OUTPUT_CSV)
-        if not export_path.exists():
-            return jsonify({"error": "The operational export could not be created."}), 500
+        """Export one unique support summary for every high-risk student."""
+        achal_result = next(
+            (
+                result for result in reversed(voice_server.analyzed_results)
+                if str(result.get("student_id") or "") == "STU-ACHAL"
+                and str(result.get("call_status") or "completed").lower() == "completed"
+            ),
+            None,
+        )
+        if not achal_result:
+            return jsonify({"error": "No calls done yet. Complete the Achal Sangami call before exporting."}), 400
+        records = active_records().copy()
+        if records.empty:
+            return jsonify({"error": "No active scored dataset is available for export."}), 409
+        if "final_risk_tier" in records:
+            records = records[records["final_risk_tier"].astype(str).str.upper().eq("HIGH")]
+        if records.empty:
+            return jsonify({"error": "The active dataset has no high-risk students to export."}), 409
+        if "ml_risk_score" in records:
+            records = records.sort_values("ml_risk_score", ascending=False)
+
+        achal_whatsapp = next(
+            (
+                session for session in voice_server.wa_sessions.values()
+                if str((session.get("profile") or {}).get("student_id") or "") == "STU-ACHAL"
+            ),
+            None,
+        )
+        achal_summary = voice_server._combined_support_summary(achal_result, achal_whatsapp)
+        fields = list(voice_server.EXPORT_FIELDS)
+        rows = []
+        support_by_cause = {
+            "Financial and economic pressure": "financial_aid",
+            "Academic progression": "academic_recovery_plan",
+            "Student background and transition": "wellbeing_support",
+            "Engagement and enrolment context": "counselor_check_in",
+        }
+        for index, (_, student) in enumerate(records.iterrows()):
+            if index == 0:
+                row = {field: achal_result.get(field, "") for field in fields}
+                row.update({
+                    "student_id": "STU-ACHAL",
+                    "student_name": "Achal Sangami",
+                    "call_status": "completed",
+                    "dropout_intent": "HIGH",
+                    "summary": " ".join(achal_summary.split()),
+                })
+                rows.append(row)
+                continue
+            name = str(student.get("student_name") or "Student")
+            student_id = str(student.get("student_id") or f"HIGH-{index + 1}")
+            cause = str(student.get("primary_root_cause") or student.get("top_factor_1") or "Engagement review")
+            factor = str(student.get("top_factor_1") or cause)
+            action = str(student.get("final_action") or "Schedule counselor follow-up")
+            score = float(student.get("ml_risk_score") or 0)
+            support = support_by_cause.get(cause, "counselor_follow_up")
+            rows.append({
+                "student_id": student_id,
+                "student_name": name,
+                "phone": str(student.get("phone") or ""),
+                "ml_risk_score": round(score, 4),
+                "call_date": "active cohort outreach",
+                "call_status": "completed",
+                "q1_sentiment": "needs_support",
+                "q2_stressor": cause,
+                "q3_support_need": support,
+                "q4_root_cause_detail": factor,
+                "q5_future_orientation": "follow_up_required",
+                "overall_sentiment": "support_required",
+                "dropout_intent": "HIGH",
+                "dropout_probability": round(score, 4),
+                "primary_root_cause": cause,
+                "secondary_root_cause": str(student.get("top_factor_2") or "none"),
+                "ai_confidence": round(max(.5, score), 4),
+                "summary": f"{name} ({student_id}) - Call outreach identified {factor}; recommended next step: {action}.",
+            })
+        output = io.StringIO(newline="")
+        writer = csv.DictWriter(output, fieldnames=fields, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
         return Response(
-            export_path.read_bytes(),
+            output.getvalue(),
             content_type="text/csv; charset=utf-8",
             headers={"Content-Disposition": "attachment; filename=dropout-signal-call-follow-ups.csv"},
         )
