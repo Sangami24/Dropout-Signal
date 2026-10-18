@@ -10,6 +10,7 @@ import json as _json
 import csv
 import io
 import os
+import secrets
 import time
 import threading
 import uuid
@@ -46,6 +47,22 @@ LIVE_UI_SCRIPT = r'''
   }
   .runtime-transcript-search button:hover { border-color:#bc8cff !important; }
   .runtime-transcript-search button.danger { background:#a92731 !important; border-color:#d83d47 !important; color:#fff !important; }
+  .live-score-strip { display:grid; grid-template-columns:repeat(4,minmax(110px,1fr)); gap:8px; margin:0 0 12px; }
+  .live-score-strip span { padding:8px 10px; border:1px solid #30303a; border-radius:8px; background:#121219; color:#a9a9b6; font-size:10px; text-transform:uppercase; letter-spacing:.04em; }
+  .live-score-strip b { display:block; margin-top:3px; color:#f4f4f8; font-size:14px; letter-spacing:0; }
+  .runtime-training-evidence { margin-top:18px; padding:18px; border:1px solid var(--border); border-radius:12px; background:var(--surface); }
+  .runtime-training-kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin:14px 0 18px; }
+  .runtime-training-kpis article { padding:13px; border:1px solid var(--border); border-radius:9px; background:var(--surface2); }
+  .runtime-training-kpis span { display:block; color:var(--text2); font-size:11px; text-transform:uppercase; }
+  .runtime-training-kpis strong { display:block; margin-top:5px; font-size:22px; }
+  .runtime-training-charts { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+  .runtime-training-chart { padding:14px; border:1px solid var(--border); border-radius:10px; background:#0f0f16; overflow:hidden; }
+  .runtime-training-chart h3 { margin:0 0 4px; text-align:center; }
+  .runtime-training-chart p { margin:0 0 8px; color:var(--text2); font-size:11px; text-align:center; }
+  .runtime-training-chart svg { width:100%; height:auto; display:block; }
+  .chart-legend { display:flex; justify-content:center; gap:16px; color:var(--text2); font-size:11px; }
+  .chart-legend i { display:inline-block; width:14px; height:2px; margin-right:5px; vertical-align:middle; }
+  @media (max-width:800px) { .live-score-strip,.runtime-training-kpis,.runtime-training-charts { grid-template-columns:1fr 1fr; } }
 </style>
 <script>
 (() => {
@@ -68,14 +85,14 @@ LIVE_UI_SCRIPT = r'''
       row.className = 'operation-row dataset-conversation high manual-call';
       row.dataset.studentId = studentId;
       row.open = true;
-      row.innerHTML = `<summary><strong>${escapeHtml(session.student_name || 'Achal Sangami')}</strong><span class="dataset-live">ACTIVE</span><span class="dataset-presence high"></span><em>HIGH RISK</em></summary><div class="dataset-thread call"></div>`;
+      row.innerHTML = `<summary><strong>${escapeHtml(session.student_name || 'Student')}</strong><span class="dataset-live">ACTIVE</span><span class="dataset-presence high"></span><em>${escapeHtml(session.risk_tier || 'MEDIUM')} RISK</em></summary><div class="dataset-thread call"></div>`;
       panel.prepend(row);
     });
   }
 
   function renderLiveTranscripts() {
     // `FINAL_UI_SCRIPT` below is the sole transcript renderer.  Keeping this
-    // retired renderer passive prevents it from injecting a second Achal row
+    // retired renderer passive prevents it from injecting a duplicate live row
     // or reopening a conversation after the user has selected another one.
     return;
     /*
@@ -127,12 +144,12 @@ LIVE_UI_SCRIPT = r'''
   function whatsappMarkup(messages) {
     return messages.map(message => {
       const student = message.role === 'user';
-      return `<article class="dataset-message ${student ? 'student' : 'asha'}"><span>${student ? 'ACHAL' : 'ASHA AI'}</span><p>${escapeHtml(message.content)}</p></article>`;
+      return `<article class="dataset-message ${student ? 'student' : 'asha'}"><span>${student ? 'STUDENT' : 'ASHA AI'}</span><p>${escapeHtml(message.content)}</p></article>`;
     }).join('');
   }
 
   function ensureLiveWhatsAppRows(conversation) {
-    const studentId = 'STU-ACHAL';
+    const studentId = String(conversation.student_id || 'student');
     ['wa-convos-panel', 'admin-wa-panel'].forEach(panelId => {
       const panel = document.getElementById(panelId);
       if (!panel) return;
@@ -142,7 +159,7 @@ LIVE_UI_SCRIPT = r'''
         row.className = 'operation-row dataset-conversation high manual-call';
         row.dataset.studentId = studentId;
         row.open = true;
-        row.innerHTML = `<summary><strong>${escapeHtml(conversation.student_name || 'Achal Sangami')}</strong><span class="dataset-live">ACTIVE</span><span class="dataset-presence high"></span><em>HIGH RISK</em></summary><div class="dataset-thread whatsapp"></div>`;
+        row.innerHTML = `<summary><strong>${escapeHtml(conversation.student_name || 'Student')}</strong><span class="dataset-live">ACTIVE</span><span class="dataset-presence high"></span><em>${escapeHtml(conversation.risk_level || 'MEDIUM')} RISK</em></summary><div class="dataset-thread whatsapp"></div>`;
         panel.prepend(row);
       }
     });
@@ -157,7 +174,7 @@ LIVE_UI_SCRIPT = r'''
       const messages = conversation.messages || [];
       if (!messages.length) return;
       ensureLiveWhatsAppRows(conversation);
-      document.querySelectorAll('[data-student-id="STU-ACHAL"]').forEach(row => {
+      document.querySelectorAll('[data-student-id]').forEach(row => {
         const thread = row.querySelector('.dataset-thread.whatsapp');
         if (!thread) return;
         const signature = messages.map(message => `${message.role}:${message.content}`).join('\u001f');
@@ -174,9 +191,7 @@ LIVE_UI_SCRIPT = r'''
     try {
       const response = await fetch('/whatsapp/conversations', {cache: 'no-store'});
       const payload = await response.json();
-      liveWhatsApp = (payload.conversations || []).filter(conversation =>
-        /achal/i.test(String(conversation.student_name || conversation.profile_name || ''))
-      );
+      liveWhatsApp = payload.conversations || [];
       renderLiveWhatsApp();
     } catch (_) {}
   }
@@ -617,8 +632,11 @@ FINAL_UI_SCRIPT = r'''
 <style id="authoritative-dashboard-ui">
   html, body { width:100%; max-width:100%; overflow-x:hidden !important; }
   body { min-width:0; }
-  .main { width:calc(100% - 220px); max-width:calc(100% - 220px); min-width:0; box-sizing:border-box; }
+  .main { flex:0 0 calc(100vw - 220px)!important; width:calc(100vw - 220px); max-width:calc(100vw - 220px); min-width:0; box-sizing:border-box; }
+  .main:has(#page-admin-dashboard) { flex-basis:100vw!important; width:100vw; max-width:100vw; }
   .page,.topbar,.grid-3,.card,.card-new,.card-b,.card-new-b { min-width:0; max-width:100%; box-sizing:border-box; }
+  .topbar { gap:16px; }
+  .topbar-actions { flex:1 1 auto; min-width:0; max-width:100%; flex-wrap:wrap; justify-content:flex-end; }
   .grid-3 { grid-template-columns:minmax(0,3fr) minmax(0,5fr) minmax(0,4fr); }
   .dataset-thread { min-width:0; max-width:100%; overflow-x:hidden; white-space:normal; }
   .dataset-message,.dataset-message p { min-width:0; overflow-wrap:anywhere; word-break:break-word; }
@@ -686,6 +704,14 @@ FINAL_UI_SCRIPT = r'''
   .student-summary-facts div { min-width:0; padding:10px; border:1px solid var(--border); border-radius:8px; background:var(--bg); }
   .student-summary-facts span { display:block; margin-bottom:4px; color:var(--text3); font:9px var(--mono); letter-spacing:.07em; text-transform:uppercase; }
   .student-summary-facts strong { display:block; color:var(--text); font-size:12px; overflow-wrap:anywhere; }
+  #summary-students,#admin-summary-grid { display:grid!important; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; align-items:stretch; }
+  .summary-person { position:relative; display:flex; align-items:center; min-width:0; min-height:66px; padding:14px 16px 14px 20px; overflow:hidden; border:1px solid #3a3a48!important; border-radius:10px; background:linear-gradient(145deg,rgba(255,255,255,.035),rgba(255,255,255,.012)); box-shadow:0 5px 18px rgba(0,0,0,.16); cursor:pointer; transition:border-color .16s ease,transform .16s ease,box-shadow .16s ease; }
+  .summary-person::before { content:""; position:absolute; inset:0 auto 0 0; width:4px; background:linear-gradient(180deg,var(--red),var(--purple)); }
+  .summary-person h3 { min-width:0; color:var(--text); font-size:13px; line-height:1.35; overflow-wrap:anywhere; }
+  .summary-person:hover { transform:translateY(-1px); border-color:#626276!important; box-shadow:0 8px 22px rgba(0,0,0,.23); }
+  .summary-person:focus-visible { outline:2px solid var(--purple); outline-offset:2px; border-color:var(--purple)!important; }
+  .dataset-intervention { grid-template-columns:repeat(auto-fit,minmax(min(130px,100%),1fr))!important; }
+  .dataset-intervention article { min-width:0; }
   .fairness-audit-note { margin:0 0 12px; padding:11px 13px; border-left:3px solid var(--purple); color:var(--text2); background:rgba(188,140,255,.07); font-size:11px; line-height:1.55; }
   @media (max-width:1200px) {
     .topbar { flex-wrap:wrap; align-items:flex-start; gap:12px; }
@@ -698,7 +724,7 @@ FINAL_UI_SCRIPT = r'''
     .prediction-grid .prediction-panel:last-child { grid-column:1/-1; }
   }
   @media (max-width:800px) {
-    .main { width:100%; max-width:100%; }
+    .main { flex-basis:100vw!important; width:100vw; max-width:100vw; }
     .grid-3,.cohort-pulse,.stat-grid-4,.prediction-grid,.prediction-kpis { grid-template-columns:1fr; }
     .prediction-grid .prediction-panel:last-child { grid-column:auto; }
     #tier-chart,#tier-chart-counselor { grid-template-columns:1fr; }
@@ -725,9 +751,9 @@ FINAL_UI_SCRIPT = r'''
   // other thread in both workspaces.
   let openedConversationKey = null;
   const visibleMessageCounts = new Map();
-  let allowAchalAutofocus = true;
-  let pendingAchalCallFocus = false;
-  let achalHandoffCompleted = false;
+  let pendingSelectedCallFocus = false;
+  let selectedHandoffCompleted = false;
+  let activeCallStudentId = null;
   let workspaceSwitchUntil = 0;
   let authoritativePanelWrite = false;
   let authoritativeSummaryWrite = false;
@@ -871,7 +897,11 @@ FINAL_UI_SCRIPT = r'''
     const content = modal.querySelector('.operation-modal > p');
     if (content) content.outerHTML = `<div class="student-summary-profile"><div class="student-summary-copy"><b>AI student summary</b><br>${escapeHtml(summary)}</div><div class="student-summary-facts">${[
       ['Student ID', item.student_id],
-      ['Risk score', Number(item.ml_risk_score || 0) ? Number(item.ml_risk_score).toFixed(3) : tier],
+      ['ML dropout probability', Number.isFinite(Number(item.ml_risk_score)) ? `${(Number(item.ml_risk_score) * 100).toFixed(1)}%` : 'Not scored'],
+      ['Voice risk score', item.voice_risk_score !== undefined ? `${(Number(item.voice_risk_score) * 100).toFixed(1)}%` : 'Pending'],
+      ['AI confidence', item.ai_confidence !== undefined ? `${(Number(item.ai_confidence) * 100).toFixed(1)}%` : 'Pending'],
+      ['Fused final score', item.fused_risk_score !== undefined ? `${(Number(item.fused_risk_score) * 100).toFixed(1)}%` : 'Pending'],
+      ['Call language', item.language_name || 'Pending selection'],
       ['Latest marks', profile.latest_marks],
       ['Attendance', profile.attendance_rate],
       ['Course', profile.course],
@@ -913,9 +943,9 @@ FINAL_UI_SCRIPT = r'''
       const activeA = !['completed', 'failed', 'canceled', 'interrupted'].includes(String(effectiveChannelStatus(a, channel) || '').toLowerCase());
       const activeB = !['completed', 'failed', 'canceled', 'interrupted'].includes(String(effectiveChannelStatus(b, channel) || '').toLowerCase());
       if (activeA !== activeB) return activeA ? -1 : 1;
-      const achalA = String(a.student_name || '').trim().toLowerCase() === 'achal sangami';
-      const achalB = String(b.student_name || '').trim().toLowerCase() === 'achal sangami';
-      if (achalA !== achalB) return achalA ? -1 : 1;
+      const selectedA = String(a.student_id || '') === String(activeCallStudentId || '');
+      const selectedB = String(b.student_id || '') === String(activeCallStudentId || '');
+      if (selectedA !== selectedB) return selectedA ? -1 : 1;
       return String(b.started_at || '').localeCompare(String(a.started_at || ''));
     });
     return channelItems.map(item => {
@@ -928,9 +958,11 @@ FINAL_UI_SCRIPT = r'''
       const summaryText = channel === 'call' ? (item.call_summary || item.summary) : (item.whatsapp_summary || item.summary);
       const highRisk = String(item.dropout_intent || item.tier || '').toUpperCase() === 'HIGH';
       const riskAssessment = highRisk ? 'High dropout risk flagged' : 'No high dropout risk flag';
+      const score = value => value === undefined || value === null || value === '' ? 'Pending' : `${(Number(value) * 100).toFixed(1)}%`;
+      const scoreStrip = channel === 'call' ? `<div class="live-score-strip"><span>ML probability<b>${score(item.ml_risk_score)}</b></span><span>Voice risk<b>${score(item.voice_risk_score)}</b></span><span>AI confidence<b>${score(item.ai_confidence)}</b></span><span>Fused result<b>${score(item.fused_risk_score)}</b></span></div>` : '';
       const summary = active ? '' : `<footer class="dataset-contact-summary"><b>AI Summary · ${riskAssessment}</b><p>${escapeHtml(summaryText || completedSummary({...item, status: channelStatus}))}</p></footer>`;
       const open = openedConversationKey === key;
-      return `<details class="operation-row dataset-conversation ${tone}" data-conversation-key="${escapeHtml(key)}" data-channel="${channel}" data-message-count="${messages.length}" data-is-sample="${item.is_sample ? 'true' : 'false'}" ${open ? 'open' : ''}><summary><strong>${escapeHtml(item.student_name || 'Student')}</strong><span class="${active ? 'dataset-live' : 'dataset-completed'}">${active ? 'ACTIVE' : 'COMPLETED'}</span>${active ? `<span class="dataset-presence ${tone}"></span>` : ''}<em>${escapeHtml(item.tier || 'MEDIUM')} RISK</em></summary><div class="dataset-thread ${channel}">${messages.map(m => messageMarkup(m, item.student_name || 'Student')).join('')}${summary}</div></details>`;
+      return `<details class="operation-row dataset-conversation ${tone}" data-conversation-key="${escapeHtml(key)}" data-channel="${channel}" data-message-count="${messages.length}" data-is-sample="${item.is_sample ? 'true' : 'false'}" ${open ? 'open' : ''}><summary><strong>${escapeHtml(item.student_name || 'Student')}</strong><span class="${active ? 'dataset-live' : 'dataset-completed'}">${active ? 'ACTIVE' : 'COMPLETED'}</span>${active ? `<span class="dataset-presence ${tone}"></span>` : ''}<em>${escapeHtml(item.tier || 'MEDIUM')} RISK</em></summary><div class="dataset-thread ${channel}">${scoreStrip}${messages.map(m => messageMarkup(m, item.student_name || 'Student')).join('')}${summary}</div></details>`;
     }).join('') || `<div class="dataset-empty-live">No ${channel === 'call' ? 'call transcripts' : 'WhatsApp conversations'} yet. New activity will appear here automatically.</div>`;
   }
 
@@ -943,10 +975,15 @@ FINAL_UI_SCRIPT = r'''
       const existing = byStudent.get(id);
       const updated = String(session.started_at || '') > String(existing?.started_at || '');
       if (!existing || updated) byStudent.set(id, {
-        student_id: id, student_name: session.student_name || 'Student', tier: session.risk_tier || 'HIGH',
+        student_id: id, student_name: session.student_name || 'Student', tier: session.risk_tier || 'MEDIUM',
         dropout_intent: session.dropout_intent || session.risk_tier || '',
         status: session.status || 'active', call_status: session.status || 'active', call_summary: session.summary || '',
-        ml_risk_score: session.ml_risk_score || 0, academic_profile: session.academic_profile || {},
+        ml_risk_score: session.ml_risk_score || 0,
+        voice_risk_score: session.voice_risk_score,
+        ai_confidence: session.ai_confidence,
+        fused_risk_score: session.fused_risk_score,
+        language_name: session.language_name,
+        academic_profile: session.academic_profile || {},
         started_at: session.started_at, call: visibleMessages(session.transcript_events), whatsapp: [],
       });
     });
@@ -976,28 +1013,30 @@ FINAL_UI_SCRIPT = r'''
     replenishSampleQueue([...byStudent.values()], 'whatsapp');
     const isActive = item => !['completed', 'failed', 'canceled', 'interrupted'].includes(String(item.call_status || item.status || '').toLowerCase());
     const items = [...byStudent.values()].sort((a, b) => {
-      const achalA = String(a.student_name || '').trim().toLowerCase() === 'achal sangami';
-      const achalB = String(b.student_name || '').trim().toLowerCase() === 'achal sangami';
-      if (achalA !== achalB) return achalA ? -1 : 1;
+      const selectedA = String(a.student_id || '') === String(activeCallStudentId || '');
+      const selectedB = String(b.student_id || '') === String(activeCallStudentId || '');
+      if (selectedA !== selectedB) return selectedA ? -1 : 1;
       if (isActive(a) !== isActive(b)) return isActive(a) ? -1 : 1;
       return String(b.started_at || '').localeCompare(String(a.started_at || ''));
     });
     renderUnifiedSummaryCards(items);
-    const achal = items.find(item => String(item.student_name || '').trim().toLowerCase() === 'achal sangami');
-    const achalWhatsAppReady = achal && String(achal.call_status || '').toLowerCase() === 'completed' && String(achal.whatsapp_status || '').toLowerCase() === 'active' && achal.whatsapp?.length;
-    window.__achalHandoffDebug = {
-      ready: Boolean(achalWhatsAppReady),
-      pending: pendingAchalCallFocus,
-      completed: achalHandoffCompleted,
-      callStatus: achal?.call_status || '',
-      whatsappStatus: achal?.whatsapp_status || '',
-      whatsappMessages: achal?.whatsapp?.length || 0,
+    const calledStudent = items.find(item => String(item.student_id || '') === String(activeCallStudentId || ''));
+    const calledStudentWhatsAppReady = calledStudent && String(calledStudent.call_status || '').toLowerCase() === 'completed' && String(calledStudent.whatsapp_status || '').toLowerCase() === 'active' && calledStudent.whatsapp?.length;
+    window.__callHandoffDebug = {
+      ready: Boolean(calledStudentWhatsAppReady),
+      pending: pendingSelectedCallFocus,
+      completed: selectedHandoffCompleted,
+      studentId: activeCallStudentId,
+      callStatus: calledStudent?.call_status || '',
+      whatsappStatus: calledStudent?.whatsapp_status || '',
+      whatsappMessages: calledStudent?.whatsapp?.length || 0,
     };
-    if (achalWhatsAppReady && pendingAchalCallFocus && !achalHandoffCompleted) {
-      pendingAchalCallFocus = false;
-      achalHandoffCompleted = true;
-      const riskMessage = achal.call_summary || achal.summary || 'The completed call indicates that immediate counselor follow-up is appropriate.';
-      const riskModal = showOperationModal('Asha AI has flagged Achal Sangami as high risk', riskMessage);
+    if (calledStudentWhatsAppReady && pendingSelectedCallFocus && !selectedHandoffCompleted) {
+      pendingSelectedCallFocus = false;
+      selectedHandoffCompleted = true;
+      const riskMessage = calledStudent.call_summary || calledStudent.summary || 'The completed call has been scored for counselor review.';
+      const resultTier = String(calledStudent.dropout_intent || calledStudent.tier || 'MEDIUM').toUpperCase();
+      const riskModal = showOperationModal(`Asha AI result: ${calledStudent.student_name} is ${resultTier} risk`, riskMessage);
       requestAnimationFrame(() => {
         const rect = riskModal.querySelector('.operation-modal')?.getBoundingClientRect();
         if (!rect) return;
@@ -1012,12 +1051,11 @@ FINAL_UI_SCRIPT = r'''
         riskModal.remove();
         const pageName = document.getElementById('page-admin-whatsapp') ? 'admin-whatsapp' : 'whatsapp';
         window.activateWorkspacePage?.(pageName);
-        openedConversationKey = `${achal.student_id}:whatsapp`;
-        allowAchalAutofocus = true;
+        openedConversationKey = `${calledStudent.student_id}:whatsapp`;
         await refreshOperations();
         const focusWhatsApp = () => {
           document.querySelectorAll(`.page.active details[data-channel="whatsapp"]`).forEach(row => {
-            if (String(row.querySelector('summary strong')?.textContent || '').trim().toLowerCase() !== 'achal sangami') return;
+            if (String(row.dataset.conversationKey || '') !== `${calledStudent.student_id}:whatsapp`) return;
             row.open = true;
             const thread = row.querySelector('.dataset-thread');
             if (thread) thread.scrollTop = thread.scrollHeight;
@@ -1131,10 +1169,8 @@ FINAL_UI_SCRIPT = r'''
           const willOpen = !row.open;
           if (willOpen) {
             openedConversationKey = key;
-            if (String(row.querySelector('summary strong')?.textContent || '').trim().toLowerCase() !== 'achal sangami') allowAchalAutofocus = false;
           } else if (openedConversationKey === key) {
             openedConversationKey = null;
-            allowAchalAutofocus = false;
           }
         });
         row.addEventListener('toggle', () => {
@@ -1143,10 +1179,8 @@ FINAL_UI_SCRIPT = r'''
           if ((row.dataset.runtimeProgrammaticToggle === 'true' || Date.now() < workspaceSwitchUntil) && !userIntent) return;
           if (!row.open) {
             if (openedConversationKey === key && row.closest('.page.active')) openedConversationKey = null;
-            allowAchalAutofocus = false;
             return;
           }
-          if (String(row.querySelector('summary strong')?.textContent || '').trim().toLowerCase() !== 'achal sangami') allowAchalAutofocus = false;
           openedConversationKey = key;
           document.querySelectorAll('.page.active details[data-conversation-key]').forEach(other => {
             if (other === row || !other.open) return;
@@ -1184,7 +1218,7 @@ FINAL_UI_SCRIPT = r'''
     // This is the single transcript renderer for both roles.  It coalesces
     // repeated webhook/test SIDs for one student before replacing a panel.
     // The recovered template's renderer cannot do that and was the source of
-    // duplicate Achal rows and forced scrolling.
+    // duplicate live rows and forced scrolling.
     if (window.__guidedDemoActive || operationsInFlight) return;
     operationsInFlight = true;
     try {
@@ -1529,7 +1563,7 @@ FINAL_UI_SCRIPT = r'''
       if (value === 'Champion Model') node.textContent = '4-Model Validation';
       else if (value === '4-Model Validation-Weighted Ensemble') node.textContent = '4-Model Validation';
       else if (/^Logistic Regression and XGBoost train on an 80% stratified split\./.test(value)) {
-        node.textContent = 'Logistic Regression, XGBoost, Random Forest, and HistGradientBoosting train on the same 80% stratified split. Held-out validation evaluates all four models before their combined 4-Model Validation score is applied.';
+        node.textContent = 'Logistic Regression, XGBoost, Random Forest, and HistGradientBoosting use a stratified 70/15/15 train, validation, and untouched-test split. Validation tunes the blend; the test partition reports final accuracy.';
       } else if (/both candidate models/i.test(value)) node.textContent = value.replace(/both candidate models/ig, 'all four candidate models');
       else if (/two candidates/i.test(value)) node.textContent = value.replace(/two candidates/ig, 'four candidate models');
       else if (/both trained models/i.test(value)) node.textContent = value.replace(/both trained models/ig, 'all four trained models');
@@ -1540,16 +1574,45 @@ FINAL_UI_SCRIPT = r'''
     const modelSelected = Boolean(document.querySelector('.data-layer-card.selected[data-layer="model"]'));
     if (detail && modelSelected && detail.dataset.runtimeFourModel !== 'true') {
       detail.dataset.runtimeFourModel = 'true';
-      detail.innerHTML = `<div class="layer-expanded model"><div><span class="layer-expanded-kicker">Held-out ML validation and explainability</span><h2>4-Model Validation</h2><p>Logistic Regression, XGBoost, Random Forest, and HistGradientBoosting train on the same stratified split. Their held-out metrics are combined into the operational 4-Model Validation score.</p></div><ul><li>Accuracy, precision, recall, F1, and ROC-AUC are recorded for all four models.</li><li>All four model records and the combined validation result are retained for reproducibility.</li><li>SHAP provides global feature importance and student-level contributing factors.</li><li>Gender and socioeconomic fairness checks measure demographic parity, equal opportunity, and predictive parity.</li></ul></div>`;
+      detail.innerHTML = `<div class="layer-expanded model"><div><span class="layer-expanded-kicker">Held-out ML validation and explainability</span><h2>4-Model Validation</h2><p>All four models use a stratified 70/15/15 train, validation, and untouched-test split. The blend and threshold are chosen on validation data, then reported once on the test partition.</p></div><ul><li>Accuracy, precision, recall, F1, and ROC-AUC are recorded for all four models.</li><li>The ensemble activates only when test accuracy is at least 88% and exceeds every individual model.</li><li>SHAP provides global feature importance and student-level contributing factors.</li><li>Gender and socioeconomic fairness checks measure demographic parity, equal opportunity, and predictive parity.</li></ul></div>`;
       const label = document.getElementById('layer-detail-label');
       if (label) label.textContent = '4-Model Validation';
     }
   }
 
   async function augmentModelEvidence() {
-    // ML Evidence already has one authoritative renderer. Remove the former
-    // add-on panel rather than duplicating model and layer information.
-    document.querySelectorAll('#page-model-evidence .ensemble-context').forEach(node => node.remove());
+    const page = document.getElementById('page-model-evidence');
+    if (!page) return;
+    try {
+      const payload = await fetch('/api/model-metrics', {cache:'no-store'}).then(response => response.ok ? response.json() : {});
+      if (!payload.dataset_loaded) { document.getElementById('runtime-training-evidence')?.remove(); return; }
+      const history = payload.training_history || {};
+      const points = history.points || [];
+      if (!points.length) return;
+      [...page.children].forEach(child => {
+        if (child.id !== 'runtime-training-evidence' && /loading model evidence/i.test(child.textContent || '')) child.remove();
+      });
+      const ensemble = payload.ensemble || {}, metrics = ensemble.metrics || {};
+      const signature = `${payload.run_id}:${JSON.stringify(points)}`;
+      let panel = document.getElementById('runtime-training-evidence');
+      if (panel?.dataset.signature === signature) return;
+      if (!panel) { panel = document.createElement('section'); panel.id = 'runtime-training-evidence'; panel.className = 'runtime-training-evidence'; page.appendChild(panel); }
+      panel.dataset.signature = signature;
+      const chart = (title, trainKey, validationKey, axisLabel) => {
+        const width=640, height=330, left=58, right=18, top=28, bottom=48;
+        const values=points.flatMap(point=>[Number(point[trainKey]),Number(point[validationKey])]).filter(Number.isFinite);
+        const minValue=title.includes('Accuracy')?Math.max(0,Math.min(...values)-.05):0;
+        const maxValue=title.includes('Accuracy')?1:Math.max(...values)*1.08;
+        const x=index=>left+index*(width-left-right)/Math.max(1,points.length-1);
+        const y=value=>top+(maxValue-value)*(height-top-bottom)/Math.max(.0001,maxValue-minValue);
+        const line=key=>points.map((point,index)=>`${x(index).toFixed(1)},${y(Number(point[key])).toFixed(1)}`).join(' ');
+        const ticks=[0,.25,.5,.75,1].map(frac=>{const value=minValue+(maxValue-minValue)*frac,py=y(value);return `<line x1="${left}" y1="${py}" x2="${width-right}" y2="${py}" stroke="#2c2c38"/><text x="${left-8}" y="${py+4}" fill="#8e8e9c" text-anchor="end" font-size="11">${value.toFixed(2)}</text>`;}).join('');
+        const xTicks=points.map((point,index)=>`<text x="${x(index)}" y="${height-20}" fill="#8e8e9c" text-anchor="middle" font-size="10">${point.epoch}</text>`).join('');
+        return `<section class="runtime-training-chart"><h3>${escapeHtml(title)}</h3><p>${escapeHtml(axisLabel)}</p><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(title)} for this dataset">${ticks}<line x1="${left}" y1="${top}" x2="${left}" y2="${height-bottom}" stroke="#77778a"/><line x1="${left}" y1="${height-bottom}" x2="${width-right}" y2="${height-bottom}" stroke="#77778a"/><polyline points="${line(trainKey)}" fill="none" stroke="#56b6c2" stroke-width="3"/><polyline points="${line(validationKey)}" fill="none" stroke="#bc8cff" stroke-width="3"/>${xTicks}<text x="${width/2}" y="${height-3}" fill="#a9a9b6" text-anchor="middle" font-size="11">boosting round</text></svg><div class="chart-legend"><span><i style="background:#56b6c2"></i>Train</span><span><i style="background:#bc8cff"></i>Validation</span></div></section>`;
+      };
+      const pct=value=>Number.isFinite(Number(value))?`${(Number(value)*100).toFixed(2)}%`:'—';
+      panel.innerHTML=`<h2>Uploaded Dataset Training Evidence</h2><p>Real measurements for <strong>${escapeHtml(payload.dataset_name||'active dataset')}</strong>. These curves come from the XGBoost component during this run and are not illustrative values.</p><div class="runtime-training-kpis"><article><span>Ensemble accuracy</span><strong>${pct(metrics.accuracy)}</strong></article><article><span>ROC-AUC</span><strong>${pct(metrics.auc_roc)}</strong></article><article><span>Decision threshold</span><strong>${pct(ensemble.decision_threshold)}</strong></article><article><span>Quality gate</span><strong>${ensemble.quality_gate?.passed?'Passed':'Review'}</strong></article></div><div class="runtime-training-charts">${chart('Model Accuracy','train_accuracy','validation_accuracy','Accuracy by boosting round')}${chart('Model Loss','train_loss','validation_loss','Log loss by boosting round')}</div>`;
+    } catch (_) {}
   }
 
   function showOperationModal(title, message, actionLabel, actionHref) {
@@ -1578,7 +1641,7 @@ FINAL_UI_SCRIPT = r'''
   }
 
   async function exportCallsWithModal() {
-    const modal = showOperationModal('Preparing CSV export', 'The export includes distinct walkthrough records and every analyzed live call, including Achal after completion.');
+    const modal = showOperationModal('Preparing CSV export', 'The export includes distinct walkthrough records and every analyzed live call after completion.');
     try {
       const response = await fetch('/api/operations/export.csv', {cache:'no-store'});
       if (!response.ok) {
@@ -1635,9 +1698,8 @@ FINAL_UI_SCRIPT = r'''
     if (event.target.closest('button') && /call students/i.test(event.target.closest('button').textContent || '')) {
       // The live call hand-off should take priority even if the counselor had
       // previously browsed another conversation.
-      openedConversationKey = 'STU-ACHAL:call';
-      allowAchalAutofocus = true;
-      pendingAchalCallFocus = true;
+      openedConversationKey = null;
+      pendingSelectedCallFocus = true;
       setTimeout(refreshOperations, 350);
       setTimeout(refreshOperations, 1100);
       setTimeout(refreshOperations, 3200);
@@ -1655,19 +1717,21 @@ FINAL_UI_SCRIPT = r'''
 
   async function beginOperationalCall(transcriptPage) {
     // Replace the recovered client-side "manual demo" state machine. The
-    // server webhook session is the only source of truth for Achal's row.
-    openedConversationKey = 'STU-ACHAL:call';
-    allowAchalAutofocus = true;
-    pendingAchalCallFocus = true;
-    achalHandoffCompleted = false;
-    const callingModal = showOperationModal('Asha AI calling high-risk students', 'Starting the five-question outreach call for the high-risk queue.');
+    // The server webhook session is the source of truth for the randomly
+    // selected student's row.
+    openedConversationKey = null;
+    pendingSelectedCallFocus = true;
+    selectedHandoffCompleted = false;
+    const callingModal = showOperationModal('Asha AI starting a student check-in', 'Selecting a student from the active dataset and starting the language prompt plus four-question call.');
     try {
       const response = await fetch('/api/manual-call', {method:'POST'});
       const payload = await response.json();
       if (!response.ok || payload.error) throw new Error(payload.error || 'The call could not be started.');
+      activeCallStudentId = String(payload.student_id || '');
+      openedConversationKey = activeCallStudentId ? `${activeCallStudentId}:call` : null;
       window.activateWorkspacePage?.(transcriptPage);
       await refreshOperations();
-      callingModal.querySelector('h2').textContent = 'High-risk outreach call is now active';
+      callingModal.querySelector('h2').textContent = `${payload.student_name || 'Student'} check-in is now active`;
       callingModal.querySelector('p').textContent = 'The live transcript is open and will update after each complete spoken answer.';
       setTimeout(() => callingModal.remove(), 1200);
       return payload;
@@ -1675,9 +1739,9 @@ FINAL_UI_SCRIPT = r'''
       setTimeout(async () => {
         try {
           const payload = await fetch('/api/transcripts', {cache:'no-store'}).then(response => response.json());
-          const activeAchal = Object.values(payload.sessions || {}).some(session => String(session.student_name || '').trim().toLowerCase() === 'achal sangami' && !['completed','failed','canceled','interrupted'].includes(String(session.status || '').toLowerCase()));
-          if (!activeAchal) pendingAchalCallFocus = false;
-        } catch (_) { pendingAchalCallFocus = false; }
+          const activeCall = Object.values(payload.sessions || {}).some(session => (!activeCallStudentId || String(session.student_id || '') === activeCallStudentId) && !['completed','failed','canceled','interrupted'].includes(String(session.status || '').toLowerCase()));
+          if (!activeCall) pendingSelectedCallFocus = false;
+        } catch (_) { pendingSelectedCallFocus = false; }
       }, 1800);
       callingModal.querySelector('h2').textContent = 'Call could not start';
       callingModal.querySelector('p').textContent = error.message || 'The call could not be started.';
@@ -1841,7 +1905,7 @@ FINAL_UI_SCRIPT = r'''
       ['Suman Saanvi Gupta','MEDIUM',false], ['Rohan Ira Kumar','HIGH',false],
     ].map(([name,tier,active], index) => {
       const turns = dummyTurns(name, channel);
-      const summary = active ? '' : `<footer class="dataset-contact-summary"><b>AI Summary · ${tier === 'HIGH' ? 'High dropout risk flagged' : 'No high dropout risk flag'}</b><p>${escapeHtml(`${name} completed the ${channel === 'call' ? 'five-question call' : 'WhatsApp follow-up'} and has a recorded support next step.`)}</p></footer>`;
+      const summary = active ? '' : `<footer class="dataset-contact-summary"><b>AI Summary · ${tier === 'HIGH' ? 'High dropout risk flagged' : 'No high dropout risk flag'}</b><p>${escapeHtml(`${name} completed the ${channel === 'call' ? 'four-question call' : 'WhatsApp follow-up'} and has a recorded support next step.`)}</p></footer>`;
       return `<details class="operation-row dataset-conversation ${tier.toLowerCase()}" data-conversation-key="guided-${channel}-${index}" data-channel="${channel}"><summary><strong>${escapeHtml(name)}</strong><span class="${active ? 'dataset-live' : 'dataset-completed'}">${active ? 'ACTIVE' : 'COMPLETED'}</span>${active ? `<span class="dataset-presence ${tier.toLowerCase()}"></span>` : ''}<em>${tier} RISK</em></summary><div class="dataset-thread ${channel}">${turns.map(turn => messageMarkup(turn, name)).join('')}${summary}</div></details>`;
     }).join('');
     const renderGuided = (panel, channel, turns, active, summary = '') => {
@@ -1877,7 +1941,7 @@ FINAL_UI_SCRIPT = r'''
       await wait(1700); modeled.remove();
       const callButton = [...document.querySelectorAll('button')].find(button => button.offsetParent !== null && /call students/i.test(button.textContent || ''));
       await demoClick(callButton);
-      const calling = popup('Asha AI Calling High-Risk Students', 'Opening a live five-question support call with Demo Student…', 'var(--red)');
+      const calling = popup('Asha AI Calling Students', 'Opening a live language prompt and four-question support call with Demo Student…', 'var(--red)');
       await wait(1400); calling.remove();
       window.activateWorkspacePage?.('transcript');
       await wait(350);
@@ -1888,14 +1952,12 @@ FINAL_UI_SCRIPT = r'''
         'What has been the most challenging part of college life recently?',
         'Which part of your current coursework would you most like support with?',
         'If you could change one thing about your college experience, what would it be?',
-        'What are you most looking forward to next semester?',
       ];
       const answers = [
         'I have been falling behind and I am worried about managing coursework and finances.',
         'Balancing assignments, attendance, and my fee payment has been the hardest part.',
         'Financial-aid guidance and help making an academic recovery plan would help me.',
         'I would change how difficult it is to find the right support before deadlines build up.',
-        'I am looking forward to getting back on track and continuing next semester.',
       ];
       const callTurns = questions.flatMap((question,index) => [
         {speaker:'Asha AI',side:'ai',text:question},
@@ -2063,17 +2125,11 @@ def _dataset_ready() -> bool:
 
 
 def _manual_call_payload():
-    """Use the designated live-call contact for every active dataset."""
+    """Choose a random scored student while calling the configured demo phone."""
     records = active_records().copy()
     if records.empty:
         return None
-    if "final_risk_tier" in records:
-        high = records[records["final_risk_tier"].astype(str).str.upper().eq("HIGH")]
-        if not high.empty:
-            records = high
-    if "ml_risk_score" in records:
-        records = records.sort_values("ml_risk_score", ascending=False)
-    row = records.iloc[0]
+    row = records.iloc[secrets.randbelow(len(records))]
     def profile_value(*names, default="Not recorded"):
         for name in names:
             value = row.get(name)
@@ -2083,12 +2139,10 @@ def _manual_call_payload():
         return default
 
     return {
-        # The dashboard's live demo always calls the same consented test
-        # contact; the uploaded cohort is used solely as the eligibility gate.
-        "student_id": "STU-ACHAL",
-        "student_name": "Achal Sangami",
+        "student_id": profile_value("student_id", "Student ID", default="STUDENT"),
+        "student_name": profile_value("student_name", "Student Name", default="Student"),
         "ml_risk_score": float(row.get("ml_risk_score") or 0),
-        "risk_tier": "HIGH",
+        "risk_tier": profile_value("final_risk_tier", default="MEDIUM").upper(),
         "academic_profile": {
             "course": profile_value("course", default="Degree program"),
             "branch": profile_value("branch"),
@@ -2097,6 +2151,13 @@ def _manual_call_payload():
             "attendance_rate": profile_value("attendance_rate"),
             "latest_marks": profile_value("latest_marks"),
             "current_gpa": profile_value("current_gpa"),
+            "lowest_subject": profile_value("lowest_subject"),
+            "lowest_subject_marks": profile_value("lowest_subject_marks"),
+            "subject_marks_summary": profile_value("subject_marks_summary"),
+            "assignment_completion": profile_value("Assignment Completion Percentage"),
+            "internal_assessment_average": profile_value("Internal Assessment Average"),
+            "backlogs": profile_value("Backlogs"),
+            "lms_engagement_score": profile_value("LMS Engagement Score"),
             "primary_root_cause": profile_value("primary_root_cause", "top_factor_1"),
             "top_factor_1": profile_value("top_factor_1"),
             "final_action": profile_value("final_action", default="Immediate counselor review"),
@@ -2153,6 +2214,7 @@ def install(app, namespace):
             metadata = active_metadata() or {}
             payload["pipeline_layers"] = metadata.get("pipeline_layers", {})
             payload["ensemble"] = metadata.get("ensemble", {})
+            payload["training_history"] = metadata.get("training_history", {})
             payload["champion_model"] = _visible_model_name(payload.get("champion_model") or metadata.get("champion_model"))
             models = payload.get("models")
             if isinstance(models, dict):
@@ -2308,16 +2370,15 @@ def install(app, namespace):
 
     def operations_export_csv():
         """Export one unique support summary for every high-risk student."""
-        achal_result = next(
+        live_result = next(
             (
                 result for result in reversed(voice_server.analyzed_results)
-                if str(result.get("student_id") or "") == "STU-ACHAL"
-                and str(result.get("call_status") or "completed").lower() == "completed"
+                if str(result.get("call_status") or "completed").lower() == "completed"
             ),
             None,
         )
-        if not achal_result:
-            return jsonify({"error": "No calls done yet. Complete the Achal Sangami call before exporting."}), 400
+        if not live_result:
+            return jsonify({"error": "No completed analyzed call is available for export."}), 400
         records = active_records().copy()
         if records.empty:
             return jsonify({"error": "No active scored dataset is available for export."}), 409
@@ -2328,14 +2389,14 @@ def install(app, namespace):
         if "ml_risk_score" in records:
             records = records.sort_values("ml_risk_score", ascending=False)
 
-        achal_whatsapp = next(
+        live_whatsapp = next(
             (
                 session for session in voice_server.wa_sessions.values()
-                if str((session.get("profile") or {}).get("student_id") or "") == "STU-ACHAL"
+                if str((session.get("profile") or {}).get("student_id") or "") == str(live_result.get("student_id") or "")
             ),
             None,
         )
-        achal_summary = voice_server._combined_support_summary(achal_result, achal_whatsapp)
+        live_summary = voice_server._combined_support_summary(live_result, live_whatsapp)
         fields = list(voice_server.EXPORT_FIELDS)
         if "ai_summary" not in fields:
             fields.append("ai_summary")
@@ -2348,14 +2409,14 @@ def install(app, namespace):
         }
         for index, (_, student) in enumerate(records.iterrows()):
             if index == 0:
-                row = {field: achal_result.get(field, "") for field in fields}
+                row = {field: live_result.get(field, "") for field in fields}
                 row.update({
-                    "student_id": "STU-ACHAL",
-                    "student_name": "Achal Sangami",
+                    "student_id": str(live_result.get("student_id") or ""),
+                    "student_name": str(live_result.get("student_name") or "Student"),
                     "call_status": "completed",
-                    "dropout_intent": "HIGH",
-                    "summary": " ".join(achal_summary.split()),
-                    "ai_summary": " ".join(achal_summary.split()),
+                    "dropout_intent": str(live_result.get("dropout_intent") or "MEDIUM"),
+                    "summary": " ".join(live_summary.split()),
+                    "ai_summary": " ".join(live_summary.split()),
                 })
                 rows.append(row)
                 continue
@@ -2433,7 +2494,7 @@ def install(app, namespace):
             return jsonify(result), 409 if result.get("code") == "dataset_required" else 503
         # Expose one durable ringing transcript immediately, rather than
         # waiting for Twilio's answer webhook. Both dashboards can therefore
-        # open Achal's live call as soon as "Call Students" is pressed. The
+        # open the selected student's live call as soon as "Call Students" is pressed. The
         # welcome webhook replaces this provisional entry using the same SID.
         call_sid = str(result.get("call_sid") or "")
         if call_sid:
@@ -2460,7 +2521,8 @@ def install(app, namespace):
             else:
                 provisional.setdefault("risk_tier", student.get("risk_tier", "HIGH"))
                 provisional.setdefault("student_name", student["student_name"])
-                provisional.setdefault("academic_profile", student.get("academic_profile") or {})
+                if not provisional.get("academic_profile"):
+                    provisional["academic_profile"] = student.get("academic_profile") or {}
             voice_server._persist_live_state()
         return jsonify({**student, **result})
 
@@ -2520,7 +2582,7 @@ def install(app, namespace):
             target["whatsapp"] = messages
         # Keep the operational views populated for a walkthrough, but make
         # these explicitly separate sample records. They never replace a
-        # webhook-backed student call such as Achal's.
+        # webhook-backed selected-student call.
         if payload.get("dataset_loaded"):
             real_ids = {str(item.get("student_id")) for item in real_calls}
             for index, student in enumerate(namespace["_dataset_records"](limit=14)):
@@ -2578,7 +2640,7 @@ def install(app, namespace):
 
     # The old endpoint generated eight active conversations from every upload.
     # These restored samples are completed history, so they cannot replace or
-    # interfere with Achal's real, webhook-backed call.
+    # interfere with the selected student's real, webhook-backed call.
     for rule in app.url_map.iter_rules():
         if rule.rule == "/api/dataset/experience":
             app.view_functions[rule.endpoint] = dataset_experience

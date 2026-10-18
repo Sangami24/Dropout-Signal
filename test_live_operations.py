@@ -124,7 +124,29 @@ class VoiceTranscriptTests(unittest.TestCase):
         persisted = json.loads(voice_server._LIVE_STATE_FILE.read_text(encoding="utf-8"))
         self.assertEqual(len(persisted["wa_sessions"][phone]["messages"]), 2)
 
-    def test_demo_handset_is_always_labeled_achal_sangami(self):
+    def test_whatsapp_outreach_without_twilio_is_saved_locally(self):
+        phone = "+910000000009"
+        result = {
+            "student_id": "STU-LOCAL",
+            "student_name": "Local Student",
+            "spoken_name": "Local",
+            "phone": phone,
+            "dropout_intent": "HIGH",
+            "primary_root_cause": "academic",
+            "summary": "The student requested academic support.",
+        }
+        with (
+            patch.object(voice_server, "twilio_ready", False),
+            patch.object(voice_server, "twilio_client", None),
+        ):
+            sent = voice_server._auto_whatsapp_outreach([result])
+        self.assertEqual(sent, 0)
+        self.assertEqual(voice_server.wa_sessions[phone]["profile"]["student_id"], "STU-LOCAL")
+        message = voice_server.wa_sessions[phone]["messages"][0]["content"].lower()
+        self.assertIn("academic", message)
+        self.assertIn("support", message)
+
+    def test_demo_handset_preserves_selected_student_identity(self):
         phone = "+910000000002"
         voice_server.wa_sessions[phone] = {
             "messages": [{"role": "assistant", "content": "Hello"}],
@@ -134,9 +156,56 @@ class VoiceTranscriptTests(unittest.TestCase):
         }
         with patch.object(voice_server, "DEMO_PHONE", phone):
             voice_server._normalize_demo_whatsapp_identity(f"whatsapp:{phone}")
-        self.assertEqual(voice_server.wa_sessions[phone]["profile"]["student_id"], "STU-ACHAL")
-        self.assertEqual(voice_server.wa_sessions[phone]["profile"]["student_name"], "Achal Sangami")
-        self.assertEqual(voice_server.wa_sessions[phone]["profile_name"], "Achal Sangami")
+        self.assertEqual(voice_server.wa_sessions[phone]["profile"]["student_id"], "old")
+        self.assertEqual(voice_server.wa_sessions[phone]["profile"]["student_name"], "Old Profile")
+        self.assertEqual(voice_server.wa_sessions[phone]["profile_name"], "Old Profile")
+
+    def test_spoken_language_retry_then_kannada_four_question_flow(self):
+        session = self._session("CA-language")
+        session.update({"current_question": "language_preference", "questions": [], "academic_profile": {"attendance_rate": "62%", "lowest_subject": "Mathematics", "lowest_subject_marks": "44"}})
+        client = voice_server.app.test_client()
+        retry = client.post("/voice/language?sid=CA-language&nospeech=1", data={"CallSid": "CA-language"})
+        self.assertEqual(retry.status_code, 200)
+        self.assertIn("did not hear that properly", retry.get_data(as_text=True))
+        selected = client.post("/voice/language?sid=CA-language", data={"CallSid": "CA-language", "SpeechResult": "ಕನ್ನಡ", "Confidence": "0.95"})
+        self.assertEqual(selected.status_code, 200)
+        self.assertEqual(session["language_code"], "kn-IN")
+        self.assertEqual(len(session["questions"]), 4)
+        self.assertIn('language="kn-IN"', selected.get_data(as_text=True))
+
+    def test_strong_academic_profile_still_gets_four_questions(self):
+        questions = voice_server._build_adaptive_questions(
+            {"attendance_rate": "96%", "lowest_subject": "Mathematics", "lowest_subject_marks": "91"},
+            "en-IN",
+        )
+        self.assertEqual(len(questions), 4)
+        self.assertEqual(len(set(questions)), 4)
+
+    def test_unheard_question_repeats_without_advancing(self):
+        session = self._session("CA-unheard")
+        session.update({
+            "language_code": "en-IN",
+            "tts_voice": voice_server.LANGUAGES["en-IN"]["voice"],
+            "questions": voice_server._build_adaptive_questions({}, "en-IN"),
+        })
+        session["current_question"] = session["questions"][0]
+        response = voice_server.app.test_client().post(
+            "/voice/respond?q=0&sid=CA-unheard&nospeech=1",
+            data={"CallSid": "CA-unheard"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(session["answers"], {})
+        self.assertEqual(session["current_question"], session["questions"][0])
+        self.assertIn("Could you please repeat your answer", response.get_data(as_text=True))
+
+    def test_live_fused_score_can_reach_all_three_tiers(self):
+        def score(text):
+            session = self._session(f"CA-{text[:3]}")
+            session["answers"] = {key: {"text": text, "twilio_confidence": .92} for key in voice_server.Q_KEYS}
+            return voice_server._live_voice_assessment(session)[3]
+        self.assertEqual(score("Everything is great and manageable. I am excited, doing well, and will continue."), "LOW")
+        self.assertEqual(score("Things are okay and I am still deciding what support would help."), "MEDIUM")
+        self.assertEqual(score("I am struggling, failing, missing classes, and I may leave college and quit."), "HIGH")
 
     def test_whatsapp_completion_builds_one_combined_summary(self):
         phone = "+910000000003"
@@ -230,7 +299,8 @@ class UnifiedDashboardTests(VoiceTranscriptTests):
             self.assertIn("professional-risk-workspace", template)
             self.assertIn("Reading earlier messages deliberately pauses", template)
             self.assertIn("student-summary-profile", template)
-            self.assertIn("calling high-risk students", template)
+            self.assertIn("starting a student check-in", template)
+            self.assertIn("Uploaded Dataset Training Evidence", template)
         self.assertIn("guided-demo-login-cursor", self.unified.LOGIN_HTML)
         self.assertIn("Math.min(window.innerWidth-50", self.unified.LOGIN_HTML)
         self.assertIn("dropout-signal-guided-cursor", self.unified.LOGIN_HTML)
@@ -242,7 +312,7 @@ class UnifiedDashboardTests(VoiceTranscriptTests):
         client = self.unified.app.test_client()
         empty = client.get("/api/operations/export.csv")
         self.assertEqual(empty.status_code, 400)
-        self.assertIn("No calls done yet", empty.get_json()["error"])
+        self.assertIn("No completed analyzed call", empty.get_json()["error"])
 
         voice_server.analyzed_results.append({
             "student_id": "STU-ACHAL", "student_name": "Achal Sangami",

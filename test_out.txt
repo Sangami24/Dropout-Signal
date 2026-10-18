@@ -1,0 +1,1 @@
+HTTPConnectionPool(host='127.0.0.1', port=5000): Max retries exceeded with url: /voice/welcome?student_id=STU-123&student_name=Aarav&ml_risk=0.87 (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=5000): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it"))

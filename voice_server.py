@@ -24,7 +24,9 @@ import os
 import sys
 import json
 import csv
+import math
 import re
+import random
 import time
 import threading
 import urllib.parse
@@ -105,10 +107,18 @@ QUESTION_SPEECH_HINTS = [
 
 def _speech_gather(question_index, call_sid):
     """Create a consistently tuned Gather that publishes final speech only."""
-    hints = ", ".join(("Achal Sangami", QUESTION_SPEECH_HINTS[question_index]))
+    session = sessions.get(call_sid, {})
+    language = session.get("language_code", SPEECH_LANGUAGE)
+    student_name = session.get("student_name", "Student")
+    profile = session.get("academic_profile") or {}
+    hints = ", ".join(filter(None, (
+        str(student_name),
+        str(profile.get("lowest_subject") or ""),
+        QUESTION_SPEECH_HINTS[min(question_index, len(QUESTION_SPEECH_HINTS) - 1)],
+    )))
     options = dict(
         input="speech",
-        language=SPEECH_LANGUAGE,
+        language=language,
         hints=hints,
         speech_timeout=SPEECH_TIMEOUT_SECONDS or "auto",
         timeout=12,
@@ -238,8 +248,143 @@ Q_KEYS = [
     "q2_biggest_challenge",
     "q3_support_need",
     "q4_change_wish",
-    "q5_future_outlook",
 ]
+
+LANGUAGES = {
+    "en-IN": {
+        "name": "English", "voice": "Google.en-IN-Neural2-A",
+        "selected": "Thank you. We will continue in English.",
+        "repeat": "I did not hear that properly. Please say English, Hindi, or Kannada.",
+        "answer_repeat": "I did not hear that properly. Could you please repeat your answer?",
+        "ack": ["Thank you for sharing that.", "I appreciate your answer.", "That is helpful to know.", "Thank you for being open."],
+        "closing": "Thank you for speaking with us. Your answers will help the student wellness team offer the right support. Take care.",
+    },
+    "hi-IN": {
+        "name": "Hindi", "voice": "Google.hi-IN-Wavenet-A",
+        "selected": "धन्यवाद। अब हम हिंदी में बात करेंगे।",
+        "repeat": "मुझे ठीक से सुनाई नहीं दिया। कृपया इंग्लिश, हिंदी या कन्नड़ कहें।",
+        "answer_repeat": "मुझे ठीक से सुनाई नहीं दिया। कृपया अपना उत्तर दोबारा कहें।",
+        "ack": ["यह बताने के लिए धन्यवाद।", "आपके उत्तर के लिए धन्यवाद।", "यह जानना उपयोगी है।", "खुलकर बताने के लिए धन्यवाद।"],
+        "closing": "हमसे बात करने के लिए धन्यवाद। आपके उत्तरों से छात्र सहायता टीम आपको सही सहयोग दे सकेगी। अपना ध्यान रखें।",
+    },
+    "kn-IN": {
+        "name": "Kannada", "voice": "Google.kn-IN-Wavenet-A",
+        "selected": "ಧನ್ಯವಾದಗಳು. ಈಗ ನಾವು ಕನ್ನಡದಲ್ಲಿ ಮುಂದುವರಿಯೋಣ.",
+        "repeat": "ನನಗೆ ಸರಿಯಾಗಿ ಕೇಳಿಸಲಿಲ್ಲ. ದಯವಿಟ್ಟು ಇಂಗ್ಲಿಷ್, ಹಿಂದಿ ಅಥವಾ ಕನ್ನಡ ಎಂದು ಹೇಳಿ.",
+        "answer_repeat": "ನನಗೆ ಸರಿಯಾಗಿ ಕೇಳಿಸಲಿಲ್ಲ. ದಯವಿಟ್ಟು ನಿಮ್ಮ ಉತ್ತರವನ್ನು ಮತ್ತೆ ಹೇಳಿ.",
+        "ack": ["ಹಂಚಿಕೊಂಡಿದ್ದಕ್ಕೆ ಧನ್ಯವಾದಗಳು.", "ನಿಮ್ಮ ಉತ್ತರಕ್ಕೆ ಧನ್ಯವಾದಗಳು.", "ಇದನ್ನು ತಿಳಿದುಕೊಳ್ಳುವುದು ಸಹಾಯಕವಾಗಿದೆ.", "ಮುಕ್ತವಾಗಿ ಹೇಳಿದ್ದಕ್ಕೆ ಧನ್ಯವಾದಗಳು."],
+        "closing": "ನಮ್ಮೊಂದಿಗೆ ಮಾತನಾಡಿದ್ದಕ್ಕೆ ಧನ್ಯವಾದಗಳು. ನಿಮ್ಮ ಉತ್ತರಗಳು ವಿದ್ಯಾರ್ಥಿ ಸಹಾಯ ತಂಡಕ್ಕೆ ಸರಿಯಾದ ನೆರವು ನೀಡಲು ಸಹಾಯ ಮಾಡುತ್ತವೆ. ಜಾಗರೂಕರಾಗಿರಿ.",
+    },
+}
+
+QUESTION_BANKS = {
+    "en-IN": {
+        "general": ["How has this semester been going for you?", "What has your college experience felt like recently?", "How are things going with your studies at the moment?"],
+        "attendance": ["How has attending classes been fitting into your routine lately?", "What has your experience of getting to classes been like this semester?", "How manageable has your class schedule felt recently?"],
+        "subject": ["How are you finding {subject} this semester?", "What parts of {subject} feel clear or difficult to you?", "How has your experience been with the coursework in {subject}?"],
+        "coursework": ["Which parts of your coursework feel most manageable or most demanding?", "How are you feeling about your recent assignments and assessments?", "What has helped or limited your academic progress recently?"],
+        "support": ["What kind of support, if any, would make this semester easier?", "What change would most improve your college experience right now?", "Is there anything the college could do to support your plans?"],
+        "future": ["How are you thinking about next semester?", "What are you hoping your studies will look like over the next few months?", "What are you looking forward to in your course?"],
+    },
+    "hi-IN": {
+        "general": ["यह सेमेस्टर आपके लिए अब तक कैसा रहा है?", "हाल में आपका कॉलेज का अनुभव कैसा रहा है?", "इस समय आपकी पढ़ाई कैसी चल रही है?"],
+        "attendance": ["हाल में कक्षाओं में जाना आपकी दिनचर्या में कैसा बैठ रहा है?", "इस सेमेस्टर कक्षाओं में पहुँचने का आपका अनुभव कैसा रहा है?", "हाल में आपकी कक्षा की समय-सारणी कितनी सहज रही है?"],
+        "subject": ["इस सेमेस्टर {subject} विषय आपको कैसा लग रहा है?", "{subject} में कौन से हिस्से आपको आसान या कठिन लगते हैं?", "{subject} के पाठ्यकार्य का आपका अनुभव कैसा रहा है?"],
+        "coursework": ["आपके पाठ्यकार्य के कौन से हिस्से आसान या अधिक कठिन लगते हैं?", "हाल की असाइनमेंट और परीक्षाओं के बारे में आप कैसा महसूस करते हैं?", "हाल में आपकी पढ़ाई की प्रगति में किस चीज़ ने मदद की या बाधा डाली?"],
+        "support": ["किस तरह की सहायता, यदि कोई हो, इस सेमेस्टर को आसान बनाएगी?", "अभी कौन सा बदलाव आपके कॉलेज अनुभव को सबसे अधिक बेहतर करेगा?", "क्या कॉलेज आपकी योजनाओं में किसी तरह सहायता कर सकता है?"],
+        "future": ["आप अगले सेमेस्टर के बारे में कैसे सोच रहे हैं?", "आने वाले महीनों में आप अपनी पढ़ाई को कैसा देखना चाहते हैं?", "अपने कोर्स में आप किस बात की प्रतीक्षा कर रहे हैं?"],
+    },
+    "kn-IN": {
+        "general": ["ಈ ಸೆಮಿಸ್ಟರ್ ಇದುವರೆಗೆ ನಿಮಗೆ ಹೇಗಿದೆ?", "ಇತ್ತೀಚೆಗೆ ನಿಮ್ಮ ಕಾಲೇಜು ಅನುಭವ ಹೇಗಿದೆ?", "ಈಗ ನಿಮ್ಮ ಓದು ಹೇಗೆ ಸಾಗುತ್ತಿದೆ?"],
+        "attendance": ["ಇತ್ತೀಚೆಗೆ ತರಗತಿಗಳಿಗೆ ಹಾಜರಾಗುವುದು ನಿಮ್ಮ ದಿನಚರಿಯಲ್ಲಿ ಹೇಗೆ ಹೊಂದಿಕೊಳ್ಳುತ್ತಿದೆ?", "ಈ ಸೆಮಿಸ್ಟರ್ ತರಗತಿಗಳಿಗೆ ತಲುಪುವ ಅನುಭವ ಹೇಗಿದೆ?", "ಇತ್ತೀಚೆಗೆ ನಿಮ್ಮ ತರಗತಿ ವೇಳಾಪಟ್ಟಿ ಎಷ್ಟು ನಿರ್ವಹಿಸಬಹುದಾಗಿದೆ?"],
+        "subject": ["ಈ ಸೆಮಿಸ್ಟರ್ {subject} ವಿಷಯ ನಿಮಗೆ ಹೇಗಿದೆ?", "{subject} ವಿಷಯದ ಯಾವ ಭಾಗಗಳು ಸುಲಭ ಅಥವಾ ಕಷ್ಟವೆನಿಸುತ್ತವೆ?", "{subject} ಪಠ್ಯಕಾರ್ಯದ ಅನುಭವ ಹೇಗಿದೆ?"],
+        "coursework": ["ನಿಮ್ಮ ಪಠ್ಯಕಾರ್ಯದ ಯಾವ ಭಾಗಗಳು ಸುಲಭ ಅಥವಾ ಹೆಚ್ಚು ಕಷ್ಟವೆನಿಸುತ್ತವೆ?", "ಇತ್ತೀಚಿನ ಅಸೈನ್‌ಮೆಂಟ್ ಮತ್ತು ಮೌಲ್ಯಮಾಪನಗಳ ಬಗ್ಗೆ ನಿಮಗೆ ಹೇಗನಿಸುತ್ತದೆ?", "ಇತ್ತೀಚೆಗೆ ನಿಮ್ಮ ಶೈಕ್ಷಣಿಕ ಪ್ರಗತಿಗೆ ಯಾವುದು ಸಹಾಯ ಮಾಡಿದೆ ಅಥವಾ ಅಡ್ಡಿಯಾಗಿದೆ?"],
+        "support": ["ಯಾವ ರೀತಿಯ ಸಹಾಯ ಇದ್ದರೆ ಈ ಸೆಮಿಸ್ಟರ್ ಸುಲಭವಾಗುತ್ತದೆ?", "ಈಗ ಯಾವ ಬದಲಾವಣೆ ನಿಮ್ಮ ಕಾಲೇಜು ಅನುಭವವನ್ನು ಹೆಚ್ಚು ಉತ್ತಮಗೊಳಿಸುತ್ತದೆ?", "ನಿಮ್ಮ ಯೋಜನೆಗಳಿಗೆ ಕಾಲೇಜು ಹೇಗೆ ಸಹಾಯ ಮಾಡಬಹುದು?"],
+        "future": ["ಮುಂದಿನ ಸೆಮಿಸ್ಟರ್ ಬಗ್ಗೆ ನೀವು ಹೇಗೆ ಯೋಚಿಸುತ್ತಿದ್ದೀರಿ?", "ಮುಂದಿನ ಕೆಲವು ತಿಂಗಳಲ್ಲಿ ನಿಮ್ಮ ಓದು ಹೇಗಿರಬೇಕು ಎಂದು ಆಶಿಸುತ್ತೀರಿ?", "ನಿಮ್ಮ ಕೋರ್ಸ್‌ನಲ್ಲಿ ಯಾವ ವಿಷಯವನ್ನು ಎದುರು ನೋಡುತ್ತಿದ್ದೀರಿ?"],
+    },
+}
+
+
+def _profile_number(profile, key, default=0.0):
+    try:
+        return float(str(profile.get(key, default)).replace("%", "").strip())
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def _build_adaptive_questions(profile, language_code):
+    """Choose four neutral questions from the student's academic context."""
+    bank = QUESTION_BANKS.get(language_code, QUESTION_BANKS["en-IN"])
+    chooser = random.SystemRandom()
+    attendance = _profile_number(profile, "attendance_rate", 100)
+    weakest_mark = _profile_number(profile, "lowest_subject_marks", 100)
+    subject = str(profile.get("lowest_subject") or profile.get("branch") or "your coursework")
+    categories = [
+        "general",
+        "attendance" if attendance < 75 else "coursework",
+        "subject" if weakest_mark < 60 and subject else "support",
+    ]
+    final_choices = [category for category in ("future", "support", "coursework") if category not in categories]
+    categories.append(chooser.choice(final_choices or ["future"]))
+    return [chooser.choice(bank[category]).format(subject=subject) for category in categories]
+
+
+def _language_from_speech(text):
+    normalized = " ".join(str(text or "").casefold().split())
+    choices = {
+        "en-IN": ("english", "englis", "angrezi", "अंग्रेज", "ಇಂಗ್ಲಿಷ್"),
+        "hi-IN": ("hindi", "hindee", "हिंदी", "हिन्दी", "ಹಿಂದಿ"),
+        "kn-IN": ("kannada", "ಕನ್ನಡ", "ಕನ್ನಡಾ", "ಕನ್ನಡ"),
+    }
+    return next((code for code, terms in choices.items() if any(term in normalized for term in terms)), None)
+
+
+def _language_gather(call_sid):
+    options = dict(
+        input="speech", language="en-IN", hints="English, Hindi, Kannada, हिंदी, ಕನ್ನಡ",
+        speech_timeout=SPEECH_TIMEOUT_SECONDS or "auto", timeout=10,
+        action=f"{WEBHOOK_BASE_URL}/voice/language?sid={call_sid}", method="POST",
+    )
+    if SPEECH_MODEL:
+        options["speech_model"] = SPEECH_MODEL
+    return Gather(**options)
+
+
+def _session_questions(session):
+    return list(session.get("questions") or QUESTIONS[:4])
+
+
+def _live_voice_assessment(session):
+    text = " ".join(str(answer.get("text") or "") for answer in session.get("answers", {}).values()).casefold()
+    risk_terms = (
+        "struggling", "difficult", "hard", "failing", "failed", "leave", "quit", "drop out", "cannot continue", "can't continue",
+        "fees", "debt", "missed classes", "low attendance", "stress", "anxiety", "मुश्किल", "कठिन", "छोड़", "फीस", "तनाव",
+        "ಕಷ್ಟ", "ಬಿಡ", "ಶುಲ್ಕ", "ಒತ್ತಡ", "ಗೈರು",
+    )
+    protective_terms = (
+        "good", "great", "manageable", "confident", "excited", "enjoy", "doing well", "no problem", "continue", "graduate",
+        "अच्छा", "ठीक", "उत्साहित", "जारी", "ಸಂತೋಷ", "ಚೆನ್ನಾಗಿದೆ", "ನಿರ್ವಹಿಸಬಹುದು", "ಮುಂದುವರ", "ಉತ್ಸುಕ",
+    )
+    risk_hits = sum(text.count(term) for term in risk_terms)
+    protective_hits = sum(text.count(term) for term in protective_terms)
+    explicit_exit = any(term in text for term in ("drop out", "leave college", "quit college", "पढ़ाई छोड़", "कॉलेज छोड़", "ಓದು ಬಿಡ", "ಕಾಲೇಜು ಬಿಡ"))
+    evidence = risk_hits - protective_hits
+    voice_probability = 0.5 + 0.38 * math.tanh(evidence / 2.2)
+    if explicit_exit:
+        voice_probability = max(voice_probability, 0.9)
+    if not text.strip():
+        voice_probability = 0.5
+    confidences = [float(answer.get("twilio_confidence") or 0) for answer in session.get("answers", {}).values()]
+    recognition_confidence = sum(confidences) / len(confidences) if confidences else 0.0
+    evidence_confidence = min(1.0, 0.45 + 0.12 * (risk_hits + protective_hits))
+    ai_confidence = round((recognition_confidence * 0.55) + (evidence_confidence * 0.45), 4)
+    ml_probability = max(0.0, min(1.0, float(session.get("ml_risk_score") or 0)))
+    # The call must be able to move a student to LOW, MEDIUM, or HIGH based on
+    # what they actually say. Academic ML remains useful context, while voice
+    # evidence receives the larger share in the post-call fused decision.
+    fused_probability = round((0.2 * ml_probability) + (0.8 * voice_probability), 4)
+    tier = "HIGH" if fused_probability >= 0.70 else "MEDIUM" if fused_probability >= 0.40 else "LOW"
+    return round(voice_probability, 4), ai_confidence, fused_probability, tier
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1033,23 +1178,32 @@ def voice_welcome():
     # used by the student-summary modal.
     provisional = sessions.get(call_sid) or {}
     academic_profile = dict(provisional.get("academic_profile") or {})
+    numeric_ml_risk = float(ml_risk)
+    initial_tier = provisional.get("risk_tier") or (
+        "HIGH" if numeric_ml_risk >= 0.70 else "MEDIUM" if numeric_ml_risk >= 0.40 else "LOW"
+    )
 
     # Create session for this call
     sessions[call_sid] = {
         "student_id": student_id,
         "student_name": student_name,
-        "ml_risk_score": float(ml_risk),
+        "ml_risk_score": numeric_ml_risk,
+        "risk_tier": initial_tier,
         "phone": request.form.get("To", ""),
         "call_sid": call_sid,
         "answers": {},
-        "current_question": QUESTIONS[0],
+        "current_question": "language_preference",
         "started_at": datetime.now().isoformat(),
         "spoken_name": first_name,
         "status": "active",
         "transcript_events": [],
         "academic_profile": academic_profile,
+        "language_code": None,
+        "language_name": None,
+        "questions": [],
     }
-    _append_call_event(sessions[call_sid], "Asha AI", "ai", QUESTIONS[0])
+    language_prompt = "Which language do you prefer: English, Hindi, or Kannada?"
+    _append_call_event(sessions[call_sid], "Asha AI", "ai", language_prompt)
     _persist_live_state()
 
     print(f"🎙️  Call answered: {student_name} (#{student_id})")
@@ -1058,22 +1212,15 @@ def voice_welcome():
 
     resp.say(
         f"Hello {first_name}, I am your AI agent from the Student Wellness team. "
-        f"I have a few questions for you today.",
+        f"I have a few questions for you today. {language_prompt}",
         voice=TWILIO_VOICE,
         language=TWILIO_LANGUAGE,
     )
-
-    resp.say(
-        f"{QUESTIONS[0]}",
-        voice=TWILIO_VOICE,
-        language=TWILIO_LANGUAGE,
-    )
-    gather = _speech_gather(0, call_sid)
-    resp.append(gather)
+    resp.append(_language_gather(call_sid))
 
     # Fallback if no speech detected
     resp.redirect(
-        f"{WEBHOOK_BASE_URL}/voice/respond?q=0&sid={call_sid}&nospeech=1",
+        f"{WEBHOOK_BASE_URL}/voice/language?sid={call_sid}&nospeech=1",
         method="POST",
     )
 
@@ -1148,6 +1295,50 @@ def voice_name():
     return str(resp), 200, {"Content-Type": "text/xml"}
 
 
+@app.route("/voice/language", methods=["POST"])
+def voice_language():
+    """Capture a spoken language choice, retrying until it is understood."""
+    call_sid = request.args.get("sid", request.form.get("CallSid", ""))
+    session = _get_live_session(call_sid)
+    resp = VoiceResponse()
+    if not session:
+        resp.say("Sorry, there was a technical issue. Goodbye.", voice=TWILIO_VOICE, language=TWILIO_LANGUAGE)
+        resp.hangup()
+        return str(resp), 200, {"Content-Type": "text/xml"}
+
+    heard = request.form.get("SpeechResult", "") if request.args.get("nospeech", "0") != "1" else ""
+    try:
+        speech_confidence = float(request.form.get("Confidence", "0") or 0)
+    except (TypeError, ValueError):
+        speech_confidence = 0.0
+    language_code = _language_from_speech(heard) if speech_confidence >= 0.45 else None
+    if language_code is None:
+        message = LANGUAGES["en-IN"]["repeat"]
+        session["current_question"] = "language_preference"
+        _append_call_event(session, "Asha AI", "ai", message)
+        resp.say(message, voice=TWILIO_VOICE, language=TWILIO_LANGUAGE)
+        resp.append(_language_gather(call_sid))
+        resp.redirect(f"{WEBHOOK_BASE_URL}/voice/language?sid={call_sid}&nospeech=1", method="POST")
+        _persist_live_state()
+        return str(resp), 200, {"Content-Type": "text/xml"}
+
+    language = LANGUAGES[language_code]
+    questions = _build_adaptive_questions(session.get("academic_profile") or {}, language_code)
+    session["language_code"] = language_code
+    session["language_name"] = language["name"]
+    session["tts_voice"] = language["voice"]
+    session["questions"] = questions
+    session["current_question"] = questions[0]
+    _append_call_event(session, session.get("student_name") or "Student", "student", heard)
+    _append_call_event(session, "Asha AI", "ai", questions[0], visible_delay=CALL_TRANSCRIPT_REPLY_DELAY_SECONDS)
+    resp.say(language["selected"], voice=language["voice"], language=language_code)
+    resp.say(questions[0], voice=language["voice"], language=language_code)
+    resp.append(_speech_gather(0, call_sid))
+    resp.redirect(f"{WEBHOOK_BASE_URL}/voice/respond?q=0&sid={call_sid}&nospeech=1", method="POST")
+    _persist_live_state()
+    return str(resp), 200, {"Content-Type": "text/xml"}
+
+
 @app.route("/voice/respond", methods=["POST"])
 def voice_respond():
     """
@@ -1167,6 +1358,12 @@ def voice_respond():
         resp.say("Sorry, there was a technical issue. Goodbye.", voice=TWILIO_VOICE)
         resp.hangup()
         return str(resp), 200, {"Content-Type": "text/xml"}
+
+    questions = _session_questions(session)
+    q_index = max(0, min(q_index, len(questions) - 1))
+    language_code = session.get("language_code") or "en-IN"
+    language = LANGUAGES.get(language_code, LANGUAGES["en-IN"])
+    voice = session.get("tts_voice") or language["voice"]
 
     # Older in-flight calls may still deliver a retired partial callback.
     # Always remove it; only the final SpeechResult belongs in the transcript.
@@ -1206,14 +1403,15 @@ def voice_respond():
     # Do not put a clearly unreliable telephone-ASR guess in the permanent
     # transcript. Ask for the same answer again instead of advancing and
     # presenting a mangled phrase as the student's response.
-    if not no_speech and (not speech_text or speech_conf < 0.45):
-        session["current_question"] = QUESTIONS[q_index]
-        _append_call_event(session, "Asha AI", "ai", "I did not catch that clearly. Please say it once more.")
+    if no_speech or not speech_text or speech_conf < 0.45:
+        session["current_question"] = questions[q_index]
+        retry_message = language["answer_repeat"]
+        _append_call_event(session, "Asha AI", "ai", retry_message)
         retry = VoiceResponse()
         retry.say(
-            "I did not catch that clearly. Please say it once more.",
-            voice=TWILIO_VOICE,
-            language=TWILIO_LANGUAGE,
+            retry_message,
+            voice=voice,
+            language=language_code,
         )
         retry.append(_speech_gather(q_index, call_sid))
         retry.redirect(
@@ -1227,7 +1425,7 @@ def voice_respond():
         "text": speech_text,
         "raw_speech_text": raw_speech_text,
         "twilio_confidence": speech_conf,
-        "question": QUESTIONS[q_index],
+        "question": questions[q_index],
     }
     _append_call_event(
         session,
@@ -1238,16 +1436,18 @@ def voice_respond():
     # Make the final student answer visible on its own, then publish Asha's
     # next turn one second later.
     _persist_live_state()
+    voice_probability, ai_confidence, fused_probability, live_tier = _live_voice_assessment(session)
+    session["voice_risk_score"] = voice_probability
+    session["ai_confidence"] = ai_confidence
+    session["fused_risk_score"] = fused_probability
+    session["dropout_intent"] = live_tier
+    session["risk_tier"] = live_tier
+    session["flagged_high_risk"] = live_tier == "HIGH"
+    _persist_live_state()
     print(f"   Q{q_index + 1}: \"{speech_text[:80]}{'...' if len(speech_text) > 80 else ''}\" (conf: {speech_conf:.2f})")
 
     # Friendly acknowledgment lines — one per question
-    ACKNOWLEDGMENTS = [
-        "That's really helpful to know. Thank you for sharing that.",
-        "I appreciate you being open about that. It really helps us understand.",
-        "Got it, thank you. That gives us a good picture.",
-        "That's a great perspective. Thanks for letting us know.",
-        "Wonderful, thank you so much for that.",
-    ]
+    ACKNOWLEDGMENTS = language["ack"]
 
     resp = VoiceResponse()
     next_q = q_index + 1
@@ -1261,34 +1461,34 @@ def voice_respond():
         "No problem, let's keep going.",
     ]
 
-    if next_q < len(QUESTIONS):
+    if next_q < len(questions):
         # Always acknowledge — warmly if they spoke, kindly if they didn't
         if not no_speech:
             resp.say(
                 ACKNOWLEDGMENTS[q_index],
-                voice=TWILIO_VOICE,
-                language=TWILIO_LANGUAGE,
+                voice=voice,
+                language=language_code,
             )
         else:
             resp.say(
                 NOSPEECH_ACKS[q_index],
-                voice=TWILIO_VOICE,
-                language=TWILIO_LANGUAGE,
+                voice=voice,
+                language=language_code,
             )
-        session["current_question"] = QUESTIONS[next_q]
+        session["current_question"] = questions[next_q]
         _append_call_event(
             session,
             "Asha AI",
             "ai",
-            QUESTIONS[next_q],
+            questions[next_q],
             visible_delay=CALL_TRANSCRIPT_REPLY_DELAY_SECONDS,
         )
 
         # Say the question OUTSIDE gather so it can't be interrupted
         resp.say(
-            f"{QUESTIONS[next_q]}",
-            voice=TWILIO_VOICE,
-            language=TWILIO_LANGUAGE,
+            f"{questions[next_q]}",
+            voice=voice,
+            language=language_code,
         )
         # Now listen for the answer
         gather = _speech_gather(next_q, call_sid)
@@ -1300,35 +1500,23 @@ def voice_respond():
             method="POST",
         )
     else:
-        # All 5 questions done — warm acknowledgment + thank you + conclusion
+        # All four wellness questions are complete.
         spoken_name = session.get("spoken_name", "").split()[0] if session.get("spoken_name") else session["student_name"].split()[0]
         if not no_speech:
             resp.say(
                 ACKNOWLEDGMENTS[q_index],
-                voice=TWILIO_VOICE,
-                language=TWILIO_LANGUAGE,
+                voice=voice,
+                language=language_code,
             )
         else:
             resp.say(
                 "Thank you for staying on the line.",
-                voice=TWILIO_VOICE,
-                language=TWILIO_LANGUAGE,
+                voice=voice,
+                language=language_code,
             )
-        resp.say(
-            f"That was the last question, {spoken_name}. "
-            f"Thank you so much for taking the time to speak with us today. "
-            f"Your honest responses are incredibly valuable and will help us "
-            f"make the college experience better for everyone. "
-            f"If you ever need any support, please don't hesitate to reach out "
-            f"to the student wellness office. "
-            f"We wish you all the best this semester. Take care and have a wonderful day!",
-            voice=TWILIO_VOICE,
-            language=TWILIO_LANGUAGE,
-        )
-        session["closing_message"] = (
-            f"That was the last question, {spoken_name}. Thank you so much for taking the time "
-            "to speak with us today. Take care."
-        )
+        closing_message = language["closing"]
+        resp.say(closing_message, voice=voice, language=language_code)
+        session["closing_message"] = closing_message
         _append_call_event(
             session,
             "Asha AI",
@@ -1349,12 +1537,7 @@ def voice_respond():
         )
         session["call_only_summary"] = session["summary"]
         session["analysis_status"] = "preliminary"
-        session["dropout_intent"] = (
-            "HIGH"
-            if str(session.get("student_name") or "").strip().casefold()
-            == "achal sangami"
-            else str(preliminary.get("dropout_intent") or "LOW").upper()
-        )
+        session["dropout_intent"] = str(preliminary.get("dropout_intent") or live_tier).upper()
         session["risk_tier"] = session["dropout_intent"]
         session["flagged_high_risk"] = session["dropout_intent"] == "HIGH"
         completed_calls.append(session)
@@ -1391,11 +1574,15 @@ def _store_call_analysis(call_data, result):
                 (item for item in sessions.values() if str(item.get("student_id") or "") == student_id),
                 call_data,
             )
-        if str(result.get("student_name") or "").strip().casefold() == "achal sangami":
-            result["dropout_intent"] = "HIGH"
-            result["dropout_probability"] = max(
-                0.85, float(result.get("dropout_probability") or 0)
-            )
+        voice_probability = max(0.0, min(1.0, float(result.get("voice_dropout_probability", result.get("dropout_probability", 0.5)) or 0.5)))
+        ml_probability = max(0.0, min(1.0, float(result.get("ml_risk_score", call_data.get("ml_risk_score", 0)) or 0)))
+        fused_probability = round((0.2 * ml_probability) + (0.8 * voice_probability), 4)
+        intent = "HIGH" if fused_probability >= 0.70 else "MEDIUM" if fused_probability >= 0.40 else "LOW"
+        result["voice_dropout_probability"] = round(voice_probability, 4)
+        result["voice_risk_tier"] = "HIGH" if voice_probability >= 0.70 else "MEDIUM" if voice_probability >= 0.40 else "LOW"
+        result["fused_risk_score"] = fused_probability
+        result["dropout_probability"] = fused_probability
+        result["dropout_intent"] = intent
         analyzed_results[:] = [
             item for item in analyzed_results
             if str(item.get("student_id") or "") != student_id
@@ -1409,6 +1596,9 @@ def _store_call_analysis(call_data, result):
         canonical_call["analysis_status"] = "complete"
         canonical_call["dropout_intent"] = intent
         canonical_call["dropout_probability"] = float(result.get("dropout_probability") or 0)
+        canonical_call["voice_risk_score"] = float(result.get("voice_dropout_probability") or 0)
+        canonical_call["ai_confidence"] = float(result.get("ai_confidence") or 0)
+        canonical_call["fused_risk_score"] = fused_probability
         canonical_call["flagged_high_risk"] = intent == "HIGH"
         canonical_call["risk_tier"] = intent
         _persist_live_state()
@@ -1487,12 +1677,6 @@ def _auto_analyze_and_outreach(call_data):
             "call_status": "completed",
             **analysis,
         }
-        if str(result.get("student_name", "")).strip().casefold() == "achal sangami":
-            # The named practice contact is intentionally a high-priority
-            # demonstration student across uploaded cohorts.
-            result["dropout_intent"] = "HIGH"
-            result["dropout_probability"] = max(0.85, float(result.get("dropout_probability", 0) or 0))
-
         # Add to global results (avoid duplicates)
         _store_call_analysis(call_data, result)
 
@@ -1552,7 +1736,7 @@ def voice_status():
                 if str(answer.get("text", "")).strip()
                 and str(answer.get("text", "")).strip() != "[no response]"
             ]
-            session["status"] = "completed" if status == "completed" and len(answered) >= len(QUESTIONS) else "interrupted"
+            session["status"] = "completed" if status == "completed" and len(answered) >= len(Q_KEYS) else "interrupted"
             session["completed_at"] = datetime.now().isoformat()
             session.pop("current_question", None)
             if session not in completed_calls:
@@ -1569,9 +1753,10 @@ def voice_status():
 def _build_analysis_prompt(call_data):
     """Build the LLM prompt for analyzing one student's responses."""
     transcript = ""
+    questions = _session_questions(call_data)
     for i, key in enumerate(Q_KEYS):
         ans = call_data["answers"].get(key, {})
-        transcript += f'Q{i+1}: "{QUESTIONS[i]}"\n'
+        transcript += f'Q{i+1}: "{questions[i]}"\n'
         transcript += f'A{i+1}: "{ans.get("text", "[no response]")}"\n\n'
 
     return f"""You are analyzing a student wellness check-in call transcript.
@@ -1579,6 +1764,7 @@ The student was called as part of a routine semester check-in.
 They do NOT know they were flagged by a risk prediction model.
 
 Student ID: {call_data['student_id']}
+Call language: {call_data.get('language_name') or 'English'}
 ML Risk Score: {call_data['ml_risk_score']} (from quantitative academic/financial data — context only)
 
 Call Transcript:
@@ -1622,18 +1808,20 @@ def _fallback_call_analysis(call_data):
     exit_risk = any(word in text for word in ("drop out", "leave", "quit", "stop studying"))
     cause = "financial" if financial else "academic" if academic else "health" if health else "none"
     support = "financial_aid" if financial else "tutoring" if "math" in text else "academic_plan" if academic else "wellbeing" if health else "other"
-    intent = "HIGH" if exit_risk or (financial and academic) else "MEDIUM" if (financial or academic or health) else "LOW"
+    voice_probability, ai_confidence, fused_probability, intent = _live_voice_assessment(call_data)
+    voice_tier = "HIGH" if voice_probability >= 0.70 else "MEDIUM" if voice_probability >= 0.40 else "LOW"
     topic_parts = (["coursework support"] if academic else []) + (["financial guidance"] if financial else []) + (["wellbeing support"] if health else [])
     topic = " and ".join(topic_parts) or "a general student-support check-in"
     next_step = "a financial-aid and academic-support appointment" if financial and academic else "an academic-support check-in" if academic else "a wellbeing adviser check-in" if health else "a light-touch counselor follow-up"
     return {
-        "q1_sentiment": "negative" if intent != "LOW" else "neutral", "q2_stressor": cause,
+        "q1_sentiment": "negative" if voice_tier != "LOW" else "positive", "q2_stressor": cause,
         "q3_support_need": support, "q4_root_cause_detail": f"The student asked for {topic}.",
-        "q5_future_orientation": "hesitant" if intent == "HIGH" else "neutral",
-        "overall_sentiment": "negative" if intent != "LOW" else "neutral", "dropout_intent": intent,
-        "dropout_probability": {"HIGH": 0.82, "MEDIUM": 0.58, "LOW": 0.21}[intent],
+        "q5_future_orientation": "hesitant" if voice_tier == "HIGH" else "neutral",
+        "overall_sentiment": "negative" if voice_tier != "LOW" else "positive", "dropout_intent": intent,
+        "voice_risk_tier": voice_tier, "voice_dropout_probability": voice_probability,
+        "fused_risk_score": fused_probability, "dropout_probability": fused_probability,
         "primary_root_cause": cause, "secondary_root_cause": "academic" if cause == "financial" and academic else "none",
-        "ai_confidence": 0.67 if text.strip() else 0.3,
+        "ai_confidence": ai_confidence,
         "summary": f"{name} discussed {topic} during the completed call. The recommended next step is {next_step}, based on the student's own responses.",
     }
 
@@ -1692,10 +1880,7 @@ def analyze_calls():
                 "call_status": "completed",
                 **analysis,
             }
-            if str(result.get("student_name", "")).strip().casefold() == "achal sangami":
-                result["dropout_intent"] = "HIGH"
-                result["dropout_probability"] = max(0.85, float(result.get("dropout_probability", 0) or 0))
-            analyzed_results.append(result)
+            _store_call_analysis(call_data, result)
 
             intent = analysis.get("dropout_intent", "?")
             cause = analysis.get("primary_root_cause", "?")
@@ -1732,7 +1917,8 @@ EXPORT_FIELDS = [
     "q4_root_cause_detail", "q5_future_orientation",
     "overall_sentiment", "dropout_intent", "dropout_probability",
     "primary_root_cause", "secondary_root_cause",
-    "ai_confidence", "summary",
+    "voice_dropout_probability", "voice_risk_tier", "fused_risk_score",
+    "ai_confidence", "language_name", "summary",
 ]
 
 
@@ -2064,7 +2250,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
     <div class="hero-title">Voice<br>Verification</div>
     <div class="hero-sub">Calls high-risk students flagged by our ML pipeline. Asks 5 non-leading questions and uses LLM-powered sentiment analysis to produce unbiased dropout probability scores for fusion scoring.</div>
     <div class="hero-prices">
-      <div class="hero-price"><div class="label">Twilio Voice</div><div class="val">5 Questions</div></div>
+      <div class="hero-price"><div class="label">Twilio Voice</div><div class="val">4 Questions</div></div>
       <div class="hero-price"><div class="label">Groq LLM</div><div class="val">Llama 3.3 70B</div></div>
     </div>
   </div>
@@ -2186,7 +2372,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
         <div class="pipe-node">
           <div class="pipe-dot {% if completed > 0 %}done{% elif active > 0 %}active{% endif %}">2</div>
           <div class="pipe-txt">Interview</div>
-          <div class="pipe-sub">5 Questions</div>
+          <div class="pipe-sub">4 Questions</div>
         </div>
         <div class="pipe-line {% if completed > 0 %}done{% endif %}"></div>
         <div class="pipe-node">
@@ -2596,11 +2782,9 @@ def _auto_whatsapp_outreach(results):
     to students with HIGH or MEDIUM dropout intent.
     LOW intent students are NOT contacted — they're doing fine.
     """
-    if not twilio_ready:
-        print("⚠️  WhatsApp outreach skipped — Twilio not configured")
-        # Still create the shared session: delivery configuration must not
-        # hide the call follow-up from either dashboard.
-        pass
+    delivery_ready = bool(twilio_ready and twilio_client)
+    if not delivery_ready:
+        print("⚠️  WhatsApp delivery skipped — Twilio not configured; follow-up saved locally")
 
     sent = 0
     for r in results:
@@ -2669,6 +2853,12 @@ def _auto_whatsapp_outreach(results):
             }
             _persist_live_state()
 
+        # Keep the locally visible counselor hand-off above, but do not call
+        # the Twilio API when credentials/client initialization are absent.
+        if not delivery_ready:
+            print(f"   📥 WhatsApp follow-up saved locally for {name} ({intent})")
+            continue
+
         try:
             twilio_client.messages.create(
                 body=msg,
@@ -2695,11 +2885,11 @@ DEMO_STUDENTS = {
         # DEMO_PHONE is the consented live test contact used by the counselor
         # dashboard. Keep the identity stable even when WhatsApp supplies a
         # different profile label or the message arrives before a call result.
-        "student_id": "STU-ACHAL",
-        "student_name": "Achal Sangami",
-        "ml_risk_score": 0.87,
-        "dropout_intent": "HIGH",
-        "primary_root_cause": "financial",
+        "student_id": "demo",
+        "student_name": "Student",
+        "ml_risk_score": 0.5,
+        "dropout_intent": "MEDIUM",
+        "primary_root_cause": "none",
         "shap_top_factors": [
             "Tuition fees not up to date",
             "Scholarship holder = No",
@@ -2713,17 +2903,12 @@ DEMO_STUDENTS = {
 
 
 def _normalize_demo_whatsapp_identity(phone):
-    """Keep the consented live test handset attached to Achal's identity."""
+    """Retain the random dataset student's identity on the demo handset."""
     clean_phone = str(phone or "").replace("whatsapp:", "")
     configured_phone = str(DEMO_PHONE or "").replace("whatsapp:", "")
     session = wa_sessions.get(clean_phone)
     if not session or not configured_phone or clean_phone != configured_phone:
         return session
-    profile = session.setdefault("profile", {})
-    profile["student_id"] = "STU-ACHAL"
-    profile["student_name"] = "Achal Sangami"
-    session["profile_name"] = "Achal Sangami"
-    session["spoken_name"] = "Achal Sangami"
     return session
 
 WA_SYSTEM_PROMPT = """You are a compassionate, professional university student wellness counselor chatting via WhatsApp.
@@ -2768,12 +2953,12 @@ def _get_student_profile(phone):
     clean_phone = phone.replace("whatsapp:", "")
     
     spoken = ""
-    for r in analyzed_results:
+    for r in reversed(analyzed_results):
         if r.get("phone", "").replace("whatsapp:", "") == clean_phone:
             spoken = r.get("spoken_name", "")
             break
 
-    if clean_phone in DEMO_STUDENTS:
+    if clean_phone in DEMO_STUDENTS and not spoken:
         p = dict(DEMO_STUDENTS[clean_phone])
         if spoken:
             p["student_name"] = spoken.title()
@@ -2960,7 +3145,7 @@ def whatsapp_webhook():
             print(f"   → Sent welcome to {name}")
             return str(resp), 200, {"Content-Type": "text/xml"}
 
-    # The configured demo handset is the real Achal test contact. Normalize
+    # The configured demo handset is the test contact. Preserve the randomly
     # old persisted sessions too, so an earlier WhatsApp profile name can
     # never relabel the live dashboard conversation.
     _normalize_demo_whatsapp_identity(phone_clean)

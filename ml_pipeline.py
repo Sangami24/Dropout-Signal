@@ -34,7 +34,7 @@ import pandas as pd
 import shap
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, roc_auc_score
+from sklearn.metrics import accuracy_score, f1_score, log_loss, precision_score, recall_score, roc_auc_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from xgboost import XGBClassifier
@@ -85,6 +85,19 @@ _ACTIVE_RECORD_CACHE: dict[str, Any] = {"run_id": None, "frame": None}
 
 TARGET_COLUMN = "Target"
 STUDENT_NAME_COLUMN = "Student Name"
+MINIMUM_ACCEPTABLE_ACCURACY = 0.88
+
+# Rich institutional fields are retained for counselor context and adaptive
+# calls. They are deliberately not fed into the model unless represented by
+# the validated UCI predictors below, which avoids accidental target leakage
+# from administrative notes, names, phone numbers, or hand-authored labels.
+PROFILE_COLUMNS = [
+    "Student ID", "Phone", "Email", "Department", "Program", "Academic Year",
+    "Semester", "Attendance Percentage", "Assignment Completion Percentage",
+    "Internal Assessment Average", "Semester GPA", "Backlogs",
+    "Counseling Sessions", "LMS Engagement Score",
+    *[item for number in range(1, 7) for item in (f"Subject {number} Name", f"Subject {number} Marks")],
+]
 # These are the 36 predictor columns supplied by a UCI-compatible upload.
 # ``FEATURE_COLUMNS`` below adds the seven Silver-layer signals from the
 # original Databricks notebook; callers should validate uploads against the
@@ -257,7 +270,11 @@ def read_dataset(path: str | Path) -> pd.DataFrame:
     # model feature. Accept common spellings so external institutional exports
     # can be used as well as the bundled sample datasets.
     name_column = next((aliases.get(alias) for alias in ("student name", "student_name", "name") if aliases.get(alias)), None)
-    selected_columns = RAW_FEATURE_COLUMNS + [TARGET_COLUMN] + ([name_column] if name_column else [])
+    profile_columns = [aliases[column.lower()] for column in PROFILE_COLUMNS if aliases.get(column.lower())]
+    selected_columns = RAW_FEATURE_COLUMNS + [TARGET_COLUMN] + ([name_column] if name_column else []) + profile_columns
+    # A supplied Student Name can also appear in PROFILE_COLUMNS. Preserve one
+    # copy while keeping stable column order.
+    selected_columns = list(dict.fromkeys(selected_columns))
     selected = frame[selected_columns].copy()
     if name_column:
         selected = selected.rename(columns={name_column: STUDENT_NAME_COLUMN})
@@ -272,6 +289,13 @@ def read_dataset(path: str | Path) -> pd.DataFrame:
         raise DatasetValidationError("Target must contain dropout and non-dropout outcomes so both models can train.")
     if STUDENT_NAME_COLUMN in selected.columns:
         selected[STUDENT_NAME_COLUMN] = selected[STUDENT_NAME_COLUMN].fillna("").astype(str).str.strip()
+    for column in PROFILE_COLUMNS:
+        if column not in selected.columns:
+            continue
+        if column in {"Student ID", "Phone", "Email", "Department", "Program", "Academic Year"} or column.endswith(" Name"):
+            selected[column] = selected[column].fillna("").astype(str).str.strip()
+        else:
+            selected[column] = pd.to_numeric(selected[column], errors="coerce")
     return selected
 
 
@@ -321,14 +345,78 @@ def _encode_target(target: pd.Series) -> pd.Series:
     return target.astype(str).str.lower().str.contains("dropout").astype(int)
 
 
-def _metric_bundle(y_true: pd.Series | np.ndarray, probability: np.ndarray) -> dict[str, float]:
-    prediction = (probability >= 0.5).astype(int)
+def _metric_bundle(y_true: pd.Series | np.ndarray, probability: np.ndarray, threshold: float = 0.5) -> dict[str, float]:
+    prediction = (probability >= threshold).astype(int)
     return {
         "accuracy": round(float(accuracy_score(y_true, prediction)), 4),
         "precision": round(float(precision_score(y_true, prediction, zero_division=0)), 4),
         "recall": round(float(recall_score(y_true, prediction, zero_division=0)), 4),
         "f1_score": round(float(f1_score(y_true, prediction, zero_division=0)), 4),
         "auc_roc": round(float(roc_auc_score(y_true, probability)), 4),
+        "decision_threshold": round(float(threshold), 4),
+    }
+
+
+def _optimise_ensemble(
+    y_validation: pd.Series,
+    validation_scores: dict[str, np.ndarray],
+) -> tuple[dict[str, float], float, dict[str, float]]:
+    """Select four-model blend weights and a threshold on validation only."""
+    names = list(validation_scores)
+    matrix = np.column_stack([validation_scores[name] for name in names])
+    best: tuple[tuple[float, float, float], np.ndarray, float, dict[str, float]] | None = None
+    # A deterministic simplex search keeps all four models represented while
+    # allowing materially stronger models to contribute more.
+    for a in range(1, 8):
+        for b in range(1, 10 - a):
+            for c in range(1, 11 - a - b):
+                d = 10 - a - b - c
+                if d < 1:
+                    continue
+                weights = np.array([a, b, c, d], dtype=float) / 10.0
+                probability = matrix @ weights
+                for threshold in np.arange(0.35, 0.651, 0.01):
+                    metrics = _metric_bundle(y_validation, probability, float(threshold))
+                    objective = (metrics["accuracy"], metrics["f1_score"], metrics["auc_roc"])
+                    if best is None or objective > best[0]:
+                        best = (objective, weights, float(threshold), metrics)
+    if best is None:
+        raise DatasetValidationError("Unable to optimise the four-model ensemble.")
+    _, weights, threshold, metrics = best
+    return ({name: round(float(weight), 6) for name, weight in zip(names, weights)}, threshold, metrics)
+
+
+def _xgb_training_history(
+    model: XGBClassifier,
+    x_train: pd.DataFrame,
+    y_train: pd.Series,
+    x_validation: pd.DataFrame,
+    y_validation: pd.Series,
+) -> dict[str, Any]:
+    """Return real train/validation accuracy and loss at ten boosting checkpoints."""
+    evaluations = model.evals_result()
+    train_loss = evaluations.get("validation_0", {}).get("logloss", [])
+    validation_loss = evaluations.get("validation_1", {}).get("logloss", [])
+    total_rounds = min(len(train_loss), len(validation_loss))
+    if not total_rounds:
+        return {"model": "XGBoost", "x_axis": "boosting round", "points": []}
+    checkpoints = sorted(set(np.linspace(1, total_rounds, min(10, total_rounds), dtype=int).tolist()))
+    points = []
+    for round_number in checkpoints:
+        train_probability = model.predict_proba(x_train, iteration_range=(0, round_number))[:, 1]
+        validation_probability = model.predict_proba(x_validation, iteration_range=(0, round_number))[:, 1]
+        points.append({
+            "epoch": int(round_number),
+            "train_accuracy": round(float(accuracy_score(y_train, train_probability >= 0.5)), 4),
+            "validation_accuracy": round(float(accuracy_score(y_validation, validation_probability >= 0.5)), 4),
+            "train_loss": round(float(train_loss[round_number - 1]), 4),
+            "validation_loss": round(float(validation_loss[round_number - 1]), 4),
+        })
+    return {
+        "model": "XGBoost component",
+        "x_axis": "boosting round",
+        "note": "Measured during training on this uploaded dataset; validation data is never used to fit a tree.",
+        "points": points,
     }
 
 
@@ -458,13 +546,25 @@ def _gold_table(
     ensemble_name: str,
     ensemble_weights: dict[str, float],
     shap_values: np.ndarray,
+    feature_columns: list[str],
+    ensemble_threshold: float,
 ) -> pd.DataFrame:
     frame = source.copy().reset_index(drop=True)
     frame.insert(0, "student_id", [f"STU-{signature[:6].upper()}-{index + 1:05d}" for index in range(len(frame))])
     # Student names are presentation metadata. Normalise every upload so
     # duplicate supplied names and old generated number suffixes never appear
     # in student directories, risk predictions, or summaries.
-    resolved_names = [_name_for(index, signature) for index in range(len(frame))]
+    supplied_names = frame.get(STUDENT_NAME_COLUMN)
+    resolved_names = []
+    used_names: dict[str, int] = {}
+    for index in range(len(frame)):
+        supplied = str(supplied_names.iloc[index]).strip() if supplied_names is not None else ""
+        base_name = supplied if supplied and supplied.casefold() not in {"nan", "none"} else _name_for(index, signature)
+        count = used_names.get(base_name.casefold(), 0)
+        used_names[base_name.casefold()] = count + 1
+        resolved_names.append(base_name if count == 0 else f"{base_name} {count + 1}")
+    if STUDENT_NAME_COLUMN in frame.columns:
+        frame = frame.drop(columns=[STUDENT_NAME_COLUMN])
     frame.insert(1, "student_name", resolved_names)
     frame["logistic_risk_score"] = np.round(logistic_score, 4)
     frame["xgboost_risk_score"] = np.round(xgb_score, 4)
@@ -479,19 +579,39 @@ def _gold_table(
     frame["champion_model"] = ensemble_name
     frame["ensemble_members"] = "Logistic Regression | XGBoost | Random Forest | HistGradientBoosting"
     frame["ensemble_weights"] = json.dumps(ensemble_weights, sort_keys=True)
-    frame["predicted_dropout"] = (ensemble_score >= 0.5).astype(int)
+    frame["predicted_dropout"] = (ensemble_score >= ensemble_threshold).astype(int)
     frame["actual_outcome"] = frame[TARGET_COLUMN].astype(str)
     frame["final_risk_tier"] = np.where(ensemble_score >= 0.70, "HIGH", np.where(ensemble_score >= 0.40, "MEDIUM", "LOW"))
-    frame["course"] = "Degree program"
-    frame["branch"] = frame["Course"].map(_course_name)
-    frame["year"] = np.where(frame["Age at enrollment"] >= 25, 2, 1).astype(int)
-    frame["semester"] = np.where(frame["Curricular units 2nd sem (enrolled)"] > 0, 2, 1).astype(int)
+    frame["course"] = frame["Program"].astype(str) if "Program" in frame else "Degree program"
+    frame["branch"] = frame["Department"].astype(str) if "Department" in frame else frame["Course"].map(_course_name)
+    frame["year"] = frame["Academic Year"] if "Academic Year" in frame else np.where(frame["Age at enrollment"] >= 25, 2, 1).astype(int)
+    frame["semester"] = frame["Semester"] if "Semester" in frame else np.where(frame["Curricular units 2nd sem (enrolled)"] > 0, 2, 1).astype(int)
     evaluation = frame["Curricular units 1st sem (evaluations)"] + frame["Curricular units 2nd sem (evaluations)"]
     approved = frame["Curricular units 1st sem (approved)"] + frame["Curricular units 2nd sem (approved)"]
-    frame["attendance_rate"] = np.round(np.clip(48 + 52 * np.divide(approved, np.maximum(evaluation, 1)), 48, 100), 1)
+    derived_attendance = np.round(np.clip(48 + 52 * np.divide(approved, np.maximum(evaluation, 1)), 48, 100), 1)
+    frame["attendance_rate"] = frame["Attendance Percentage"].round(1) if "Attendance Percentage" in frame else derived_attendance
     grade = (frame["Curricular units 1st sem (grade)"] + frame["Curricular units 2nd sem (grade)"]) / 2
-    frame["latest_marks"] = np.round(np.clip(grade * 5, 0, 100), 1).astype(str) + "%"
-    frame["current_gpa"] = np.round(np.clip(grade / 5, 0, 4), 2)
+    subject_mark_columns = [f"Subject {number} Marks" for number in range(1, 7) if f"Subject {number} Marks" in frame]
+    if subject_mark_columns:
+        subject_marks = frame[subject_mark_columns].apply(pd.to_numeric, errors="coerce")
+        frame["latest_marks"] = subject_marks.mean(axis=1).round(1).astype(str) + "%"
+        minimum_index = subject_marks.fillna(101).to_numpy().argmin(axis=1)
+        frame["lowest_subject_marks"] = subject_marks.fillna(0).to_numpy()[np.arange(len(frame)), minimum_index].round(1)
+        subject_name_columns = [column.replace(" Marks", " Name") for column in subject_mark_columns]
+        frame["lowest_subject"] = [
+            str(frame.iloc[row_index].get(subject_name_columns[column_index]) or subject_mark_columns[column_index].replace(" Marks", ""))
+            for row_index, column_index in enumerate(minimum_index)
+        ]
+        frame["subject_marks_summary"] = [
+            " | ".join(f"{frame.iloc[row_index].get(subject_name_columns[col_index], subject_mark_columns[col_index])}: {subject_marks.iloc[row_index, col_index]:.0f}%" for col_index in range(len(subject_mark_columns)))
+            for row_index in range(len(frame))
+        ]
+    else:
+        frame["latest_marks"] = np.round(np.clip(grade * 5, 0, 100), 1).astype(str) + "%"
+        frame["lowest_subject_marks"] = np.round(np.clip(grade * 5, 0, 100), 1)
+        frame["lowest_subject"] = frame["branch"]
+        frame["subject_marks_summary"] = "Not recorded"
+    frame["current_gpa"] = frame["Semester GPA"].round(2) if "Semester GPA" in frame else np.round(np.clip(grade / 5, 0, 4), 2)
     frame["lms_engagement"] = np.where(approved / np.maximum(evaluation, 1) < 0.45, "Low", np.where(approved / np.maximum(evaluation, 1) < 0.72, "Moderate", "Good"))
     frame["financial_aid_status"] = np.where(
         frame["Debtor"] == 1,
@@ -504,7 +624,7 @@ def _gold_table(
     order = np.argsort(-np.abs(shap_values), axis=1)[:, :3]
     for rank in range(3):
         indices = order[:, rank]
-        names = [FEATURE_COLUMNS[index] for index in indices]
+        names = [feature_columns[index] for index in indices]
         values = shap_values[np.arange(len(frame)), indices]
         frame[f"top_factor_{rank + 1}"] = [f"{_display_feature(name)} ({value:+.3f})" for name, value in zip(names, values)]
         frame[f"shap_factor_{rank + 1}_name"] = names
@@ -567,7 +687,7 @@ def _log_mlflow_run(
             **{f"random_forest_{key}": value for key, value in RANDOM_FOREST_PARAMS.items()},
             **{f"hist_gradient_boosting_{key}": value for key, value in HIST_GRADIENT_BOOSTING_PARAMS.items()},
             **{f"ensemble_weight_{_slug(name)}": value for name, value in ensemble_weights.items()},
-            "train_test_split": "80/20 stratified, random_state=42",
+            "train_validation_test_split": "70/15/15 stratified, random_state=42",
         })
         mlflow.log_metrics({
             **{f"{_slug(name)}_{key}": float(value) for name, metrics in model_metrics.items() for key, value in metrics.items()},
@@ -653,15 +773,21 @@ def train_and_score(source_path: str | Path, activate: bool = True, source_label
     signature = hashlib.sha256(Path(source_path).read_bytes()).hexdigest()
     silver = build_silver(source)
     y = silver["is_dropout"].astype(int)
-    x = silver[FEATURE_COLUMNS].astype(float)
-    x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=42, stratify=y)
+    feature_columns = list(FEATURE_COLUMNS)
+    x = silver[feature_columns].astype(float)
+    x_train, x_holdout, y_train, y_holdout = train_test_split(x, y, test_size=0.30, random_state=42, stratify=y)
+    x_validation, x_test, y_validation, y_test = train_test_split(
+        x_holdout, y_holdout, test_size=0.50, random_state=42, stratify=y_holdout,
+    )
 
     scaler = StandardScaler()
     x_train_scaled = pd.DataFrame(scaler.fit_transform(x_train), columns=x_train.columns, index=x_train.index)
+    x_validation_scaled = pd.DataFrame(scaler.transform(x_validation), columns=x_validation.columns, index=x_validation.index)
     x_test_scaled = pd.DataFrame(scaler.transform(x_test), columns=x_test.columns, index=x_test.index)
     logistic = LogisticRegression(max_iter=LOGISTIC_MAX_ITER, C=1.0, solver="lbfgs", random_state=42)
     logistic.fit(x_train_scaled, y_train)
     logistic_test = logistic.predict_proba(x_test_scaled)[:, 1]
+    logistic_validation = logistic.predict_proba(x_validation_scaled)[:, 1]
     logistic_metrics = _metric_bundle(y_test, logistic_test)
 
     xgb = XGBClassifier(
@@ -669,13 +795,15 @@ def train_and_score(source_path: str | Path, activate: bool = True, source_label
         random_state=42,
         **XGB_TRAINING_PARAMS,
     )
-    xgb.fit(x_train, y_train)
+    xgb.fit(x_train, y_train, eval_set=[(x_train, y_train), (x_validation, y_validation)], verbose=False)
     xgb_test = xgb.predict_proba(x_test)[:, 1]
+    xgb_validation = xgb.predict_proba(x_validation)[:, 1]
     xgb_metrics = _metric_bundle(y_test, xgb_test)
 
     random_forest = RandomForestClassifier(random_state=42, **RANDOM_FOREST_PARAMS)
     random_forest.fit(x_train, y_train)
     random_forest_test = random_forest.predict_proba(x_test)[:, 1]
+    random_forest_validation = random_forest.predict_proba(x_validation)[:, 1]
     random_forest_metrics = _metric_bundle(y_test, random_forest_test)
 
     hist_gradient_boosting = HistGradientBoostingClassifier(
@@ -683,6 +811,7 @@ def train_and_score(source_path: str | Path, activate: bool = True, source_label
     )
     hist_gradient_boosting.fit(x_train, y_train)
     hist_gradient_boosting_test = hist_gradient_boosting.predict_proba(x_test)[:, 1]
+    hist_gradient_boosting_validation = hist_gradient_boosting.predict_proba(x_validation)[:, 1]
     hist_gradient_boosting_metrics = _metric_bundle(y_test, hist_gradient_boosting_test)
 
     model_metrics = {
@@ -691,16 +820,15 @@ def train_and_score(source_path: str | Path, activate: bool = True, source_label
         "Random Forest": random_forest_metrics,
         "HistGradientBoosting": hist_gradient_boosting_metrics,
     }
-    # Weight all four candidates by held-out quality instead of silently
-    # selecting a winner. F1 rewards useful intervention flags while AUC
-    # protects ranking quality; a floor means every requested model remains
-    # represented even on an unusually small or imbalanced upload.
-    raw_weights = {
-        name: max(0.05, (0.65 * metrics["f1_score"]) + (0.35 * metrics["auc_roc"]))
-        for name, metrics in model_metrics.items()
+    validation_score_sets = {
+        "Logistic Regression": logistic_validation,
+        "XGBoost": xgb_validation,
+        "Random Forest": random_forest_validation,
+        "HistGradientBoosting": hist_gradient_boosting_validation,
     }
-    total_weight = sum(raw_weights.values())
-    ensemble_weights = {name: round(value / total_weight, 6) for name, value in raw_weights.items()}
+    ensemble_weights, ensemble_threshold, ensemble_validation_metrics = _optimise_ensemble(
+        y_validation, validation_score_sets,
+    )
     # This is a four-model validation result shown consistently throughout the
     # product; the weighting remains implementation detail in the metadata.
     ensemble_name = "4-Model Validation"
@@ -727,18 +855,28 @@ def train_and_score(source_path: str | Path, activate: bool = True, source_label
     for name, weight in ensemble_weights.items():
         ensemble_probability += weight * score_sets[name]
         ensemble_test_probability += weight * test_score_sets[name]
-    ensemble_metrics = _metric_bundle(y_test, ensemble_test_probability)
+    ensemble_metrics = _metric_bundle(y_test, ensemble_test_probability, ensemble_threshold)
+    best_individual_accuracy = max(metrics["accuracy"] for metrics in model_metrics.values())
+    quality_passed = ensemble_metrics["accuracy"] >= MINIMUM_ACCEPTABLE_ACCURACY and ensemble_metrics["accuracy"] > best_individual_accuracy
+    if not quality_passed:
+        raise DatasetValidationError(
+            "Model quality gate failed: the honest held-out ensemble accuracy was "
+            f"{ensemble_metrics['accuracy'] * 100:.2f}% and the best individual model was "
+            f"{best_individual_accuracy * 100:.2f}%. Required: at least "
+            f"{MINIMUM_ACCEPTABLE_ACCURACY * 100:.0f}% and strictly better than every individual model."
+        )
+    training_history = _xgb_training_history(xgb, x_train, y_train, x_validation, y_validation)
     shap_values = _shap_values(xgb, x)
     gold = _gold_table(
         silver, signature, all_logistic, all_xgb, all_random_forest,
         all_hist_gradient_boosting, ensemble_probability, ensemble_name,
-        ensemble_weights, shap_values,
+        ensemble_weights, shap_values, feature_columns, ensemble_threshold,
     )
     # The fairness audit is performed on the held-out test partition, matching
     # the notebook and avoiding an over-optimistic in-sample assessment.
     fairness = _fairness(silver.loc[x_test.index], y_test, ensemble_test_probability, ensemble_name)
     mean_abs_shap = np.abs(shap_values).mean(axis=0)
-    global_shap = pd.DataFrame({"feature": FEATURE_COLUMNS, "mean_abs_shap": mean_abs_shap}).sort_values("mean_abs_shap", ascending=False)
+    global_shap = pd.DataFrame({"feature": feature_columns, "mean_abs_shap": mean_abs_shap}).sort_values("mean_abs_shap", ascending=False)
     global_shap["rank"] = np.arange(1, len(global_shap) + 1)
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -769,7 +907,7 @@ def train_and_score(source_path: str | Path, activate: bool = True, source_label
         for name, metrics in model_metrics.items()
     ] + [{
         "model": ensemble_name,
-        "description": "Validation-weighted blend of all four candidates; this is the Gold-layer operational score.",
+        "description": "Validation-optimised blend of all four candidates; evaluated once on the untouched test partition.",
         **ensemble_metrics,
         "ensemble_weight": 1.0,
     }]).to_csv(run_dir / "model_comparison.csv", index=False)
@@ -807,20 +945,24 @@ def train_and_score(source_path: str | Path, activate: bool = True, source_label
         "created_at": datetime.now(timezone.utc).isoformat(),
         "dataset_sha256": signature,
         "record_count": int(len(source)),
-        "feature_count": len(FEATURE_COLUMNS),
+        "feature_count": len(feature_columns),
         "target_column": TARGET_COLUMN,
         "dropout_count": int(y.sum()),
         "dropout_rate": round(float(y.mean()), 4),
         "tier_breakdown": [{"final_risk_tier": tier, "cnt": int(tiers[tier])} for tier in ["HIGH", "MEDIUM", "LOW"]],
-        "predicted_dropouts": int((ensemble_probability >= 0.5).sum()),
+        "predicted_dropouts": int((ensemble_probability >= ensemble_threshold).sum()),
         "champion_model": ensemble_name,
         "ensemble": {
-            "strategy": "Validation-weighted mean probability across all four models",
-            "selection_rationale": "Each model contributes using a held-out quality weight (65% F1, 35% ROC-AUC).",
+            "strategy": "Validation-optimised mean probability across all four models",
+            "selection_rationale": "Weights and decision threshold are selected on the validation partition, then reported on a separate untouched test partition.",
             "weights": ensemble_weights,
             "metrics": ensemble_metrics,
+            "validation_metrics": ensemble_validation_metrics,
+            "decision_threshold": round(float(ensemble_threshold), 4),
+            "quality_gate": {"minimum_accuracy": MINIMUM_ACCEPTABLE_ACCURACY, "must_beat_every_individual_model": True, "passed": True},
             "shap_explanation_model": "XGBoost component; its tree SHAP values supply the per-student feature evidence.",
         },
+        "training_history": training_history,
         "pipeline_layers": {
             "Bronze": "Raw, immutable uploaded records for lineage and audit.",
             "Silver": "Validated inputs plus derived features consumed by every candidate model.",
@@ -831,7 +973,7 @@ def train_and_score(source_path: str | Path, activate: bool = True, source_label
             "XGBoost": {"description": "Gradient-boosted trees for non-linear academic, engagement, and financial signals.", "parameters": XGB_TRAINING_PARAMS, "metrics": xgb_metrics, "ensemble_weight": ensemble_weights["XGBoost"]},
             "Random Forest": {"description": "Bagged decision trees that reduce variance across diverse student profiles.", "parameters": RANDOM_FOREST_PARAMS, "metrics": random_forest_metrics, "ensemble_weight": ensemble_weights["Random Forest"]},
             "HistGradientBoosting": {"description": "Histogram-based gradient boosting for efficient, smooth non-linear scoring.", "parameters": HIST_GRADIENT_BOOSTING_PARAMS, "metrics": hist_gradient_boosting_metrics, "ensemble_weight": ensemble_weights["HistGradientBoosting"]},
-            ensemble_name: {"description": "Validation-weighted blend of all four models used for Gold-layer risk tiers and actions.", "parameters": {"weighting": "0.65 F1 + 0.35 ROC-AUC on held-out validation"}, "metrics": ensemble_metrics, "ensemble_weight": 1.0},
+            ensemble_name: {"description": "Validation-optimised blend of all four models, accepted only after passing the untouched-test quality gate.", "parameters": {"weighting": "simplex search on validation accuracy/F1/AUC", "decision_threshold": round(float(ensemble_threshold), 4)}, "metrics": ensemble_metrics, "ensemble_weight": 1.0},
         },
         "files": {
             "bronze": bronze_path.name,

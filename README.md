@@ -332,9 +332,11 @@ For HIGH-risk students (score > 0.7), an AI voice agent calls them with 5 non-le
 | 2 | *"What's been the most challenging part recently?"* | Primary stressor |
 | 3 | *"On a scale of 1-5, how confident are you about completing your degree?"* | Dropout intent |
 | 4 | *"If you could change one thing about college, what would it be?"* | Root cause |
-| 5 | *"What are you most looking forward to next semester?"* | Future orientation |
-
-The LLM analyzes transcripts for sentiment, root cause, and dropout probability.
+The call first asks the student to say **English, Hindi, or Kannada**, then asks
+exactly four neutral questions adapted to the selected student's attendance,
+subjects, marks, and other academic context. Unclear speech is retried in the
+selected language. The fused result combines the trained ML probability with
+answer evidence to update LOW, MEDIUM, or HIGH risk during the call.
 
 ### Step 6: Fusion & Intervention
 

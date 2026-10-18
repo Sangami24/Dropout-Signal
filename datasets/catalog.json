@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-17T08:54:00.317101+00:00",
+  "generated_at": "2026-10-18T12:45:45.406347+00:00",
   "datasets": [
     {
       "number": 1,
@@ -40,6 +40,14 @@
       "student_count": 5500,
       "dropout_rate": 0.5022,
       "schema": "UCI 36 predictors + Target + Student Name metadata"
+    },
+    {
+      "number": 6,
+      "filename": "comprehensive_student_academic_dataset.csv",
+      "label": "Comprehensive Student Academic Dataset",
+      "student_count": 4424,
+      "dropout_rate": 0.3212,
+      "schema": "UCI predictors + real-profile demo fields, six subject marks, attendance, GPA, engagement, and Target"
     }
   ]
 }
