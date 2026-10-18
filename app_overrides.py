@@ -762,7 +762,7 @@ LIVE_UI_SCRIPT = r'''
 # It keeps the two role views pointed at the same server-side operational data
 # instead of their historical browser-only sample state.
 FINAL_UI_SCRIPT = r'''
-<style id="authoritative-dashboard-ui">
+<style id="authoritative-dashboard-ui" data-runtime-release="upload-integrity-2">
   html, body { width:100%; max-width:100%; overflow-x:hidden !important; }
   body { min-width:0; }
   .main { flex:0 0 calc(100vw - 220px)!important; width:calc(100vw - 220px); max-width:calc(100vw - 220px); min-width:0; box-sizing:border-box; }
