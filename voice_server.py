@@ -3,7 +3,7 @@ THE DROPOUT SIGNAL — Layer 2: AI Voice Verification Agent
 ==========================================================
 Twilio + LLM powered voice agent that:
   1. Calls HIGH-risk students flagged by Layer 1 (ML)
-  2. Asks 5 carefully designed, non-leading questions
+  2. Asks one spoken language question and 4 adaptive, non-leading questions
   3. Analyzes responses with GPT-4o for sentiment & dropout intent
   4. Exports structured results for Databricks fusion scoring
 
@@ -2248,7 +2248,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
   <div class="hero-left">
     <div class="hero-label">Layer 2 — AI Voice Verification</div>
     <div class="hero-title">Voice<br>Verification</div>
-    <div class="hero-sub">Calls high-risk students flagged by our ML pipeline. Asks 5 non-leading questions and uses LLM-powered sentiment analysis to produce unbiased dropout probability scores for fusion scoring.</div>
+    <div class="hero-sub">Calls students selected from the active dataset. After a spoken language choice, Asha asks 4 adaptive, non-leading questions and uses the answers for transparent fusion scoring.</div>
     <div class="hero-prices">
       <div class="hero-price"><div class="label">Twilio Voice</div><div class="val">4 Questions</div></div>
       <div class="hero-price"><div class="label">Groq LLM</div><div class="val">Llama 3.3 70B</div></div>

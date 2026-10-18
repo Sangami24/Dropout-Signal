@@ -2583,3 +2583,10 @@ def install(app, namespace):
             "()=>document.getElementById('loginForm').requestSubmit()",
             "()=>{const r=cursor.getBoundingClientRect();sessionStorage.setItem('dropout-signal-guided-cursor',JSON.stringify({x:r.left,y:r.top}));document.getElementById('loginForm').requestSubmit()}",
         )
+
+    landing_template = namespace.get("LANDING_HTML")
+    if isinstance(landing_template, str):
+        namespace["LANDING_HTML"] = landing_template.replace(
+            "ask 5 carefully designed, unbiased wellness questions",
+            "ask 4 adaptive, non-leading support questions after a spoken language choice",
+        )

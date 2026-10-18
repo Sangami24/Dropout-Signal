@@ -112,7 +112,7 @@ The system operates as a **two-layer pipeline** — quantitative ML prediction f
 ### 🎙️ Layer 2 — AI Voice Verification
 
 - **Twilio-powered voice calls** positioned as routine semester wellness check-ins
-- **5 carefully designed, non-leading questions** — student never knows they were flagged
+- **1 spoken language choice + 4 adaptive, non-leading questions** — the student is not told that the AI selected them for outreach
 - **LLM transcript analysis** (Groq/Llama 3.3 70B) for sentiment, root cause, and dropout intent
 - **Fusion scoring** — `0.6 × ML + 0.4 × Voice` eliminates false positives
 - **WhatsApp follow-up** — automated resource delivery for confirmed at-risk students
