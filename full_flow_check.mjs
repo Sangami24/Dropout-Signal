@@ -6,6 +6,7 @@ const debugPort = process.env.DROPOUT_SIGNAL_DEBUG_PORT;
 const counselorCookie = process.env.DROPOUT_SIGNAL_COUNSELOR_COOKIE;
 const adminCookie = process.env.DROPOUT_SIGNAL_ADMIN_COOKIE;
 const screenshotDir = process.env.DROPOUT_SIGNAL_SCREENSHOT_DIR;
+const uploadCsvPath = process.env.DROPOUT_SIGNAL_UPLOAD_CSV;
 
 function assert(condition, detail) {
   if (!condition) throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
@@ -171,6 +172,32 @@ async function validateApi(devtools) {
   console.log('PASS read-only API surface and active model metadata', {records: status.record_count, accuracy: metrics.ensemble.metrics.accuracy, history: metrics.training_history.points.length});
 }
 
+async function validateBrowserUpload(devtools) {
+  assert(uploadCsvPath, 'DROPOUT_SIGNAL_UPLOAD_CSV is required for browser upload testing');
+  await waitFor('dataset upload input', () => devtools.evaluate("!!document.getElementById('dataset-file-input')"));
+  const remote = await devtools.call('Runtime.evaluate', {
+    expression: "document.getElementById('dataset-file-input')",
+    returnByValue: false,
+  });
+  const objectId = remote.result?.objectId;
+  assert(objectId, 'Could not resolve the live dataset upload input');
+  await devtools.call('DOM.setFileInputFiles', {files: [uploadCsvPath], objectId});
+  const job = await waitFor('browser upload accepted', () => devtools.evaluate(`(() => {
+    try { return JSON.parse(localStorage.getItem('dropout-signal-background-upload') || 'null'); }
+    catch (_) { return null; }
+  })()`), value => value?.id && ['queued', 'processing', 'uploading'].includes(value.state), 30000);
+  const terminal = await waitFor('browser upload training completion', () => devtools.evaluate(`(async () => {
+    const response = await fetch('/api/dataset/upload-status?job_id=${encodeURIComponent(job.id)}', {cache:'no-store'});
+    if (!response.ok) return {status: response.status};
+    return response.json();
+  })()`), value => value?.state === 'complete' || value?.state === 'failed' || value?.state === 'canceled', 420000);
+  assert(terminal.state === 'complete' && terminal.status?.dataset_loaded, terminal);
+  await waitFor('activated browser dataset', () => devtools.evaluate("fetch('/api/dataset/status').then(response => response.json())"), value => value?.dataset_loaded && value.record_count === 4424, 30000);
+  const overlay = await devtools.evaluate("document.getElementById('dataset-training-overlay')?.innerText || ''");
+  assert(!/failed|canceled/i.test(overlay), {terminal, overlay});
+  console.log('PASS real browser CSV upload, background four-model training, and cohort activation', {job: job.id, records: terminal.status.record_count});
+}
+
 async function validateModelEvidence(devtools) {
   const pageId = await activateContaining(devtools, '#page-model-evidence');
   assert(pageId, 'Model evidence page was not found');
@@ -275,6 +302,7 @@ async function main() {
   await devtools.call('Emulation.setDeviceMetricsOverride', {width:1440,height:1000,deviceScaleFactor:1,mobile:false});
 
   await newPage(devtools, 'counselor', counselorCookie, '/counselor');
+  await validateBrowserUpload(devtools);
   await validateApi(devtools);
   await validateSummaryCards(devtools, '#summary-students', 'counselor');
   await validateRandomCalls(devtools);

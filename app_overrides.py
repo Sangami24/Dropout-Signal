@@ -556,9 +556,132 @@ LIVE_UI_SCRIPT = r'''
     if (!directUpload) localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
   }
 
-  if (typeof nativeCancelDatasetUpload === 'function') {
-    window.cancelDatasetUpload = nativeCancelDatasetUpload;
+  // Uploads can take several minutes because the server trains and validates
+  // four real models.  Do not leave the browser request open for that whole
+  // period: it is vulnerable to reverse-proxy/serverless request timeouts.
+  // The server returns a durable job ID immediately and the page polls that
+  // job until the scored cohort is activated.
+  let backgroundUpload = null;
+  let backgroundPollTimer = null;
+
+  function backgroundUploadView(job) {
+    const state = String(job.state || 'uploading');
+    const labels = {
+      uploading: ['Uploading Dataset', 'Sending the CSV securely to the server.', 'Uploading dataset...'],
+      queued: ['Preparing Dataset', 'The CSV is safely received and queued for validation.', 'Preparing training job...'],
+      processing: ['Training AI Models', 'Training, validating, and scoring the uploaded cohort.', 'Training 4-model ensemble...'],
+      complete: ['Dataset processing complete', 'The uploaded dataset is active.', 'Dataset trained, scored, and activated.'],
+    };
+    const fallback = labels.uploading;
+    const label = labels[state] || fallback;
+    const overlay = document.getElementById('dataset-training-overlay') || showUploadOverlay(job);
+    const ring = overlay.querySelector('.dataset-progress-ring');
+    const pct = ring?.querySelector('span');
+    const title = overlay.querySelector('b');
+    const detail = overlay.querySelector('p');
+    const stage = overlay.querySelector('small');
+    const cancel = overlay.querySelector('.dataset-cancel-upload');
+    const progress = Math.max(0, Math.min(100, Number(job.progress || 0)));
+    if (ring) ring.style.setProperty('--dataset-progress', `${progress * 3.6}deg`);
+    if (pct) pct.textContent = `${progress.toFixed(1)}%`;
+    if (title) title.textContent = label[0];
+    if (detail) detail.textContent = label[1];
+    if (stage) stage.textContent = job.message || label[2];
+    if (cancel) cancel.hidden = state === 'complete';
   }
+
+  function clearBackgroundUpload() {
+    if (backgroundPollTimer) clearInterval(backgroundPollTimer);
+    backgroundPollTimer = null;
+    backgroundUpload = null;
+    localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
+  }
+
+  async function refreshAfterBackgroundUpload() {
+    // These functions belong to the existing dashboard renderer; use them
+    // when present so the newly active cohort appears without a destructive
+    // browser reload.
+    if (typeof window.getStatus === 'function') await window.getStatus();
+    if (typeof window.loadDatasetExperience === 'function') await window.loadDatasetExperience(true);
+    if (typeof window.renderEvidence === 'function') await window.renderEvidence();
+    refreshDatasetInsights();
+  }
+
+  async function checkBackgroundUpload(job) {
+    const response = await fetch(`/api/dataset/upload-status?job_id=${encodeURIComponent(job.id)}`, {cache: 'no-store'});
+    const serverJob = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(serverJob.error || 'Unable to check dataset upload status.');
+    backgroundUploadView(serverJob);
+    localStorage.setItem(BACKGROUND_UPLOAD_KEY, JSON.stringify({...job, ...serverJob}));
+    if (serverJob.state === 'complete') {
+      clearBackgroundUpload();
+      setTimeout(removeOverlay, 900);
+      await refreshAfterBackgroundUpload();
+      toast('Dataset trained, scored, and activated.', 'ok');
+      return true;
+    }
+    if (serverJob.state === 'failed' || serverJob.state === 'canceled') {
+      clearBackgroundUpload(); removeOverlay();
+      throw new Error(serverJob.error || 'Dataset upload failed.');
+    }
+    return false;
+  }
+
+  async function startBackgroundUpload(file) {
+    if (!file) return;
+    if (backgroundUpload) await window.cancelDatasetUpload();
+    const job = {
+      id: globalThis.crypto?.randomUUID?.() || `upload-${Date.now()}`,
+      filename: file.name, state: 'uploading', progress: 0,
+    };
+    backgroundUpload = job;
+    localStorage.setItem(BACKGROUND_UPLOAD_KEY, JSON.stringify(job));
+    backgroundUploadView(job);
+    try {
+      const form = new FormData(); form.append('file', file);
+      const response = await fetch('/api/dataset/upload', {
+        method: 'POST', body: form, headers: {'X-Dataset-Upload-Id': job.id},
+      });
+      const accepted = await response.json().catch(() => ({}));
+      if (!response.ok || !accepted.ok || !accepted.id) throw new Error(accepted.error || 'Dataset upload could not be started.');
+      Object.assign(job, accepted, {state: accepted.state || 'queued'});
+      backgroundUploadView(job);
+      if (await checkBackgroundUpload(job)) return;
+      backgroundPollTimer = setInterval(async () => {
+        if (!backgroundUpload || backgroundUpload.id !== job.id) return;
+        try { await checkBackgroundUpload(job); }
+        catch (error) {
+          clearBackgroundUpload(); removeOverlay();
+          toast(error.message || 'Dataset upload failed.', 'err');
+        }
+      }, 850);
+    } catch (error) {
+      clearBackgroundUpload(); removeOverlay();
+      toast(error.message || 'Dataset upload failed.', 'err');
+    }
+  }
+
+  window.cancelDatasetUpload = async () => {
+    const job = backgroundUpload;
+    clearBackgroundUpload(); removeOverlay();
+    if (job?.id) {
+      await fetch('/api/dataset/cancel', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({upload_id: job.id}), keepalive: true,
+      }).catch(() => {});
+    }
+    toast('Dataset upload canceled.', 'info');
+  };
+
+  // Capture the native input before its historical synchronous listener runs.
+  // This leaves the existing visual control intact while making its upload
+  // resilient to long-running real model training.
+  document.addEventListener('change', event => {
+    const input = event.target;
+    if (!(input instanceof HTMLInputElement) || input.id !== 'dataset-file-input') return;
+    event.stopImmediatePropagation();
+    startBackgroundUpload(input.files?.[0]);
+  }, true);
 
   function datasetInsightCards() {
     return [...document.querySelectorAll('.card-new')].filter(card => /AI Insights/i.test(card.querySelector('h3')?.textContent || ''));
@@ -2326,10 +2449,10 @@ def install(app, namespace):
                 })
             return response
 
-        # Keep uploads on the original request path. It already performs the
-        # validated train/score/activate flow atomically when the user stays on
-        # the page; the background wrapper remains only as legacy code.
-        app.view_functions[upload_rule.endpoint] = original_upload
+        # A full four-model training run can outlive an HTTP proxy timeout.
+        # Accept the file first, then retain the training work in a server-side
+        # job which the dashboard polls to its real terminal outcome.
+        app.view_functions[upload_rule.endpoint] = background_dataset_upload
         if not any(rule.rule == "/api/dataset/upload-status" for rule in app.url_map.iter_rules()):
             app.add_url_rule(
                 "/api/dataset/upload-status",

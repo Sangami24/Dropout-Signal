@@ -107,6 +107,7 @@ def main() -> None:
                 "DROPOUT_SIGNAL_COUNSELOR_COOKIE": role_cookie("counselor"),
                 "DROPOUT_SIGNAL_ADMIN_COOKIE": role_cookie("admin"),
                 "DROPOUT_SIGNAL_SCREENSHOT_DIR": str(screenshots),
+                "DROPOUT_SIGNAL_UPLOAD_CSV": str(ROOT / "datasets" / "comprehensive_student_academic_dataset.csv"),
             }
         )
         completed = None
@@ -117,7 +118,7 @@ def main() -> None:
                 env=environment,
                 text=True,
                 capture_output=True,
-                timeout=240,
+                timeout=540,
             )
             if completed.stdout:
                 print(completed.stdout, end="")
