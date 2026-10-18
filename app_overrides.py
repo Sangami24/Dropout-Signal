@@ -222,11 +222,6 @@ LIVE_UI_SCRIPT = r'''
     });
   }
 
-  // Preserve the dashboard's upload cancellation function. This runtime
-  // script must not replace the upload controller that applies the server's
-  // returned dataset values directly to the dashboard.
-  const nativeCancelDatasetUpload = window.cancelDatasetUpload;
-
   // ═══════════════════════════════════════════════════════════════════
   //  UPLOAD CONTROLLER — single, race-free implementation
   // ═══════════════════════════════════════════════════════════════════
@@ -240,7 +235,8 @@ LIVE_UI_SCRIPT = r'''
     const overlay = document.createElement('div');
     overlay.id = 'dataset-training-overlay';
     const progress = Number(job.progress || 0);
-    overlay.innerHTML = `<section class="dataset-training-card" role="status" aria-live="polite"><div class="dataset-progress-ring"><span>${progress.toFixed(1)}%</span></div><div><b>Uploading Dataset</b><p>${escapeHtml(job.filename || 'Your dataset')} is processing on the server. You can switch dashboards or browser tabs.</p></div><button type="button" class="btn dataset-cancel-upload">Cancel Upload</button></section>`;
+    overlay.dataset.backgroundUpload = 'true';
+    overlay.innerHTML = `<section class="dataset-training-card" role="status" aria-live="polite"><div class="dataset-progress-ring"><span>${progress.toFixed(1)}%</span></div><div><b>Uploading Dataset</b><p>${escapeHtml(job.filename || 'Your dataset')} is processing on the server. You can switch dashboards or browser tabs.</p><small>${escapeHtml(job.message || 'Uploading dataset...')}</small></div><button type="button" class="btn dataset-cancel-upload">Cancel Upload</button></section>`;
     overlay.querySelector('.dataset-cancel-upload').addEventListener('click', () => window.cancelDatasetUpload());
     document.body.appendChild(overlay);
     return overlay;
@@ -259,9 +255,11 @@ LIVE_UI_SCRIPT = r'''
     if (pct) pct.textContent = `${progress.toFixed(1)}%`;
     if (stage) stage.textContent = job.message || 'Processing on the server...';
     if (title && job.state === 'uploading') title.textContent = 'Uploading Dataset';
-    if (title && ['queued', 'processing'].includes(job.state)) title.textContent = 'Finalizing Dataset';
+    if (title && job.state === 'queued') title.textContent = 'Preparing Dataset';
+    if (title && job.state === 'processing') title.textContent = 'Training AI Models';
     if (title && job.state === 'complete') title.textContent = 'Dataset processing complete';
-    if (detail && ['queued', 'processing'].includes(job.state)) detail.textContent = 'Training, scoring, and saving the active cohort. Safe to switch dashboards or browser tabs.';
+    if (detail && job.state === 'queued') detail.textContent = 'The CSV is safely received and queued for validation.';
+    if (detail && job.state === 'processing') detail.textContent = 'Training, validating, and scoring the uploaded cohort. Safe to switch dashboards or browser tabs.';
     if (detail && job.state === 'complete') detail.textContent = 'The scored cohort is active. Refreshing this dashboard...';
     if (cancelBtn) cancelBtn.hidden = (job.state === 'complete');
   }
@@ -321,20 +319,14 @@ LIVE_UI_SCRIPT = r'''
 
       if (serverJob.state === 'complete') {
         if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
-        // Remove localStorage BEFORE any reload so other tabs cannot read
-        // a stale 'complete' snapshot and re-trigger completion.
         localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
-        // Single-fire: only the first tab to see 'complete' for this job
-        // triggers a reload. Other tabs detect the removed localStorage
-        // key via their storage listener and clean up silently.
-        const completionKey = `dropout-signal-upload-complete-${serverJob.id}`;
-        if (!sessionStorage.getItem(completionKey)) {
-          sessionStorage.setItem(completionKey, '1');
-          setTimeout(() => window.location.reload(), 700);
-        } else {
-          // This tab already completed this job. Just remove the overlay.
-          removeOverlay();
-        }
+        updateUploadOverlay({...serverJob, progress: 100, state: 'complete'});
+        removeOverlay();
+        if (typeof window.getStatus === 'function') await window.getStatus();
+        if (typeof window.loadDatasetExperience === 'function') await window.loadDatasetExperience(true);
+        if (typeof window.renderEvidence === 'function') await window.renderEvidence();
+        await refreshDatasetInsights();
+        toast('Dataset trained, scored, and activated.', 'ok');
         return 'complete';
       }
       if (serverJob.state === 'failed' || serverJob.state === 'canceled') {
@@ -410,9 +402,55 @@ LIVE_UI_SCRIPT = r'''
   }
 
   // ── Capture file selection (before the legacy page handler) ───────
-  // File selection remains owned by the dashboard's native uploadDataset()
-  // handler. Intercepting it here bypassed applyDatasetStatus() and forced a
-  // reload that returned users to an empty dashboard.
+  // Replace the old input node so its synchronous upload listener is removed.
+  // This leaves exactly one upload path: start job, poll server, refresh UI.
+  function ownDatasetUploadInput() {
+    const legacyInput = document.getElementById('dataset-file-input');
+    if (!legacyInput || legacyInput.dataset.backgroundOwned === 'true') return;
+    const input = legacyInput.cloneNode(true);
+    input.dataset.backgroundOwned = 'true';
+    input.value = '';
+    legacyInput.replaceWith(input);
+    input.addEventListener('change', () => beginUpload(input.files?.[0]));
+  }
+  document.addEventListener('DOMContentLoaded', ownDatasetUploadInput);
+
+  async function resetDatasetExplicitly(button) {
+    if (!window.confirm('Reset the active dataset and clear its scored dashboard data?')) return;
+    button.disabled = true;
+    try {
+      const response = await fetch('/api/dataset/reset', {
+        method: 'POST',
+        headers: {'X-Dataset-Reset': 'explicit'},
+        cache: 'no-store',
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload.ignored) throw new Error(payload.error || 'Dataset reset was not completed.');
+      ++_pollGeneration;
+      clearUploadState();
+      removeOverlay();
+      if (typeof window.resetDatasetUiCaches === 'function') window.resetDatasetUiCaches();
+      if (typeof window.getStatus === 'function') await window.getStatus();
+      if (typeof window.loadDatasetExperience === 'function') await window.loadDatasetExperience(true);
+      await refreshDatasetInsights();
+      toast('Active dataset reset.', 'ok');
+    } catch (error) {
+      toast(error.message || 'Dataset reset failed.', 'err');
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  function ownDatasetResetButton() {
+    const legacyButton = [...document.querySelectorAll('button')].find(button => /^reset dataset$/i.test(button.textContent.trim()));
+    if (!legacyButton || legacyButton.dataset.explicitResetOwned === 'true') return;
+    const button = legacyButton.cloneNode(true);
+    button.dataset.explicitResetOwned = 'true';
+    button.removeAttribute('onclick');
+    legacyButton.replaceWith(button);
+    button.addEventListener('click', () => resetDatasetExplicitly(button));
+  }
+  document.addEventListener('DOMContentLoaded', ownDatasetResetButton);
 
   // ── Cross-tab and visibility event handlers ───────────────────────
   document.addEventListener('visibilitychange', () => {
@@ -431,267 +469,6 @@ LIVE_UI_SCRIPT = r'''
       removeOverlay();
     }
   });
-
-  // ── Direct upload controller ──────────────────────────────────────
-  // The user stays on this page during upload. Use the original synchronous
-  // train/score/activate endpoint and a single local progress presentation.
-  let directUpload = null;
-  let directProgressTimer = null;
-  const MIN_UPLOAD_DISPLAY_MS = 30000;
-
-  function showUploadOverlay(job) {
-    document.getElementById('dataset-training-overlay')?.remove();
-    const overlay = document.createElement('div');
-    overlay.id = 'dataset-training-overlay';
-    overlay.innerHTML = `<section class="dataset-training-card" role="status" aria-live="polite"><div class="dataset-progress-ring"><span>0.0%</span></div><div><b>Uploading Dataset</b><p>${escapeHtml(job.filename || 'Your dataset')} is being uploaded.</p><small>Uploading dataset...</small></div><button type="button" class="btn dataset-cancel-upload">Cancel Upload</button></section>`;
-    overlay.querySelector('.dataset-cancel-upload').addEventListener('click', () => window.cancelDatasetUpload());
-    document.body.appendChild(overlay);
-    return overlay;
-  }
-
-  function updateUploadOverlay(job) {
-    const overlay = document.getElementById('dataset-training-overlay') || showUploadOverlay(job);
-    const ring = overlay.querySelector('.dataset-progress-ring');
-    const pct = ring?.querySelector('span');
-    const title = overlay.querySelector('b');
-    const detail = overlay.querySelector('p');
-    const stage = overlay.querySelector('small');
-    const cancel = overlay.querySelector('.dataset-cancel-upload');
-    const progress = Math.max(0, Math.min(100, Number(job.progress || 0)));
-    if (ring) ring.style.setProperty('--dataset-progress', `${progress * 3.6}deg`);
-    if (pct) pct.textContent = `${progress.toFixed(1)}%`;
-    const labels = {
-      uploading: ['Uploading Dataset', 'Sending the CSV securely to the server.', 'Uploading dataset...'],
-      reading: ['Reading Dataset', 'Checking columns and preparing the uploaded records.', 'Reading dataset...'],
-      analyzing: ['Analyzing Dataset', 'Training models and scoring the uploaded cohort.', 'Analyzing dataset...'],
-      finalizing: ['Finalizing Dataset', 'Saving the scored cohort and dataset-specific evidence.', 'Finalizing dataset...'],
-      complete: ['Dataset processing complete', 'The uploaded dataset is active. Refreshing this dashboard...', 'Dataset trained, scored, and activated.'],
-    };
-    const label = labels[job.state] || labels.uploading;
-    if (title) title.textContent = label[0];
-    if (detail) detail.textContent = label[1];
-    if (stage) stage.textContent = label[2];
-    if (cancel) cancel.hidden = job.state === 'complete';
-  }
-
-  function directStage(progress) {
-    if (progress < 18) return 'uploading';
-    if (progress < 35) return 'reading';
-    if (progress < 82) return 'analyzing';
-    return 'finalizing';
-  }
-
-  function finishDirectUpload(active) {
-    if (directProgressTimer) clearInterval(directProgressTimer);
-    const render = () => {
-      if (directUpload !== active || active.canceled) return;
-      const progress = Math.min(100, ((Date.now() - active.startedAt) / MIN_UPLOAD_DISPLAY_MS) * 100);
-      if (progress < 100) {
-        updateUploadOverlay({...active.job, progress, state: directStage(progress)});
-        return;
-      }
-      clearInterval(directProgressTimer); directProgressTimer = null;
-      updateUploadOverlay({...active.job, progress: 100, state: 'complete'});
-      localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
-      directUpload = null;
-      setTimeout(() => window.location.reload(), 700);
-    };
-    render();
-    directProgressTimer = setInterval(render, 120);
-  }
-
-  window.cancelDatasetUpload = async () => {
-    const active = directUpload;
-    if (active) { active.canceled = true; active.controller.abort(); }
-    if (directProgressTimer) clearInterval(directProgressTimer);
-    directProgressTimer = null;
-    directUpload = null;
-    localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
-    removeOverlay();
-    if (active?.job?.id) {
-      await fetch('/api/dataset/cancel', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({upload_id: active.job.id}), keepalive: true,
-      }).catch(() => {});
-    }
-    toast('Dataset upload canceled.', 'info');
-  };
-
-  async function beginUpload(file) {
-    if (!file) return;
-    if (directUpload) await window.cancelDatasetUpload();
-    const job = {id: globalThis.crypto?.randomUUID?.() || `upload-${Date.now()}`, filename: file.name, progress: 0, state: 'uploading'};
-    const active = {job, controller: new AbortController(), canceled: false, startedAt: Date.now()};
-    directUpload = active;
-    localStorage.setItem(BACKGROUND_UPLOAD_KEY, JSON.stringify({id: job.id, filename: job.filename, state: 'uploading'}));
-    updateUploadOverlay(job);
-    directProgressTimer = setInterval(() => {
-      if (directUpload !== active) return;
-      const progress = Math.min(94, ((Date.now() - active.startedAt) / MIN_UPLOAD_DISPLAY_MS) * 94);
-      updateUploadOverlay({...job, progress, state: directStage(progress)});
-    }, 260);
-    try {
-      const form = new FormData(); form.append('file', file);
-      const response = await fetch('/api/dataset/upload', {
-        method: 'POST', body: form, signal: active.controller.signal,
-        headers: {'X-Dataset-Upload-Id': job.id},
-      });
-      const payload = await response.json();
-      if (!response.ok || !payload.ok || !payload.status?.dataset_loaded) throw new Error(payload.error || 'Dataset was not activated.');
-      if (directUpload !== active || active.canceled) return;
-      finishDirectUpload(active);
-    } catch (error) {
-      if (directUpload !== active || active.canceled || error.name === 'AbortError') return;
-      clearInterval(directProgressTimer); directProgressTimer = null;
-      directUpload = null;
-      localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
-      removeOverlay();
-      toast(error.message || 'Dataset upload failed.', 'err');
-    }
-  }
-
-  async function resumeUploadPolling() {
-    // No background job is used. A stale key from an old page must never
-    // recreate a fake progress overlay or alter a new upload.
-    if (!directUpload) localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
-  }
-
-  // Uploads can take several minutes because the server trains and validates
-  // four real models.  Do not leave the browser request open for that whole
-  // period: it is vulnerable to reverse-proxy/serverless request timeouts.
-  // The server returns a durable job ID immediately and the page polls that
-  // job until the scored cohort is activated.
-  let backgroundUpload = null;
-  let backgroundPollTimer = null;
-
-  function backgroundUploadView(job) {
-    const state = String(job.state || 'uploading');
-    const labels = {
-      uploading: ['Uploading Dataset', 'Sending the CSV securely to the server.', 'Uploading dataset...'],
-      queued: ['Preparing Dataset', 'The CSV is safely received and queued for validation.', 'Preparing training job...'],
-      processing: ['Training AI Models', 'Training, validating, and scoring the uploaded cohort.', 'Training 4-model ensemble...'],
-      complete: ['Dataset processing complete', 'The uploaded dataset is active.', 'Dataset trained, scored, and activated.'],
-    };
-    const fallback = labels.uploading;
-    const label = labels[state] || fallback;
-    const overlay = document.getElementById('dataset-training-overlay') || showUploadOverlay(job);
-    // Legacy display code must never rewrite a server-authoritative job view.
-    overlay.dataset.backgroundUpload = 'true';
-    const ring = overlay.querySelector('.dataset-progress-ring');
-    const pct = ring?.querySelector('span');
-    const title = overlay.querySelector('b');
-    const detail = overlay.querySelector('p');
-    const stage = overlay.querySelector('small');
-    const cancel = overlay.querySelector('.dataset-cancel-upload');
-    const progress = Math.max(0, Math.min(100, Number(job.progress || 0)));
-    if (ring) ring.style.setProperty('--dataset-progress', `${progress * 3.6}deg`);
-    if (pct) pct.textContent = `${progress.toFixed(1)}%`;
-    if (title) title.textContent = label[0];
-    if (detail) detail.textContent = label[1];
-    if (stage) stage.textContent = job.message || label[2];
-    if (cancel) cancel.hidden = state === 'complete';
-  }
-
-  function clearBackgroundUpload() {
-    if (backgroundPollTimer) clearInterval(backgroundPollTimer);
-    backgroundPollTimer = null;
-    backgroundUpload = null;
-    localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
-  }
-
-  async function refreshAfterBackgroundUpload() {
-    // These functions belong to the existing dashboard renderer; use them
-    // when present so the newly active cohort appears without a destructive
-    // browser reload.
-    if (typeof window.getStatus === 'function') await window.getStatus();
-    if (typeof window.loadDatasetExperience === 'function') await window.loadDatasetExperience(true);
-    if (typeof window.renderEvidence === 'function') await window.renderEvidence();
-    refreshDatasetInsights();
-  }
-
-  async function checkBackgroundUpload(job) {
-    const response = await fetch(`/api/dataset/upload-status?job_id=${encodeURIComponent(job.id)}`, {cache: 'no-store'});
-    const serverJob = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(serverJob.error || 'Unable to check dataset upload status.');
-    backgroundUploadView(serverJob);
-    localStorage.setItem(BACKGROUND_UPLOAD_KEY, JSON.stringify({...job, ...serverJob}));
-    if (serverJob.state === 'complete') {
-      clearBackgroundUpload();
-      setTimeout(removeOverlay, 900);
-      await refreshAfterBackgroundUpload();
-      toast('Dataset trained, scored, and activated.', 'ok');
-      return true;
-    }
-    if (serverJob.state === 'failed' || serverJob.state === 'canceled') {
-      clearBackgroundUpload(); removeOverlay();
-      throw new Error(serverJob.error || 'Dataset upload failed.');
-    }
-    return false;
-  }
-
-  async function startBackgroundUpload(file) {
-    if (!file) return;
-    if (backgroundUpload) await window.cancelDatasetUpload();
-    const job = {
-      id: globalThis.crypto?.randomUUID?.() || `upload-${Date.now()}`,
-      filename: file.name, state: 'uploading', progress: 0,
-    };
-    backgroundUpload = job;
-    localStorage.setItem(BACKGROUND_UPLOAD_KEY, JSON.stringify(job));
-    backgroundUploadView(job);
-    try {
-      const form = new FormData(); form.append('file', file);
-      const response = await fetch('/api/dataset/upload', {
-        method: 'POST', body: form, headers: {'X-Dataset-Upload-Id': job.id},
-      });
-      const accepted = await response.json().catch(() => ({}));
-      if (!response.ok || !accepted.ok || !accepted.id) throw new Error(accepted.error || 'Dataset upload could not be started.');
-      Object.assign(job, accepted, {state: accepted.state || 'queued'});
-      backgroundUploadView(job);
-      if (await checkBackgroundUpload(job)) return;
-      backgroundPollTimer = setInterval(async () => {
-        if (!backgroundUpload || backgroundUpload.id !== job.id) return;
-        try { await checkBackgroundUpload(job); }
-        catch (error) {
-          clearBackgroundUpload(); removeOverlay();
-          toast(error.message || 'Dataset upload failed.', 'err');
-        }
-      }, 850);
-    } catch (error) {
-      clearBackgroundUpload(); removeOverlay();
-      toast(error.message || 'Dataset upload failed.', 'err');
-    }
-  }
-
-  window.cancelDatasetUpload = async () => {
-    const job = backgroundUpload;
-    clearBackgroundUpload(); removeOverlay();
-    if (job?.id) {
-      await fetch('/api/dataset/cancel', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({upload_id: job.id}), keepalive: true,
-      }).catch(() => {});
-    }
-    toast('Dataset upload canceled.', 'info');
-  };
-
-  function ownDatasetUploadInput() {
-    const legacyInput = document.getElementById('dataset-file-input');
-    if (!legacyInput || legacyInput.dataset.backgroundOwned === 'true') return;
-    // The recovered dashboard installed a synchronous listener directly on
-    // this element. Replacing just the input preserves the visible button but
-    // removes that listener, leaving one clear, background-safe upload path.
-    const input = legacyInput.cloneNode(true);
-    input.dataset.backgroundOwned = 'true';
-    input.value = '';
-    legacyInput.replaceWith(input);
-    input.addEventListener('change', () => startBackgroundUpload(input.files?.[0]));
-  }
-
-  // The historic dashboard creates its control on DOMContentLoaded. Its
-  // listener was registered earlier, so this runs afterwards and swaps out
-  // only the stale input event binding.
-  document.addEventListener('DOMContentLoaded', ownDatasetUploadInput);
 
   function datasetInsightCards() {
     return [...document.querySelectorAll('.card-new')].filter(card => /AI Insights/i.test(card.querySelector('h3')?.textContent || ''));
@@ -762,7 +539,7 @@ LIVE_UI_SCRIPT = r'''
 # It keeps the two role views pointed at the same server-side operational data
 # instead of their historical browser-only sample state.
 FINAL_UI_SCRIPT = r'''
-<style id="authoritative-dashboard-ui" data-runtime-release="upload-integrity-2">
+<style id="authoritative-dashboard-ui" data-runtime-release="upload-integrity-3">
   html, body { width:100%; max-width:100%; overflow-x:hidden !important; }
   body { min-width:0; }
   .main { flex:0 0 calc(100vw - 220px)!important; width:calc(100vw - 220px); max-width:calc(100vw - 220px); min-width:0; box-sizing:border-box; }
@@ -1416,7 +1193,10 @@ FINAL_UI_SCRIPT = r'''
     setDatasetCounts(['s-bronze','cd-calls','student-directory-nav-count','sb-student-count'], display);
     setDatasetCounts(['s-gold','cd-med','admin-risk-count','sb-risk-count'], loaded ? atRisk.toLocaleString() : '–');
     setDatasetCounts(['s-avgrisk','cd-high'], loaded ? predicted.toLocaleString() : '–');
-    document.querySelectorAll('.risk-fixed-badge').forEach(node => { node.textContent = loaded ? `${predicted.toLocaleString()} predicted dropouts` : '– predicted dropouts'; });
+    document.querySelectorAll('.risk-fixed-badge').forEach(node => {
+      if (!loaded) node.remove();
+      else node.textContent = `${total.toLocaleString()} students`;
+    });
     const label = document.getElementById('dataset-active-label');
     if (label) label.textContent = loaded ? `${status.dataset_name || status.source_label || 'Active dataset'} · ${display} students` : 'No dataset loaded';
     renderAuthoritativeAdminOverview(status);
@@ -1611,37 +1391,6 @@ FINAL_UI_SCRIPT = r'''
       bars.slice(1).forEach(bar => bar.remove());
       [...page.querySelectorAll('.operation-toolbar')].filter(bar => /search call transcripts/i.test(bar.querySelector('input')?.placeholder || '') && !bar.classList.contains('runtime-transcript-search')).forEach(bar => bar.remove());
     });
-  }
-
-  function normalizeUploadStages() {
-    const overlay = document.getElementById('dataset-training-overlay');
-    if (!overlay) return;
-    // Background uploads own their stage text from the server job state.  The
-    // retired percentage-based display must not turn a real queued/complete
-    // job back into an arbitrary model-training stage.
-    if (overlay.dataset.backgroundUpload === 'true') return;
-    // The original uploader holds a reference to its own <small> element and
-    // rewrites it every 260 ms. Replace that node once, so our exact runtime
-    // operation message cannot flicker back to its old generic text.
-    const legacySmall = overlay.querySelector('small:not([data-runtime-stage])');
-    if (legacySmall) {
-      const runtimeSmall = document.createElement('small');
-      runtimeSmall.dataset.runtimeStage = 'true';
-      legacySmall.replaceWith(runtimeSmall);
-    }
-    const percent = Number((overlay.querySelector('.dataset-progress-ring span')?.textContent || '0').replace('%', ''));
-    const stage = percent < 8 ? ['Uploading Dataset', 'Transferring the selected CSV to the secure workspace.', 'Verifying file transfer…']
-      : percent < 18 ? ['Reading Dataset', 'Extracting rows and checking the uploaded column headers.', 'Extracting CSV rows…']
-      : percent < 30 ? ['Reading Dataset', 'Mapping raw values into the Bronze data layer.', 'Mapping values to Bronze…']
-      : percent < 43 ? ['Analyzing Dataset', 'Cleaning values and deriving Silver-layer features.', 'Deriving Silver features…']
-      : percent < 55 ? ['Analyzing Dataset', 'Training Logistic Regression on the validated cohort.', 'Training Logistic Regression…']
-      : percent < 66 ? ['Analyzing Dataset', 'Training XGBoost and measuring hold-out quality.', 'Training XGBoost…']
-      : percent < 76 ? ['Analyzing Dataset', 'Training Random Forest on the shared feature set.', 'Training Random Forest…']
-      : percent < 86 ? ['Analyzing Dataset', 'Training HistGradientBoosting and comparing validation metrics.', 'Training HistGradientBoosting…']
-      : percent < 94 ? ['Finalizing Dataset', 'Combining all four probabilities into the validation score.', 'Building 4-model validation score…']
-      : ['Finalizing Dataset', 'Writing Gold scores, fairness evidence, and shared dashboard state.', 'Publishing Gold-layer outputs…'];
-    const [title, detail, small] = [overlay.querySelector('b'), overlay.querySelector('p'), overlay.querySelector('small[data-runtime-stage]')];
-    if (title) title.textContent = stage[0]; if (detail) detail.textContent = stage[1]; if (small) small.textContent = stage[2];
   }
 
   async function renderAtRisk(admin) {
@@ -2157,25 +1906,10 @@ FINAL_UI_SCRIPT = r'''
     }
   };
 
-  async function clearWorkspaceOnBrowserRefresh() {
-    const navigation = performance.getEntriesByType?.('navigation')?.[0];
-    if (navigation?.type !== 'reload') return;
-    await Promise.allSettled([
-      fetch('/api/dataset/reset', {method:'POST', cache:'no-store'}),
-      fetch('/api/reset', {method:'POST', cache:'no-store'}),
-    ]);
-    sampleTimelines.clear();
-    visibleMessageCounts.clear();
-    liveThreadFollowState.clear();
-    openedConversationKey = null;
-    activeDatasetRunId = 'none';
-  }
-
-  document.addEventListener('DOMContentLoaded', async () => {
-    await clearWorkspaceOnBrowserRefresh();
+  document.addEventListener('DOMContentLoaded', () => {
     protectOperationPanels(); protectSummaryPanels(); protectRiskPresentation();
-    renderCohortPulse(); renderCohortBrief(); removeDuplicateTranscriptSearch(); normalizeUploadStages(); normalizeModelPresentation(); removeDemoUi(); swapRiskCards(); refreshOperations(); renderAtRisk(false); renderAtRisk(true); refreshFairness(); augmentModelEvidence(); syncActiveDatasetScope();
-    setInterval(refreshOperations, 500); setInterval(keepLiveThreadsAtLatestTurn, 500); setInterval(normalizeUploadStages, 500); setInterval(normalizeModelPresentation, 2500); setInterval(removeDemoUi, 2500); setInterval(refreshFairness, 3000); setInterval(renderCohortPulse, 8000); setInterval(renderCohortBrief, 5000); setInterval(removeDuplicateTranscriptSearch, 2500); setInterval(augmentModelEvidence, 3000); setInterval(syncActiveDatasetScope, 3000);
+    renderCohortPulse(); renderCohortBrief(); removeDuplicateTranscriptSearch(); normalizeModelPresentation(); removeDemoUi(); swapRiskCards(); refreshOperations(); renderAtRisk(false); renderAtRisk(true); refreshFairness(); augmentModelEvidence(); syncActiveDatasetScope();
+    setInterval(refreshOperations, 500); setInterval(keepLiveThreadsAtLatestTurn, 500); setInterval(normalizeModelPresentation, 2500); setInterval(removeDemoUi, 2500); setInterval(refreshFairness, 3000); setInterval(renderCohortPulse, 8000); setInterval(renderCohortBrief, 5000); setInterval(removeDuplicateTranscriptSearch, 2500); setInterval(augmentModelEvidence, 3000); setInterval(syncActiveDatasetScope, 3000);
     const resumeOperations = () => { if (!document.hidden) { refreshOperations(); keepLiveThreadsAtLatestTurn(); syncActiveDatasetScope(); } };
     document.addEventListener('visibilitychange', resumeOperations);
     window.addEventListener('pageshow', resumeOperations);
@@ -2314,9 +2048,28 @@ def install(app, namespace):
         voice_server._persist_live_state()
         return jsonify({"status": "ok"})
 
+    def guarded_live_operations_reset():
+        if request.headers.get("X-Operations-Reset") != "explicit":
+            return jsonify({"ok": True, "ignored": True, "reason": "explicit reset required"})
+        return reset_live_operations()
+
     for rule in app.url_map.iter_rules():
         if rule.rule == "/api/reset":
-            app.view_functions[rule.endpoint] = reset_live_operations
+            app.view_functions[rule.endpoint] = guarded_live_operations_reset
+
+    # Older dashboard JavaScript called this endpoint on every browser reload,
+    # which erased a dataset immediately after a successful upload. Only the
+    # explicitly owned Reset Dataset button may perform this destructive action.
+    dataset_reset_rule = next((rule for rule in app.url_map.iter_rules() if rule.rule == "/api/dataset/reset"), None)
+    if dataset_reset_rule:
+        original_dataset_reset = app.view_functions[dataset_reset_rule.endpoint]
+
+        def guarded_dataset_reset():
+            if request.headers.get("X-Dataset-Reset") != "explicit":
+                return jsonify({"ok": True, "ignored": True, "reason": "explicit reset required"})
+            return original_dataset_reset()
+
+        app.view_functions[dataset_reset_rule.endpoint] = guarded_dataset_reset
 
     # If a request or deploy lost only the small active-run marker while the
     # scored run files remain on disk, recover the newest completed run before

@@ -174,6 +174,20 @@ async function validateApi(devtools) {
 
 async function validateBrowserUpload(devtools) {
   assert(uploadCsvPath, 'DROPOUT_SIGNAL_UPLOAD_CSV is required for browser upload testing');
+  const resetControl = await devtools.evaluate(`(() => {
+    const button=[...document.querySelectorAll('button')].find(node => /^reset dataset$/i.test(node.textContent.trim()));
+    if (!button) return null;
+    window.confirm=()=>true;
+    button.click();
+    return {owned:button.dataset.explicitResetOwned||'', disabled:button.disabled};
+  })()`);
+  assert(resetControl?.owned === 'true', resetControl);
+  await waitFor('empty dataset dashboard state', () => devtools.evaluate("fetch('/api/dataset/status',{cache:'no-store'}).then(response=>response.json())"), value => value && !value.dataset_loaded);
+  const emptyPresentation = await waitFor('clean empty dashboard presentation', () => devtools.evaluate(`(() => ({
+    hasBrokenBadge: /[–-]\\s*predicted dropouts/i.test(document.body.innerText),
+    visibleBadges: [...document.querySelectorAll('.risk-fixed-badge')].filter(node => !node.hidden && getComputedStyle(node).display !== 'none').map(node => node.textContent),
+  }))()`), value => !value.hasBrokenBadge && !value.visibleBadges.length);
+  assert(!emptyPresentation.hasBrokenBadge && !emptyPresentation.visibleBadges.length, emptyPresentation);
   await waitFor('dataset upload input', () => devtools.evaluate("!!document.getElementById('dataset-file-input')"));
   const ownedInput = await devtools.evaluate("document.getElementById('dataset-file-input')?.dataset.backgroundOwned || ''");
   assert(ownedInput === 'true', 'The retired synchronous upload listener still owns the dataset input');
@@ -202,7 +216,19 @@ async function validateBrowserUpload(devtools) {
   await waitFor('activated browser dataset', () => devtools.evaluate("fetch('/api/dataset/status').then(response => response.json())"), value => value?.dataset_loaded && value.record_count === 4424, 30000);
   const overlay = await devtools.evaluate("document.getElementById('dataset-training-overlay')?.innerText || ''");
   assert(!/failed|canceled/i.test(overlay), {terminal, overlay});
+  await devtools.evaluate("window.__fullFlowPreReloadDocument = true");
+  await devtools.call('Page.reload', {ignoreCache:true});
+  await waitFor('new dashboard document after browser refresh', () => devtools.evaluate("typeof window.__fullFlowPreReloadDocument === 'undefined' && document.readyState === 'complete' && !!document.querySelector('.page')"));
+  await new Promise(resolve => setTimeout(resolve, 1200));
+  const persisted = await waitFor('active dataset survives refresh', () => devtools.evaluate("fetch('/api/dataset/status',{cache:'no-store'}).then(response=>response.json())"), value => value?.dataset_loaded && value.record_count === 4424, 30000);
+  const refreshedUi = await devtools.evaluate(`(() => ({
+    brokenBadge: /[–-]\\s*predicted dropouts/i.test(document.body.innerText),
+    ownedInput: document.getElementById('dataset-file-input')?.dataset.backgroundOwned || '',
+    overlayCount: document.querySelectorAll('#dataset-training-overlay').length,
+  }))()`);
+  assert(!refreshedUi.brokenBadge && refreshedUi.ownedInput === 'true' && refreshedUi.overlayCount === 0, {persisted, refreshedUi});
   console.log('PASS real browser CSV upload, background four-model training, and cohort activation', {job: job.id, records: terminal.status.record_count});
+  console.log('PASS active dataset survives browser refresh with no stale progress or broken risk badge');
 }
 
 async function validateModelEvidence(devtools) {

@@ -242,7 +242,9 @@ class UnifiedDashboardTests(VoiceTranscriptTests):
     def test_reset_clears_and_persists_live_operations(self):
         self._session("CA-reset")
         voice_server.wa_sessions["+910000000000"] = {"messages": [{"role": "assistant", "content": "Hi"}]}
-        response = self.unified.app.test_client().post("/api/reset")
+        response = self.unified.app.test_client().post(
+            "/api/reset", headers={"X-Operations-Reset": "explicit"}
+        )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(voice_server.sessions, {})
         persisted = json.loads(voice_server._LIVE_STATE_FILE.read_text(encoding="utf-8"))

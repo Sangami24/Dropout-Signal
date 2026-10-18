@@ -157,7 +157,8 @@ await devtools.call('Emulation.setDeviceMetricsOverride', {width: 1440, height: 
 console.log('PASS responsive widths, swapped Distribution/Prediction positions, and matching totals', layout);
 
 const emptyExport = await fetch(baseUrl + '/api/operations/export.csv', {cache:'no-store'});
-assert(emptyExport.status === 400 && /no calls done yet/i.test(await emptyExport.text()), 'Export should be blocked before calls');
+const initialExportText = await emptyExport.text();
+assert(emptyExport.status === 400 && /no (completed analyzed )?call/i.test(initialExportText), {status:emptyExport.status, body:initialExportText});
 
 await devtools.evaluate("window.activateWorkspacePage('transcript')");
 const sampleState = await waitFor(
@@ -282,6 +283,8 @@ await waitFor(
   sessions => Boolean(sessions['CA-BROWSER-CHECK']),
 );
 await postForm('/voice/welcome?student_id=STU-ACHAL&student_name=Achal%20Sangami&ml_risk=0.91', {CallSid: 'CA-BROWSER-CHECK', To: '+15550123456'});
+await postForm('/voice/language?sid=CA-BROWSER-CHECK', {CallSid:'CA-BROWSER-CHECK',SpeechResult:'English',Confidence:'0.98'});
+await waitFor('spoken language selection and first academic question', () => devtools.evaluate(`(() => {const row=[...document.querySelectorAll('#full-transcript-panel details')].find(r=>r.querySelector('summary strong')?.textContent.trim()==='Achal Sangami');return row?.querySelectorAll('.dataset-message').length||0;})()`), count => count >= 3, 4000);
 const callRows = await waitFor(
   'Achal live call workspace',
   () => devtools.evaluate(`(() => ({page:document.querySelector('.page.active')?.id||'',rows:[...document.querySelectorAll('#full-transcript-panel details')].map(r=>({name:r.querySelector('summary strong')?.textContent.trim(),status:r.querySelector('summary span')?.textContent.trim()}))}))()`),
@@ -299,19 +302,11 @@ await postForm('/voice/partial?q=0&sid=CA-BROWSER-CHECK', {CallSid: 'CA-BROWSER-
 await new Promise(resolve => setTimeout(resolve, 700));
 const partialView = await devtools.evaluate(`(() => {const row=[...document.querySelectorAll('#full-transcript-panel details')].find(r=>r.querySelector('summary strong')?.textContent.trim()==='Achal Sangami'); return row?{open:row.open,count:row.querySelectorAll('.dataset-message').length,hasPartial:!!row.querySelector('.dataset-message.partial'),text:row.innerText}:null;})()`);
 assert(partialView?.open && partialView.count === beforePartialCount && !partialView.hasPartial && !partialView.text.includes(partialText), partialView);
-const questions = [
-  'How has this semester been going for you so far?',
-  'What has been the most challenging part of college life recently?',
-  'Which part of your current coursework would you most like support with?',
-  'If you could change one thing about your college experience, what would it be?',
-  'What are you most looking forward to next semester?',
-];
 const answers = [
   partialText,
   'I have missed classes because I am working evenings.',
   'Tuition fees and coursework are both becoming difficult.',
   'I need financial aid advice and a study recovery plan.',
-  'A counselor call tomorrow would help me stay enrolled.',
 ];
 const beforeFinalAnswer = await devtools.evaluate(`(() => {const row=[...document.querySelectorAll('#full-transcript-panel details')].find(r=>r.querySelector('summary strong')?.textContent.trim()==='Achal Sangami');return row?.querySelectorAll('.dataset-message').length||0;})()`);
 const callReplyRequest = postForm('/voice/respond?q=0&sid=CA-BROWSER-CHECK', {CallSid:'CA-BROWSER-CHECK',SpeechResult:answers[0],Confidence:'0.95'});
@@ -333,8 +328,9 @@ const completedPayload = await waitFor(
   session => session?.status === 'completed' && session.summary,
   5000,
 );
-const askedQuestions = completedPayload.transcript_events.filter(event => event.side === 'ai' && questions.includes(event.text)).map(event => event.text);
-assert(askedQuestions.length === 5 && new Set(askedQuestions).size === 5, askedQuestions);
+const askedQuestions = completedPayload.questions || [];
+const spokenQuestions = completedPayload.transcript_events.filter(event => event.side === 'ai').map(event => event.text);
+assert(askedQuestions.length === 4 && new Set(askedQuestions).size === 4 && askedQuestions.every(question => spokenQuestions.includes(question)), {askedQuestions,spokenQuestions});
 await waitFor(
   'automatic WhatsApp outreach',
   async () => (await (await fetch(baseUrl + '/whatsapp/conversations', {cache: 'no-store'})).json()).conversations,
@@ -375,7 +371,7 @@ await new Promise(resolve => setTimeout(resolve, 1300));
 assert(await devtools.evaluate(`(() => {const row=[...document.querySelectorAll('#full-transcript-panel details')].find(r=>r.querySelector('summary strong')?.textContent.trim()==='Achal Sangami');return !!row?.open;})()`), 'Completed Achal call closed during refresh');
 await devtools.evaluate("window.activateWorkspacePage('whatsapp')");
 await waitFor('Achal WhatsApp row after reopening call', () => devtools.evaluate(`(() => {const row=[...document.querySelectorAll('#wa-convos-panel details')].find(r=>r.querySelector('summary strong')?.textContent.trim()==='Achal Sangami');if(!row)return false;if(!row.open)row.querySelector('summary').click();return row.open;})()`));
-console.log('PASS real call final-only speech, duplicate suppression, five questions, summary, risk flag, and WhatsApp handoff', partialView, handoff);
+console.log('PASS real call final-only speech, duplicate suppression, four adaptive questions, summary, risk flag, and WhatsApp handoff', partialView, handoff);
 
 const beforeWhatsAppReply = await devtools.evaluate(`(() => {const row=[...document.querySelectorAll('#wa-convos-panel details')].find(r=>r.querySelector('summary strong')?.textContent.trim()==='Achal Sangami');return row?+row.dataset.messageCount:0;})()`);
 const whatsappStartedAt = performance.now();
@@ -466,13 +462,15 @@ await devtools.evaluate("window.activateWorkspacePage('model-evidence')");
 const fairness = await waitFor('stable administrator fairness audit', () => devtools.evaluate(`(() => {const body=document.getElementById('fairness-runtime-rows');const wrap=body?.closest('.fairness-table');return body?{rows:body.querySelectorAll('tr').length,statuses:body.querySelectorAll('.fairness-status').length,note:!!wrap?.previousElementSibling?.classList.contains('fairness-audit-note'),width:document.documentElement.scrollWidth,viewport:innerWidth}:null;})()`), value => value?.rows > 0 && value.statuses > 0 && value.note, 8000);
 assert(fairness.width <= fairness.viewport + 1, fairness);
 
-await fetch(baseUrl + '/api/reset', {method:'POST'});
+await fetch(baseUrl + '/api/reset', {method:'POST', headers:{'X-Operations-Reset':'explicit'}});
 await new Promise(resolve => setTimeout(resolve, 1200));
 await devtools.evaluate("window.activateWorkspacePage('overview')");
 const adminCallStart = await devtools.evaluate("(async()=>{const button=[...document.querySelectorAll('button')].find(node=>node.offsetParent!==null&&/call students/i.test(node.textContent));if(!button||button.disabled||typeof window.adminInitiateCall!=='function')return {ok:false,reason:'missing or disabled'};const result=await window.adminInitiateCall();return {ok:!!result,result};})()");
 assert(adminCallStart.ok, adminCallStart);
 await waitFor('administrator manual call session', async () => (await (await fetch(baseUrl + '/api/transcripts', {cache:'no-store'})).json()).sessions, sessions => Boolean(sessions['CA-BROWSER-CHECK']));
 await postForm('/voice/welcome?student_id=STU-ACHAL&student_name=Achal%20Sangami&ml_risk=0.91', {CallSid:'CA-BROWSER-CHECK',To:'+15550123456'});
+await postForm('/voice/language?sid=CA-BROWSER-CHECK', {CallSid:'CA-BROWSER-CHECK',SpeechResult:'English',Confidence:'0.98'});
+await waitFor('administrator language selection and first academic question', () => devtools.evaluate(`(() => {const row=[...document.querySelectorAll('#admin-transcript-panel details')].find(item=>item.querySelector('summary strong')?.textContent.trim()==='Achal Sangami');return row?.querySelectorAll('.dataset-message').length||0;})()`), count => count >= 3, 4000);
 const adminLive = await waitFor(
   'administrator live Achal transcript',
   () => devtools.evaluate(`(() => {const row=[...document.querySelectorAll('#admin-transcript-panel details')].find(item=>item.querySelector('summary strong')?.textContent.trim()==='Achal Sangami');return {page:document.querySelector('.page.active')?.id||'',open:!!row?.open,status:row?.querySelector('summary span')?.textContent.trim(),first:[...document.querySelectorAll('#admin-transcript-panel details')][0]?.querySelector('summary strong')?.textContent.trim()};})()`),
@@ -494,18 +492,20 @@ console.log('PASS administrator parity: layout, controls, call history, live Ach
 
 await devtools.call('Page.reload', {ignoreCache:true});
 await waitFor('administrator dashboard after hard refresh', () => devtools.evaluate("document.readyState === 'complete' && !!document.getElementById('page-overview')"));
-const clearedOnRefresh = await waitFor(
-  'refresh-only workspace reset',
+const persistedOnRefresh = await waitFor(
+  'workspace persistence after refresh',
   async () => {
     const status = await (await fetch(baseUrl + '/api/dataset/status', {cache:'no-store'})).json();
     const sessions = await (await fetch(baseUrl + '/api/transcripts', {cache:'no-store'})).json();
     const whatsapp = await (await fetch(baseUrl + '/whatsapp/conversations', {cache:'no-store'})).json();
     return {loaded:!!status.dataset_loaded,calls:Object.keys(sessions.sessions||{}).length,whatsapp:(whatsapp.conversations||[]).length};
   },
-  value => !value.loaded && value.calls === 0 && value.whatsapp === 0,
+  value => value.loaded && value.calls > 0 && value.whatsapp > 0,
   7000,
 );
-console.log('PASS hard refresh clears the uploaded cohort and Achal operation state; role switch preserved it beforehand', clearedOnRefresh);
+console.log('PASS hard refresh preserves the uploaded cohort and active operation state', persistedOnRefresh);
+await fetch(baseUrl + '/api/reset', {method:'POST', headers:{'X-Operations-Reset':'explicit'}});
+await fetch(baseUrl + '/api/dataset/reset', {method:'POST', headers:{'X-Dataset-Reset':'explicit'}});
 
 await devtools.call('Page.navigate', {url: baseUrl + '/logout'});
 await waitFor('landing page', () => devtools.evaluate("document.readyState === 'complete' && /watch demo/i.test(document.body.innerText)"));
@@ -539,7 +539,7 @@ async function collectGuidedCounts(panelId, expected, timeoutMs) {
   throw new Error(`Guided ${panelId} stalled: ${JSON.stringify(observations)}`);
 }
 
-const callTiming = await collectGuidedCounts('full-transcript-panel', 10, 20000);
+const callTiming = await collectGuidedCounts('full-transcript-panel', 8, 20000);
 const positiveCall = callTiming.filter(([count]) => count > 0);
 assert(positiveCall.length >= 3, callTiming);
 assert(positiveCall[1][1] - positiveCall[0][1] >= 1500, callTiming);
