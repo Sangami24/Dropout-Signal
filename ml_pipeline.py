@@ -49,7 +49,11 @@ XGB_TRAINING_PARAMS = {
     "subsample": 0.85,
     "colsample_bytree": 0.85,
     "tree_method": "hist",
-    "n_jobs": -1,
+    # Single-threaded tree construction makes the uploaded-dataset result
+    # reproducible across the local and Render Linux environments.  Parallel
+    # histogram reductions can otherwise select slightly different split ties,
+    # changing the held-out quality-gate result for the same CSV.
+    "n_jobs": 1,
 }
 LOGISTIC_MAX_ITER = 400
 RANDOM_FOREST_PARAMS = {
@@ -57,7 +61,7 @@ RANDOM_FOREST_PARAMS = {
     "max_depth": 12,
     "min_samples_leaf": 3,
     "class_weight": "balanced",
-    "n_jobs": -1,
+    "n_jobs": 1,
 }
 HIST_GRADIENT_BOOSTING_PARAMS = {
     "max_iter": 180,
