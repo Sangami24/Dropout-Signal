@@ -575,6 +575,8 @@ LIVE_UI_SCRIPT = r'''
     const fallback = labels.uploading;
     const label = labels[state] || fallback;
     const overlay = document.getElementById('dataset-training-overlay') || showUploadOverlay(job);
+    // Legacy display code must never rewrite a server-authoritative job view.
+    overlay.dataset.backgroundUpload = 'true';
     const ring = overlay.querySelector('.dataset-progress-ring');
     const pct = ring?.querySelector('span');
     const title = overlay.querySelector('b');
@@ -673,15 +675,23 @@ LIVE_UI_SCRIPT = r'''
     toast('Dataset upload canceled.', 'info');
   };
 
-  // Capture the native input before its historical synchronous listener runs.
-  // This leaves the existing visual control intact while making its upload
-  // resilient to long-running real model training.
-  document.addEventListener('change', event => {
-    const input = event.target;
-    if (!(input instanceof HTMLInputElement) || input.id !== 'dataset-file-input') return;
-    event.stopImmediatePropagation();
-    startBackgroundUpload(input.files?.[0]);
-  }, true);
+  function ownDatasetUploadInput() {
+    const legacyInput = document.getElementById('dataset-file-input');
+    if (!legacyInput || legacyInput.dataset.backgroundOwned === 'true') return;
+    // The recovered dashboard installed a synchronous listener directly on
+    // this element. Replacing just the input preserves the visible button but
+    // removes that listener, leaving one clear, background-safe upload path.
+    const input = legacyInput.cloneNode(true);
+    input.dataset.backgroundOwned = 'true';
+    input.value = '';
+    legacyInput.replaceWith(input);
+    input.addEventListener('change', () => startBackgroundUpload(input.files?.[0]));
+  }
+
+  // The historic dashboard creates its control on DOMContentLoaded. Its
+  // listener was registered earlier, so this runs afterwards and swaps out
+  // only the stale input event binding.
+  document.addEventListener('DOMContentLoaded', ownDatasetUploadInput);
 
   function datasetInsightCards() {
     return [...document.querySelectorAll('.card-new')].filter(card => /AI Insights/i.test(card.querySelector('h3')?.textContent || ''));
@@ -1606,6 +1616,10 @@ FINAL_UI_SCRIPT = r'''
   function normalizeUploadStages() {
     const overlay = document.getElementById('dataset-training-overlay');
     if (!overlay) return;
+    // Background uploads own their stage text from the server job state.  The
+    // retired percentage-based display must not turn a real queued/complete
+    // job back into an arbitrary model-training stage.
+    if (overlay.dataset.backgroundUpload === 'true') return;
     // The original uploader holds a reference to its own <small> element and
     // rewrites it every 260 ms. Replace that node once, so our exact runtime
     // operation message cannot flicker back to its old generic text.

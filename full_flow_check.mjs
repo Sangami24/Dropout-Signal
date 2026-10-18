@@ -175,6 +175,8 @@ async function validateApi(devtools) {
 async function validateBrowserUpload(devtools) {
   assert(uploadCsvPath, 'DROPOUT_SIGNAL_UPLOAD_CSV is required for browser upload testing');
   await waitFor('dataset upload input', () => devtools.evaluate("!!document.getElementById('dataset-file-input')"));
+  const ownedInput = await devtools.evaluate("document.getElementById('dataset-file-input')?.dataset.backgroundOwned || ''");
+  assert(ownedInput === 'true', 'The retired synchronous upload listener still owns the dataset input');
   const remote = await devtools.call('Runtime.evaluate', {
     expression: "document.getElementById('dataset-file-input')",
     returnByValue: false,
@@ -186,6 +188,11 @@ async function validateBrowserUpload(devtools) {
     try { return JSON.parse(localStorage.getItem('dropout-signal-background-upload') || 'null'); }
     catch (_) { return null; }
   })()`), value => value?.id && ['queued', 'processing', 'uploading'].includes(value.state), 30000);
+  const liveOverlay = await waitFor('server-authoritative upload overlay', () => devtools.evaluate(`(() => {
+    const overlay = document.getElementById('dataset-training-overlay');
+    return overlay ? {owned: overlay.dataset.backgroundUpload, text: overlay.innerText} : null;
+  })()`), value => value?.owned === 'true');
+  assert(!/Training Logistic Regression/i.test(liveOverlay.text), liveOverlay);
   const terminal = await waitFor('browser upload training completion', () => devtools.evaluate(`(async () => {
     const response = await fetch('/api/dataset/upload-status?job_id=${encodeURIComponent(job.id)}', {cache:'no-store'});
     if (!response.ok) return {status: response.status};
