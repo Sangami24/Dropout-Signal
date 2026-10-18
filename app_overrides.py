@@ -539,7 +539,7 @@ LIVE_UI_SCRIPT = r'''
 # It keeps the two role views pointed at the same server-side operational data
 # instead of their historical browser-only sample state.
 FINAL_UI_SCRIPT = r'''
-<style id="authoritative-dashboard-ui" data-runtime-release="upload-integrity-3">
+<style id="authoritative-dashboard-ui" data-runtime-release="upload-integrity-4">
   html, body { width:100%; max-width:100%; overflow-x:hidden !important; }
   body { min-width:0; }
   .main { flex:0 0 calc(100vw - 220px)!important; width:calc(100vw - 220px); max-width:calc(100vw - 220px); min-width:0; box-sizing:border-box; }
@@ -1497,7 +1497,9 @@ FINAL_UI_SCRIPT = r'''
         return `<section class="runtime-training-chart"><h3>${escapeHtml(title)}</h3><p>${escapeHtml(axisLabel)}</p><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(title)} for this dataset">${ticks}<line x1="${left}" y1="${top}" x2="${left}" y2="${height-bottom}" stroke="#77778a"/><line x1="${left}" y1="${height-bottom}" x2="${width-right}" y2="${height-bottom}" stroke="#77778a"/><polyline points="${line(trainKey)}" fill="none" stroke="#56b6c2" stroke-width="3"/><polyline points="${line(validationKey)}" fill="none" stroke="#bc8cff" stroke-width="3"/>${xTicks}<text x="${width/2}" y="${height-3}" fill="#a9a9b6" text-anchor="middle" font-size="11">boosting round</text></svg><div class="chart-legend"><span><i style="background:#56b6c2"></i>Train</span><span><i style="background:#bc8cff"></i>Validation</span></div></section>`;
       };
       const pct=value=>Number.isFinite(Number(value))?`${(Number(value)*100).toFixed(2)}%`:'—';
-      panel.innerHTML=`<h2>Uploaded Dataset Training Evidence</h2><p>Real measurements for <strong>${escapeHtml(payload.dataset_name||'active dataset')}</strong>. These curves come from the XGBoost component during this run and are not illustrative values.</p><div class="runtime-training-kpis"><article><span>Ensemble accuracy</span><strong>${pct(metrics.accuracy)}</strong></article><article><span>ROC-AUC</span><strong>${pct(metrics.auc_roc)}</strong></article><article><span>Decision threshold</span><strong>${pct(ensemble.decision_threshold)}</strong></article><article><span>Quality gate</span><strong>${ensemble.quality_gate?.passed?'Passed':'Review'}</strong></article></div><div class="runtime-training-charts">${chart('Model Accuracy','train_accuracy','validation_accuracy','Accuracy by boosting round')}${chart('Model Loss','train_loss','validation_loss','Log loss by boosting round')}</div>`;
+      const gate = ensemble.quality_gate || {};
+      const gateLabel = gate.passed ? 'Passed' : (gate.activation_passed ? '88% passed · ensemble review' : 'Failed');
+      panel.innerHTML=`<h2>Uploaded Dataset Training Evidence</h2><p>Real measurements for <strong>${escapeHtml(payload.dataset_name||'active dataset')}</strong>. These curves come from the XGBoost component during this run and are not illustrative values.</p><div class="runtime-training-kpis"><article><span>Ensemble accuracy</span><strong>${pct(metrics.accuracy)}</strong></article><article><span>ROC-AUC</span><strong>${pct(metrics.auc_roc)}</strong></article><article><span>Decision threshold</span><strong>${pct(ensemble.decision_threshold)}</strong></article><article><span>Quality gate</span><strong>${gateLabel}</strong></article></div><div class="runtime-training-charts">${chart('Model Accuracy','train_accuracy','validation_accuracy','Accuracy by boosting round')}${chart('Model Loss','train_loss','validation_loss','Log loss by boosting round')}</div>`;
     } catch (_) {}
   }
 
