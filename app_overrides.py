@@ -76,6 +76,26 @@ LIVE_UI_SCRIPT = r'''
   #page-model-evidence .layer-expanded,#page-model-evidence #layer-detail { height:auto!important; min-height:0!important; }
   .overall-ai-confidence { display:inline-flex; align-items:center; gap:7px; margin:0 0 12px; padding:8px 11px; border:1px solid rgba(188,140,255,.32); border-radius:8px; color:var(--text); background:rgba(188,140,255,.08); font-size:11px; }
   .overall-ai-confidence b { color:var(--purple); font:600 12px var(--mono); }
+  /* One stable owner for the Fairness Audit and Feature Schema area.  These
+     replace the legacy table's unstyled in-place mutations after it loads. */
+  #page-model-evidence .runtime-audit-card .card-h,
+  #page-model-evidence .runtime-schema-card .card-h { display:flex; align-items:center; justify-content:space-between; gap:14px; }
+  #page-model-evidence .runtime-audit-card .overall-ai-confidence { margin:0; white-space:nowrap; }
+  .runtime-audit-note { margin:0 0 15px; padding:11px 13px; border-left:3px solid var(--purple); border-radius:0 8px 8px 0; background:rgba(188,140,255,.09); color:var(--text2); font-size:12px; line-height:1.55; }
+  .runtime-audit-table { overflow-x:auto; border:1px solid var(--border); border-radius:9px; }
+  .runtime-audit-table table { width:100%; min-width:720px; border-collapse:collapse; }
+  .runtime-audit-table th { padding:11px 13px; color:var(--text2); font:600 10px var(--mono); letter-spacing:.06em; text-transform:uppercase; text-align:left; background:var(--surface2); }
+  .runtime-audit-table td { padding:13px; border-top:1px solid var(--border); vertical-align:middle; color:var(--text); font-size:12px; }
+  .runtime-audit-table td:first-child { min-width:230px; }
+  .runtime-audit-table td span { color:var(--text2); font-size:11px; }
+  .fairness-status { display:inline-block; margin-left:7px; font-size:10px!important; font-weight:700; white-space:nowrap; }
+  .fairness-status.ok { color:var(--green)!important; }
+  .fairness-status.review { color:var(--yellow)!important; }
+  #page-model-evidence .runtime-schema-card .card-b { padding:17px 18px; }
+  .runtime-schema-intro { margin:0 0 13px; color:var(--text2); font-size:12px; line-height:1.6; }
+  .runtime-feature-schema details { border-top:1px solid var(--border); }
+  .runtime-feature-schema summary { padding:12px 0; cursor:pointer; color:var(--text); font-weight:650; }
+  .runtime-feature-schema details > *:not(summary) { margin:0 0 13px; color:var(--text2); font-size:12px; line-height:1.55; }
   @media (max-width:800px) { .live-score-strip,.runtime-training-kpis,.runtime-training-charts { grid-template-columns:1fr 1fr; } }
 </style>
 <script>
@@ -1520,6 +1540,41 @@ FINAL_UI_SCRIPT = r'''
     } catch (_) {}
   }
 
+  async function renderStableModelAudit(page, modelPayload) {
+    const modelBody = page?.querySelector(':scope > .model-runtime-body');
+    if (!modelBody || /loading model evidence/i.test(modelBody.textContent || '')) return;
+    const ensemble = modelPayload?.ensemble || {};
+    const metrics = ensemble.metrics || {};
+    const confidence = Number(modelPayload?.overall_ai_confidence ?? metrics.accuracy);
+    const confidenceText = Number.isFinite(confidence) ? `${(confidence * 100).toFixed(1)}%` : 'Awaiting validation';
+    const runKey = String(modelPayload?.run_id || 'active-run');
+    let fairnessPayload = null;
+    try {
+      const response = await fetch('/api/fairness', {cache:'no-store'});
+      fairnessPayload = response.ok ? await response.json() : {};
+    } catch (_) { fairnessPayload = {}; }
+    if (!page.classList.contains('active') || String(modelPayload?.run_id || 'active-run') !== runKey) return;
+    const metric = value => Number.isFinite(Number(value)) ? Number(value).toFixed(3) : '—';
+    const status = value => String(value || '').toUpperCase() === 'YES'
+      ? '<span class="fairness-status ok">Within range</span>'
+      : '<span class="fairness-status review">Review</span>';
+    const fairnessCard = modelBody.querySelector('.fairness-table')?.closest('section.card') || modelBody.querySelector('.runtime-audit-card');
+    if (fairnessCard && fairnessCard.dataset.runtimeAuditRun !== runKey) {
+      const rows = (fairnessPayload?.fairness || []).map(row => `<tr><td><strong>${escapeHtml(row.protected_attribute || 'Group')}</strong><br><span>${escapeHtml(row.group_a || 'Group A')} vs ${escapeHtml(row.group_b || 'Group B')}</span></td><td><span class="mono">${metric(row.demographic_parity_ratio)}</span>${status(row.dp_is_fair)}</td><td><span class="mono">${metric(row.equal_opportunity_ratio)}</span>${status(row.eo_is_fair)}</td><td><span class="mono">${metric(row.predictive_parity_ratio)}</span>${status(row.pp_is_fair)}</td></tr>`).join('') || '<tr><td colspan="4">No comparison was available for this dataset.</td></tr>';
+      fairnessCard.className = 'card runtime-audit-card';
+      fairnessCard.dataset.runtimeAuditRun = runKey;
+      fairnessCard.innerHTML = `<div class="card-h"><span class="t">Fairness Audit</span><div class="overall-ai-confidence">Overall AI confidence <b>${escapeHtml(confidenceText)}</b><span>held-out ensemble accuracy</span></div></div><div class="card-b"><p class="runtime-audit-note">Ratios near 1.000 indicate comparable outcomes between the displayed groups. “Review” is evidence for a human reviewer; it never changes a student's risk level automatically.</p><div class="runtime-audit-table"><table><thead><tr><th>Comparison</th><th>Demographic parity</th><th>Equal opportunity</th><th>Predictive parity</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+    }
+    const schemaCard = modelBody.querySelector('.feature-groups')?.closest('section.card') || modelBody.querySelector('.runtime-schema-card');
+    if (schemaCard && schemaCard.dataset.runtimeSchemaRun !== runKey) {
+      const groups = schemaCard.querySelector('.feature-groups');
+      const detailMarkup = groups ? [...groups.querySelectorAll('details')].map(detail => detail.outerHTML).join('') : '';
+      schemaCard.className = 'card runtime-schema-card';
+      schemaCard.dataset.runtimeSchemaRun = runKey;
+      schemaCard.innerHTML = `<div class="card-h"><span class="t">Feature Schema</span><span class="mono" style="color:var(--text3)">43 model inputs</span></div><div class="card-b"><p class="runtime-schema-intro">The model uses the 36 validated UCI predictors and seven derived Silver signals. Student name is interface-only metadata and is never a model input.</p><div class="feature-groups runtime-feature-schema">${detailMarkup || '<p>No feature groups were supplied for this dataset.</p>'}</div></div>`;
+    }
+  }
+
   function removeDemoUi() {
     if (window.__guidedDemoActive) return;
     document.querySelectorAll('.operation-row,.summary-person').forEach(node => { if (/\bdemo\b/i.test(node.textContent || '')) node.remove(); });
@@ -1577,6 +1632,8 @@ FINAL_UI_SCRIPT = r'''
       // that one renderer has completed, then add the measured curves once.
       const modelBody = page.querySelector(':scope > .model-runtime-body');
       if (!modelBody || /loading model evidence/i.test(modelBody.textContent || '')) return;
+      await renderStableModelAudit(page, payload);
+      if (!page.classList.contains('active')) return;
       const history = payload.training_history || {};
       const points = history.points || [];
       if (!points.length) return;
@@ -1605,6 +1662,35 @@ FINAL_UI_SCRIPT = r'''
       panel.innerHTML=`<h2>Uploaded Dataset Training Evidence</h2><p>Real measurements for <strong>${escapeHtml(payload.dataset_name||'active dataset')}</strong>. These curves come from the XGBoost component during this run and are not illustrative values.</p><div class="runtime-training-kpis"><article><span>Ensemble accuracy</span><strong>${pct(metrics.accuracy)}</strong></article><article><span>Overall AI confidence</span><strong>${pct(overallConfidence)}</strong></article><article><span>ROC-AUC</span><strong>${pct(metrics.auc_roc)}</strong></article><article><span>Decision threshold</span><strong>${pct(ensemble.decision_threshold)}</strong></article><article><span>Quality gate</span><strong>${gateLabel}</strong></article></div><div class="runtime-training-charts">${chart('Model Accuracy','train_accuracy','validation_accuracy','Accuracy by boosting round')}${chart('Model Loss','train_loss','validation_loss','Log loss by boosting round')}</div>`;
     } catch (_) {}
   }
+
+  // The historical dashboard owns the first asynchronous model render.  Wrap
+  // its public entry point and also revisit the dynamic navigation item so the
+  // completed view is normalized immediately rather than waiting for a poll.
+  const legacyDatasetEvidenceRenderer = window.renderDatasetEvidence;
+  if (typeof legacyDatasetEvidenceRenderer === 'function') {
+    window.renderDatasetEvidence = async (...args) => {
+      const result = await legacyDatasetEvidenceRenderer(...args);
+      await augmentModelEvidence();
+      return result;
+    };
+  }
+  function keepModelEvidenceNormalized() {
+    const page = document.getElementById('page-model-evidence');
+    if (!page || page.dataset.runtimeEvidenceObserver === 'true') return;
+    page.dataset.runtimeEvidenceObserver = 'true';
+    let scheduled = null;
+    const observer = new MutationObserver(() => {
+      if (!page.classList.contains('active')) return;
+      if (scheduled) clearTimeout(scheduled);
+      scheduled = setTimeout(() => { scheduled = null; augmentModelEvidence(); }, 80);
+    });
+    observer.observe(page, {childList:true, subtree:true});
+  }
+  document.addEventListener('click', event => {
+    if (!event.target.closest('[data-page="model-evidence"]')) return;
+    [0, 300, 1000, 2200].forEach(delay => setTimeout(() => { augmentModelEvidence(); }, delay));
+  }, true);
+  document.addEventListener('DOMContentLoaded', keepModelEvidenceNormalized);
 
   function showOperationModal(title, message, actionLabel, actionHref) {
     document.getElementById('operation-action-modal')?.remove();
