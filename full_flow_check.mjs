@@ -416,15 +416,37 @@ async function main() {
   await validateModelEvidence(devtools);
   await screenshot(devtools, 'admin-model-evidence.png');
   const stableAudit = await waitFor('visible stabilized fairness audit', () => devtools.evaluate(`(() => {
-    const card=document.querySelector('.runtime-audit-card');
-    return card ? {
+    const page=document.getElementById('page-model-evidence');
+    const body=page?.querySelector(':scope > .model-runtime-body');
+    const card=body?.querySelector('.runtime-audit-card');
+    return card && body ? {
       confidence:card.querySelector('.overall-ai-confidence')?.innerText || '',
       note:card.querySelector('.runtime-audit-note')?.innerText || '',
       legacyRows:card.querySelectorAll('#fairness-runtime-rows').length,
       tableRows:card.querySelectorAll('.runtime-audit-table tbody tr').length,
+      ready:body.dataset.runtimeAuditReady || '',
+      legacyAuditTables:body.querySelectorAll('.fairness-table').length,
+      legacySchemas:body.querySelectorAll('.feature-groups:not(.runtime-feature-schema)').length,
     } : null;
-  })()`), value => /Overall AI confidence/i.test(value?.confidence || '') && /Ratios near 1\.000/i.test(value?.note || '') && value?.legacyRows === 0 && value?.tableRows > 0);
-  assert(stableAudit.legacyRows === 0, stableAudit);
+  })()`), value => /Overall AI confidence/i.test(value?.confidence || '') && /Ratios near 1\.000/i.test(value?.note || '') && value?.legacyRows === 0 && value?.tableRows > 0 && value?.ready === 'true' && value?.legacyAuditTables === 0 && value?.legacySchemas === 0);
+  await new Promise(resolve => setTimeout(resolve, 3500));
+  const auditStillStable = await devtools.evaluate(`(() => {
+    const body=document.querySelector('#page-model-evidence > .model-runtime-body');
+    return {
+      ready:body?.dataset.runtimeAuditReady || '',
+      audits:body?.querySelectorAll('.runtime-audit-card').length || 0,
+      schemas:body?.querySelectorAll('.runtime-schema-card').length || 0,
+      legacyAuditTables:body?.querySelectorAll('.fairness-table').length || 0,
+      legacySchemas:body?.querySelectorAll('.feature-groups:not(.runtime-feature-schema)').length || 0,
+      visible:body ? getComputedStyle(body).display !== 'none' : false,
+    };
+  })()`);
+  assert(
+    auditStillStable.ready === 'true' && auditStillStable.audits === 1 &&
+      auditStillStable.schemas === 1 && auditStillStable.legacyAuditTables === 0 &&
+      auditStillStable.legacySchemas === 0 && auditStillStable.visible,
+    {stableAudit, auditStillStable},
+  );
   await devtools.evaluate("document.querySelector('.runtime-audit-card')?.scrollIntoView({block:'start'})");
   await new Promise(resolve => setTimeout(resolve, 300));
   await screenshot(devtools, 'admin-model-audit.png');

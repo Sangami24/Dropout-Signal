@@ -81,6 +81,10 @@ LIVE_UI_SCRIPT = r'''
   #page-model-evidence .runtime-audit-card .card-h,
   #page-model-evidence .runtime-schema-card .card-h { display:flex; align-items:center; justify-content:space-between; gap:14px; }
   #page-model-evidence .runtime-audit-card .overall-ai-confidence { margin:0; white-space:nowrap; }
+  /* The recovered dashboard briefly rebuilds this body with its old blank
+     fairness table.  Keep that intermediate DOM out of view; it becomes
+     visible only after the single runtime audit/schema renderer completes. */
+  #page-model-evidence.active .model-runtime-body:not([data-runtime-audit-ready="true"]) { display:none!important; }
   .runtime-audit-note { margin:0 0 15px; padding:11px 13px; border-left:3px solid var(--purple); border-radius:0 8px 8px 0; background:rgba(188,140,255,.09); color:var(--text2); font-size:12px; line-height:1.55; }
   .runtime-audit-table { overflow-x:auto; border:1px solid var(--border); border-radius:9px; }
   .runtime-audit-table table { width:100%; min-width:720px; border-collapse:collapse; }
@@ -1572,6 +1576,12 @@ FINAL_UI_SCRIPT = r'''
       schemaCard.className = 'card runtime-schema-card';
       schemaCard.dataset.runtimeSchemaRun = runKey;
       schemaCard.innerHTML = `<div class="card-h"><span class="t">Feature Schema</span><span class="mono" style="color:var(--text3)">43 model inputs</span></div><div class="card-b"><p class="runtime-schema-intro">The model uses the 36 validated UCI predictors and seven derived Silver signals. Student name is interface-only metadata and is never a model input.</p><div class="feature-groups runtime-feature-schema">${detailMarkup || '<p>No feature groups were supplied for this dataset.</p>'}</div></div>`;
+    }
+    // Show the page only after both legacy sections have been replaced by the
+    // runtime-owned cards.  If the old renderer rebuilds the body later, this
+    // attribute disappears and the intermediate blank table stays hidden.
+    if (modelBody.querySelector('.runtime-audit-card') && modelBody.querySelector('.runtime-schema-card')) {
+      modelBody.dataset.runtimeAuditReady = 'true';
     }
   }
 
