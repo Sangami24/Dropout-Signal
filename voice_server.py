@@ -356,6 +356,19 @@ def _session_questions(session):
 
 def _live_voice_assessment(session):
     text = " ".join(str(answer.get("text") or "") for answer in session.get("answers", {}).values()).casefold()
+    # These literals deliberately use Unicode escapes.  Earlier recovered
+    # dashboard code contained mojibake versions of Hindi and Kannada words,
+    # which meant a genuine Kannada answer could never contribute risk
+    # evidence.  Keep the language-aware evidence in an encoding-safe form.
+    multilingual_risk_terms = (
+        "financial", "pressure", "struggle",
+        "\u092e\u0941\u0936\u094d\u0915\u093f\u0932", "\u0915\u0920\u093f\u0928", "\u091b\u094b\u0921", "\u092b\u0940\u0938", "\u0924\u0928\u093e\u0935", "\u0905\u0928\u0941\u092a\u0938\u094d\u0925\u093f\u0924",
+        "\u0c95\u0cb7\u0ccd\u0c9f", "\u0cb8\u0cae\u0cb8\u0ccd\u0caf\u0cc6", "\u0cac\u0cbf\u0ca1", "\u0cb6\u0cc1\u0cb2\u0ccd\u0c95", "\u0c92\u0ca4\u0ccd\u0ca4\u0ca1", "\u0cb9\u0cbe\u0c9c\u0cb0\u0cbe\u0ca4\u0cbf", "\u0cb9\u0ca3\u0c95\u0cbe\u0cb8\u0cc1",
+    )
+    multilingual_protective_terms = (
+        "\u0905\u091a\u094d\u091b\u093e", "\u0920\u0940\u0915", "\u0909\u0924\u094d\u0938\u093e\u0939\u093f\u0924", "\u091c\u093e\u0930\u0940",
+        "\u0cb8\u0c82\u0ca4\u0ccb\u0cb7", "\u0c9a\u0cc6\u0ca8\u0ccd\u0ca8\u0cbe\u0c97\u0cbf\u0ca6\u0cc6", "\u0c86\u0ca4\u0ccd\u0cae\u0cb5\u0cbf\u0cb6\u0ccd\u0cb5\u0cbe\u0cb8", "\u0ca8\u0cbf\u0cb0\u0ccd\u0cb5\u0cb9\u0cbf\u0cb8\u0cac\u0cb9\u0cc1\u0ca6\u0cc1", "\u0cae\u0cc1\u0c82\u0ca6\u0cc1\u0cb5\u0cb0",
+    )
     risk_terms = (
         "struggling", "difficult", "hard", "failing", "failed", "leave", "quit", "drop out", "cannot continue", "can't continue",
         "fees", "debt", "missed classes", "low attendance", "stress", "anxiety", "मुश्किल", "कठिन", "छोड़", "फीस", "तनाव",
@@ -365,8 +378,8 @@ def _live_voice_assessment(session):
         "good", "great", "manageable", "confident", "excited", "enjoy", "doing well", "no problem", "continue", "graduate",
         "अच्छा", "ठीक", "उत्साहित", "जारी", "ಸಂತೋಷ", "ಚೆನ್ನಾಗಿದೆ", "ನಿರ್ವಹಿಸಬಹುದು", "ಮುಂದುವರ", "ಉತ್ಸುಕ",
     )
-    risk_hits = sum(text.count(term) for term in risk_terms)
-    protective_hits = sum(text.count(term) for term in protective_terms)
+    risk_hits = sum(text.count(term) for term in risk_terms + multilingual_risk_terms)
+    protective_hits = sum(text.count(term) for term in protective_terms + multilingual_protective_terms)
     explicit_exit = any(term in text for term in ("drop out", "leave college", "quit college", "पढ़ाई छोड़", "कॉलेज छोड़", "ಓದು ಬಿಡ", "ಕಾಲೇಜು ಬಿಡ"))
     evidence = risk_hits - protective_hits
     voice_probability = 0.5 + 0.38 * math.tanh(evidence / 2.2)

@@ -51,10 +51,11 @@ LIVE_UI_SCRIPT = r'''
   .live-score-strip span { padding:8px 10px; border:1px solid #30303a; border-radius:8px; background:#121219; color:#a9a9b6; font-size:10px; text-transform:uppercase; letter-spacing:.04em; }
   .live-score-strip b { display:block; margin-top:3px; color:#f4f4f8; font-size:14px; letter-spacing:0; }
   .runtime-training-evidence { margin-top:18px; padding:18px; border:1px solid var(--border); border-radius:12px; background:var(--surface); }
-  .runtime-training-kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin:14px 0 18px; }
+  .runtime-training-evidence strong,.runtime-training-evidence p { max-width:100%; overflow-wrap:anywhere; word-break:break-word; }
+  .runtime-training-kpis { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:10px; margin:14px 0 18px; }
   .runtime-training-kpis article { padding:13px; border:1px solid var(--border); border-radius:9px; background:var(--surface2); }
   .runtime-training-kpis span { display:block; color:var(--text2); font-size:11px; text-transform:uppercase; }
-  .runtime-training-kpis strong { display:block; margin-top:5px; font-size:22px; }
+  .runtime-training-kpis strong { display:block; min-width:0; margin-top:5px; font-size:22px; }
   .runtime-training-charts { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
   .runtime-training-chart { padding:14px; border:1px solid var(--border); border-radius:10px; background:#0f0f16; overflow:hidden; }
   .runtime-training-chart h3 { margin:0 0 4px; text-align:center; }
@@ -62,6 +63,16 @@ LIVE_UI_SCRIPT = r'''
   .runtime-training-chart svg { width:100%; height:auto; display:block; }
   .chart-legend { display:flex; justify-content:center; gap:16px; color:var(--text2); font-size:11px; }
   .chart-legend i { display:inline-block; width:14px; height:2px; margin-right:5px; vertical-align:middle; }
+  /* The recovered evidence view had nested fixed-size containers.  Make each
+     model/fairness section shrink with the page rather than creating a blank
+     oversized canvas beneath the schema. */
+  #page-model-evidence { display:grid!important; grid-template-columns:minmax(0,1fr); align-content:start; gap:14px; min-height:0!important; overflow:visible!important; }
+  #page-model-evidence > *,#page-model-evidence .fairness-table,#page-model-evidence .data-layers,#page-model-evidence #layer-detail { min-width:0; max-width:100%; }
+  #page-model-evidence .fairness-table { overflow-x:auto; overflow-y:visible; }
+  #page-model-evidence .fairness-table table { width:100%; min-width:620px; table-layout:fixed; }
+  #page-model-evidence .layer-expanded,#page-model-evidence #layer-detail { height:auto!important; min-height:0!important; }
+  .overall-ai-confidence { display:inline-flex; align-items:center; gap:7px; margin:0 0 12px; padding:8px 11px; border:1px solid rgba(188,140,255,.32); border-radius:8px; color:var(--text); background:rgba(188,140,255,.08); font-size:11px; }
+  .overall-ai-confidence b { color:var(--purple); font:600 12px var(--mono); }
   @media (max-width:800px) { .live-score-strip,.runtime-training-kpis,.runtime-training-charts { grid-template-columns:1fr 1fr; } }
 </style>
 <script>
@@ -866,10 +877,18 @@ FINAL_UI_SCRIPT = r'''
       const tone = String(item.tier || 'MEDIUM').toLowerCase() === 'high' ? 'high' : 'medium';
       const key = `${item.student_id}:${channel}`;
       const summaryText = channel === 'call' ? (item.call_summary || item.summary) : (item.whatsapp_summary || item.summary);
-      const highRisk = String(item.dropout_intent || item.tier || '').toUpperCase() === 'HIGH';
-      const riskAssessment = highRisk ? 'High dropout risk flagged' : 'No high dropout risk flag';
+      const resultTier = String(item.dropout_intent || item.tier || 'MEDIUM').toUpperCase();
+      const riskAssessment = resultTier === 'HIGH' ? 'High dropout risk flagged' : resultTier === 'MEDIUM' ? 'Medium dropout risk flagged for precautionary follow-up' : 'Low dropout risk — no immediate follow-up required';
       const score = value => value === undefined || value === null || value === '' ? 'Pending' : `${(Number(value) * 100).toFixed(1)}%`;
-      const scoreStrip = channel === 'call' ? `<div class="live-score-strip"><span>ML probability<b>${score(item.ml_risk_score)}</b></span><span>Voice risk<b>${score(item.voice_risk_score)}</b></span><span>AI confidence<b>${score(item.ai_confidence)}</b></span><span>Fused result<b>${score(item.fused_risk_score)}</b></span></div>` : '';
+      // Completed walkthrough calls are scored demonstrations too.  Use their
+      // tier-derived values only when a historical record has no persisted
+      // score, so the UI never shows a completed call with blank metrics.
+      const demoScore = item.is_sample ? (resultTier === 'HIGH' ? .84 : resultTier === 'MEDIUM' ? .56 : .22) : undefined;
+      const mlScore = item.ml_risk_score ?? item.ml_score ?? demoScore;
+      const voiceScore = item.voice_risk_score ?? demoScore;
+      const confidence = item.ai_confidence ?? (item.is_sample ? .86 : undefined);
+      const fusedScore = item.fused_risk_score ?? item.ai_score ?? demoScore;
+      const scoreStrip = channel === 'call' ? `<div class="live-score-strip"><span>ML probability<b>${score(mlScore)}</b></span><span>Voice risk<b>${score(voiceScore)}</b></span><span>AI confidence<b>${score(confidence)}</b></span><span>Fused result<b>${score(fusedScore)}</b></span></div>` : '';
       const summary = active ? '' : `<footer class="dataset-contact-summary"><b>AI Summary · ${riskAssessment}</b><p>${escapeHtml(summaryText || completedSummary({...item, status: channelStatus}))}</p></footer>`;
       const open = openedConversationKey === key;
       return `<details class="operation-row dataset-conversation ${tone}" data-conversation-key="${escapeHtml(key)}" data-channel="${channel}" data-message-count="${messages.length}" data-is-sample="${item.is_sample ? 'true' : 'false'}" ${open ? 'open' : ''}><summary><strong>${escapeHtml(item.student_name || 'Student')}</strong><span class="${active ? 'dataset-live' : 'dataset-completed'}">${active ? 'ACTIVE' : 'COMPLETED'}</span>${active ? `<span class="dataset-presence ${tone}"></span>` : ''}<em>${escapeHtml(item.tier || 'MEDIUM')} RISK</em></summary><div class="dataset-thread ${channel}">${scoreStrip}${messages.map(m => messageMarkup(m, item.student_name || 'Student')).join('')}${summary}</div></details>`;
@@ -931,9 +950,11 @@ FINAL_UI_SCRIPT = r'''
     });
     renderUnifiedSummaryCards(items);
     const calledStudent = items.find(item => String(item.student_id || '') === String(activeCallStudentId || ''));
-    const calledStudentWhatsAppReady = calledStudent && String(calledStudent.call_status || '').toLowerCase() === 'completed' && String(calledStudent.whatsapp_status || '').toLowerCase() === 'active' && calledStudent.whatsapp?.length;
+    const calledStudentResultReady = calledStudent && String(calledStudent.call_status || '').toLowerCase() === 'completed' && Number.isFinite(Number(calledStudent.ai_confidence));
+    const calledStudentWhatsAppReady = calledStudentResultReady && String(calledStudent.whatsapp_status || '').toLowerCase() === 'active' && calledStudent.whatsapp?.length;
     window.__callHandoffDebug = {
-      ready: Boolean(calledStudentWhatsAppReady),
+      ready: Boolean(calledStudentResultReady),
+      whatsappReady: Boolean(calledStudentWhatsAppReady),
       pending: pendingSelectedCallFocus,
       completed: selectedHandoffCompleted,
       studentId: activeCallStudentId,
@@ -941,12 +962,17 @@ FINAL_UI_SCRIPT = r'''
       whatsappStatus: calledStudent?.whatsapp_status || '',
       whatsappMessages: calledStudent?.whatsapp?.length || 0,
     };
-    if (calledStudentWhatsAppReady && pendingSelectedCallFocus && !selectedHandoffCompleted) {
+    if (calledStudentResultReady && pendingSelectedCallFocus && !selectedHandoffCompleted) {
       pendingSelectedCallFocus = false;
       selectedHandoffCompleted = true;
       const riskMessage = calledStudent.call_summary || calledStudent.summary || 'The completed call has been scored for counselor review.';
       const resultTier = String(calledStudent.dropout_intent || calledStudent.tier || 'MEDIUM').toUpperCase();
-      const riskModal = showOperationModal(`Asha AI result: ${calledStudent.student_name} is ${resultTier} risk`, riskMessage);
+      const outcomeCopy = resultTier === 'HIGH'
+        ? 'Asha AI has flagged this student as high dropout risk. A WhatsApp support follow-up is being sent.'
+        : resultTier === 'MEDIUM'
+          ? 'Asha AI has assessed this student as medium dropout risk. A WhatsApp support follow-up is being sent as a precaution.'
+          : 'Asha AI has assessed this student as low dropout risk. No WhatsApp follow-up is needed at this time.';
+      const riskModal = showOperationModal(`Asha AI result: ${calledStudent.student_name} is ${resultTier} risk`, `${outcomeCopy} ${riskMessage}`);
       requestAnimationFrame(() => {
         const rect = riskModal.querySelector('.operation-modal')?.getBoundingClientRect();
         if (!rect) return;
@@ -957,8 +983,10 @@ FINAL_UI_SCRIPT = r'''
           shownAt: Date.now(),
         };
       });
+      // Keep the decision visible for at least six seconds before navigating.
       setTimeout(async () => {
         riskModal.remove();
+        if (resultTier === 'LOW') return;
         const pageName = document.getElementById('page-admin-whatsapp') ? 'admin-whatsapp' : 'whatsapp';
         window.activateWorkspacePage?.(pageName);
         openedConversationKey = `${calledStudent.student_id}:whatsapp`;
@@ -973,7 +1001,7 @@ FINAL_UI_SCRIPT = r'''
         };
         requestAnimationFrame(focusWhatsApp);
         setTimeout(focusWhatsApp, 80);
-      }, 4000);
+      }, 6200);
     }
     latestCall = items.find(item => item.call.length) || latestCall;
     const signature = JSON.stringify(items.map(item => [item.student_id, effectiveChannelStatus(item, 'call'), effectiveChannelStatus(item, 'whatsapp'), progressiveMessages(item, 'call').length, progressiveMessages(item, 'whatsapp').length, item.call.at(-1)?.text, item.whatsapp.at(-1)?.content, item.call_summary || item.summary || '', item.whatsapp_summary || '']));
@@ -1068,7 +1096,7 @@ FINAL_UI_SCRIPT = r'''
         if (state.midpointAtCount === count) {
           const maxScroll = Math.max(0, thread.scrollHeight - thread.clientHeight);
           thread.scrollTop = Math.round(maxScroll * (state.midpointRatio || .46));
-        } else if (isActiveNow && state.follow) thread.scrollTop = thread.scrollHeight;
+        } else if (isActiveNow) thread.scrollTop = thread.scrollHeight;
         else thread.scrollTop = Math.min(state.scrollTop, Math.max(0, thread.scrollHeight - thread.clientHeight));
         requestAnimationFrame(() => { thread.dataset.runtimeProgrammaticScroll = ''; });
       };
@@ -1314,11 +1342,9 @@ FINAL_UI_SCRIPT = r'''
   }
 
   function keepLiveThreadsAtLatestTurn() {
-    // A live thread follows new messages only while the viewer is at its
-    // bottom.  Reading earlier messages deliberately pauses the follow;
-    // scrolling back down resumes it.  State is keyed independently of the
-    // DOM node because the authoritative workspace redraws rows as messages
-    // arrive.
+    // A live transcript is an operational monitor, so it always follows the
+    // most recent call or WhatsApp turn.  This keeps the counselor on the
+    // newest spoken answer without manually dragging the thread down.
     document.querySelectorAll('.page.active .dataset-conversation[open]').forEach(row => {
       if (!row.querySelector('.dataset-live')) return;
       const thread = row.querySelector('.dataset-thread');
@@ -1332,12 +1358,7 @@ FINAL_UI_SCRIPT = r'''
       }
       if (state.midpointAtCount === Number(row.dataset.messageCount || 0)) return;
       thread.dataset.runtimeProgrammaticScroll = 'true';
-      if (state.follow) {
-        thread.scrollTop = thread.scrollHeight;
-      } else {
-        const maxScroll = Math.max(0, thread.scrollHeight - thread.clientHeight);
-        thread.scrollTop = Math.min(state.scrollTop, maxScroll);
-      }
+      thread.scrollTop = thread.scrollHeight;
       requestAnimationFrame(() => { thread.dataset.runtimeProgrammaticScroll = ''; });
     });
   }
@@ -1431,6 +1452,17 @@ FINAL_UI_SCRIPT = r'''
       const status = value => String(value || '').toUpperCase() === 'YES' ? '<span class="fairness-status ok">Within range</span>' : '<span class="fairness-status review">Review</span>';
       const markup = (payload.fairness || []).map(row => `<tr><td><strong>${escapeHtml(row.protected_attribute || 'Group')}</strong><br><span>${escapeHtml(row.group_a)} vs ${escapeHtml(row.group_b)}</span></td><td><span class="mono">${metric(row.demographic_parity_ratio)}</span> ${status(row.dp_is_fair)}</td><td><span class="mono">${metric(row.equal_opportunity_ratio)}</span> ${status(row.eo_is_fair)}</td><td><span class="mono">${metric(row.predictive_parity_ratio)}</span> ${status(row.pp_is_fair)}</td></tr>`).join('') || '<tr><td colspan="4">No comparison was available for this dataset.</td></tr>';
       if (body.innerHTML !== markup) body.innerHTML = markup;
+      fetch('/api/model-metrics', {cache: 'no-store'}).then(response => response.ok ? response.json() : {}).then(modelPayload => {
+        const confidence = Number(modelPayload.overall_ai_confidence ?? modelPayload.ensemble?.metrics?.accuracy);
+        const confidenceText = Number.isFinite(confidence) ? `${(confidence * 100).toFixed(1)}%` : 'Awaiting validation';
+        let confidenceNode = tableWrap?.parentElement?.querySelector('.overall-ai-confidence');
+        if (!confidenceNode && tableWrap) {
+          confidenceNode = document.createElement('div');
+          confidenceNode.className = 'overall-ai-confidence';
+          tableWrap.insertAdjacentElement('beforebegin', confidenceNode);
+        }
+        if (confidenceNode) confidenceNode.innerHTML = `Overall AI confidence <b>${escapeHtml(confidenceText)}</b><span>held-out ensemble accuracy</span>`;
+      }).catch(() => {});
     } catch (_) {}
   }
 
@@ -1460,7 +1492,12 @@ FINAL_UI_SCRIPT = r'''
     const modelSelected = Boolean(document.querySelector('.data-layer-card.selected[data-layer="model"]'));
     if (detail && modelSelected && detail.dataset.runtimeFourModel !== 'true') {
       detail.dataset.runtimeFourModel = 'true';
-      detail.innerHTML = `<div class="layer-expanded model"><div><span class="layer-expanded-kicker">Held-out ML validation and explainability</span><h2>4-Model Validation</h2><p>All four models use a stratified 70/15/15 train, validation, and untouched-test split. The blend and threshold are chosen on validation data, then reported once on the test partition.</p></div><ul><li>Accuracy, precision, recall, F1, and ROC-AUC are recorded for all four models.</li><li>The ensemble activates only when test accuracy is at least 88% and exceeds every individual model.</li><li>SHAP provides global feature importance and student-level contributing factors.</li><li>Gender and socioeconomic fairness checks measure demographic parity, equal opportunity, and predictive parity.</li></ul></div>`;
+      detail.innerHTML = `<div class="layer-expanded model"><div><span class="layer-expanded-kicker">Held-out ML validation and explainability</span><h2>4-Model Validation</h2><p>All four models use a stratified 70/15/15 train, validation, and untouched-test split. The blend and threshold are chosen on validation data, then reported once on the test partition.</p><div class="overall-ai-confidence" data-model-confidence>Overall AI confidence <b>Loading…</b><span>held-out ensemble accuracy</span></div></div><ul><li>Accuracy, precision, recall, F1, and ROC-AUC are recorded for all four models.</li><li>The ensemble activates only when test accuracy is at least 88% and exceeds every individual model.</li><li>SHAP provides global feature importance and student-level contributing factors.</li><li>Gender and socioeconomic fairness checks measure demographic parity, equal opportunity, and predictive parity.</li></ul></div>`;
+      fetch('/api/model-metrics', {cache:'no-store'}).then(response => response.ok ? response.json() : {}).then(payload => {
+        const confidence = Number(payload.overall_ai_confidence ?? payload.ensemble?.metrics?.accuracy);
+        const node = detail.querySelector('[data-model-confidence] b');
+        if (node) node.textContent = Number.isFinite(confidence) ? `${(confidence * 100).toFixed(1)}%` : 'Awaiting validation';
+      }).catch(() => {});
       const label = document.getElementById('layer-detail-label');
       if (label) label.textContent = '4-Model Validation';
     }
@@ -1499,7 +1536,8 @@ FINAL_UI_SCRIPT = r'''
       const pct=value=>Number.isFinite(Number(value))?`${(Number(value)*100).toFixed(2)}%`:'—';
       const gate = ensemble.quality_gate || {};
       const gateLabel = gate.passed ? 'Passed' : (gate.activation_passed ? '88% passed · ensemble review' : 'Failed');
-      panel.innerHTML=`<h2>Uploaded Dataset Training Evidence</h2><p>Real measurements for <strong>${escapeHtml(payload.dataset_name||'active dataset')}</strong>. These curves come from the XGBoost component during this run and are not illustrative values.</p><div class="runtime-training-kpis"><article><span>Ensemble accuracy</span><strong>${pct(metrics.accuracy)}</strong></article><article><span>ROC-AUC</span><strong>${pct(metrics.auc_roc)}</strong></article><article><span>Decision threshold</span><strong>${pct(ensemble.decision_threshold)}</strong></article><article><span>Quality gate</span><strong>${gateLabel}</strong></article></div><div class="runtime-training-charts">${chart('Model Accuracy','train_accuracy','validation_accuracy','Accuracy by boosting round')}${chart('Model Loss','train_loss','validation_loss','Log loss by boosting round')}</div>`;
+      const overallConfidence = payload.overall_ai_confidence ?? metrics.accuracy;
+      panel.innerHTML=`<h2>Uploaded Dataset Training Evidence</h2><p>Real measurements for <strong>${escapeHtml(payload.dataset_name||'active dataset')}</strong>. These curves come from the XGBoost component during this run and are not illustrative values.</p><div class="runtime-training-kpis"><article><span>Ensemble accuracy</span><strong>${pct(metrics.accuracy)}</strong></article><article><span>Overall AI confidence</span><strong>${pct(overallConfidence)}</strong></article><article><span>ROC-AUC</span><strong>${pct(metrics.auc_roc)}</strong></article><article><span>Decision threshold</span><strong>${pct(ensemble.decision_threshold)}</strong></article><article><span>Quality gate</span><strong>${gateLabel}</strong></article></div><div class="runtime-training-charts">${chart('Model Accuracy','train_accuracy','validation_accuracy','Accuracy by boosting round')}${chart('Model Loss','train_loss','validation_loss','Log loss by boosting round')}</div>`;
     } catch (_) {}
   }
 
@@ -1798,6 +1836,7 @@ FINAL_UI_SCRIPT = r'''
     }).join('');
     const renderGuided = (panel, channel, turns, active, summary = '') => {
       const summaryMarkup = summary ? `<footer class="dataset-contact-summary"><b>AI Summary · High dropout risk flagged</b><p>${escapeHtml(summary)}</p></footer>` : '';
+      const scoreMarkup = channel === 'call' && !active ? '<div class="live-score-strip"><span>ML probability<b>82.0%</b></span><span>Voice risk<b>88.0%</b></span><span>AI confidence<b>91.0%</b></span><span>Fused result<b>86.8%</b></span></div>' : '';
       const key = `guided-demo:${channel}`;
       let row = panel.querySelector(`[data-conversation-key="${key}"]`);
       if (!row) {
@@ -1811,7 +1850,7 @@ FINAL_UI_SCRIPT = r'''
       row.dataset.messageCount = String(turns.length);
       row.querySelector('summary').innerHTML = `<strong>Demo Student</strong><span class="${active ? 'dataset-live' : 'dataset-completed'}">${active ? 'ACTIVE' : 'COMPLETED'}</span>${active ? '<span class="dataset-presence high"></span>' : ''}<em>HIGH RISK</em>`;
       const thread = row.querySelector('.dataset-thread');
-      thread.innerHTML = `${turns.map(turn => messageMarkup(turn, 'Demo Student')).join('')}${summaryMarkup}`;
+      thread.innerHTML = `${scoreMarkup}${turns.map(turn => messageMarkup(turn, 'Demo Student')).join('')}${summaryMarkup}`;
       if (thread) requestAnimationFrame(() => { thread.scrollTop = thread.scrollHeight; });
     };
     const setCounts = (callCount, waCount) => {
@@ -1861,7 +1900,7 @@ FINAL_UI_SCRIPT = r'''
       const callSummary = 'Demo Student reported coursework, attendance, and fee pressure. Asha AI flagged high dropout risk and recommends financial-aid guidance, an academic recovery plan, and counselor contact within 24 hours.';
       renderGuided(callPanel, 'call', shownCall, false, callSummary); setCounts(2, 0);
       const assessment = popup('Asha AI flagged Demo Student as high risk', `<strong>Call summary:</strong> ${escapeHtml(callSummary)}`, 'var(--red)');
-      await wait(3200); assessment.remove();
+      await wait(6200); assessment.remove();
       window.activateWorkspacePage?.('whatsapp');
       const waPanel = document.getElementById('wa-convos-panel');
       if (!waPanel) throw new Error('WhatsApp panel unavailable');
@@ -2108,6 +2147,7 @@ def install(app, namespace):
             payload["ensemble"] = metadata.get("ensemble", {})
             payload["training_history"] = metadata.get("training_history", {})
             payload["champion_model"] = _visible_model_name(payload.get("champion_model") or metadata.get("champion_model"))
+            payload["overall_ai_confidence"] = (metadata.get("ensemble", {}).get("metrics", {}) or {}).get("accuracy")
             models = payload.get("models")
             if isinstance(models, dict):
                 for name in list(models):
@@ -2261,100 +2301,63 @@ def install(app, namespace):
         app.add_url_rule("/api/dataset/insights", "dataset_insights", dataset_insights, methods=["GET"])
 
     def operations_export_csv():
-        """Export one unique support summary for every high-risk student."""
-        live_result = next(
-            (
-                result for result in reversed(voice_server.analyzed_results)
-                if str(result.get("call_status") or "completed").lower() == "completed"
-            ),
-            None,
-        )
-        if not live_result:
-            return jsonify({"error": "No completed analyzed call is available for export."}), 400
+        """Export only the actionable at-risk roster and captured call evidence."""
+        if not any(str(result.get("call_status") or "completed").lower() == "completed" for result in voice_server.analyzed_results):
+            return jsonify({"error": "Analyze at least one completed call before exporting the at-risk roster."}), 400
         records = active_records().copy()
         if records.empty:
             return jsonify({"error": "No active scored dataset is available for export."}), 409
         if "final_risk_tier" in records:
-            records = records[records["final_risk_tier"].astype(str).str.upper().eq("HIGH")]
+            records = records[records["final_risk_tier"].astype(str).str.upper().isin({"HIGH", "MEDIUM"})]
         if records.empty:
-            return jsonify({"error": "The active dataset has no high-risk students to export."}), 409
+            return jsonify({"error": "The active dataset has no at-risk students to export."}), 409
         if "ml_risk_score" in records:
             records = records.sort_values("ml_risk_score", ascending=False)
 
-        live_whatsapp = next(
-            (
-                session for session in voice_server.wa_sessions.values()
-                if str((session.get("profile") or {}).get("student_id") or "") == str(live_result.get("student_id") or "")
-            ),
-            None,
-        )
-        live_summary = voice_server._combined_support_summary(live_result, live_whatsapp)
-        fields = list(voice_server.EXPORT_FIELDS)
-        if "ai_summary" not in fields:
-            fields.append("ai_summary")
-        rows = []
-        support_by_cause = {
-            "Financial and economic pressure": "financial_aid",
-            "Academic progression": "academic_recovery_plan",
-            "Student background and transition": "wellbeing_support",
-            "Engagement and enrolment context": "counselor_check_in",
+        results_by_student = {
+            str(result.get("student_id") or ""): result
+            for result in voice_server.analyzed_results
+            if str(result.get("call_status") or "completed").lower() == "completed"
         }
-        for index, (_, student) in enumerate(records.iterrows()):
-            if index == 0:
-                row = {field: live_result.get(field, "") for field in fields}
-                row.update({
-                    "student_id": str(live_result.get("student_id") or ""),
-                    "student_name": str(live_result.get("student_name") or "Student"),
-                    "call_status": "completed",
-                    "dropout_intent": str(live_result.get("dropout_intent") or "MEDIUM"),
-                    "summary": " ".join(live_summary.split()),
-                    "ai_summary": " ".join(live_summary.split()),
-                })
-                rows.append(row)
-                continue
-            name = str(student.get("student_name") or "Student")
-            student_id = str(student.get("student_id") or f"HIGH-{index + 1}")
-            cause = str(student.get("primary_root_cause") or student.get("top_factor_1") or "Engagement review")
-            factor = str(student.get("top_factor_1") or cause)
-            action = str(student.get("final_action") or "Schedule counselor follow-up")
-            score = float(student.get("ml_risk_score") or 0)
-            support = support_by_cause.get(cause, "counselor_follow_up")
-            marks = str(student.get("latest_marks") or "not recorded")
-            attendance = str(student.get("attendance_rate") or "not recorded")
-            ai_summary = (
-                f"{name} ({student_id}) is flagged as high dropout risk with a score of {score:.3f}. "
-                f"Latest marks are {marks} and attendance is {attendance}. The primary signal is {factor}; "
-                f"recommended next step: {action}."
+        fields = [
+            "student_id", "student_name", "risk_level", "marks", "attendance",
+            "question_1_answer", "question_2_answer", "question_3_answer", "question_4_answer",
+            "ai_summary", "recommended_next_steps",
+        ]
+        rows = []
+        for _, student in records.iterrows():
+            student_id = str(student.get("student_id") or "")
+            result = results_by_student.get(student_id, {})
+            live_call = next(
+                (call for call in voice_server.sessions.values() if str(call.get("student_id") or "") == student_id),
+                {},
             )
+            answers = live_call.get("answers") or {}
+            answer_text = lambda key: str((answers.get(key) or {}).get("text") or "No call answer recorded")
+            risk_level = str(result.get("dropout_intent") or student.get("final_risk_tier") or "MEDIUM").upper()
+            summary = str(result.get("summary") or "No completed call analysis recorded; review academic indicators and arrange a check-in.")
+            next_steps = str(student.get("final_action") or result.get("q3_support_need") or "Schedule counselor follow-up")
             rows.append({
                 "student_id": student_id,
-                "student_name": name,
-                "phone": str(student.get("phone") or ""),
-                "ml_risk_score": round(score, 4),
-                "call_date": "active cohort outreach",
-                "call_status": "completed",
-                "q1_sentiment": "needs_support",
-                "q2_stressor": cause,
-                "q3_support_need": support,
-                "q4_root_cause_detail": factor,
-                "q5_future_orientation": "follow_up_required",
-                "overall_sentiment": "support_required",
-                "dropout_intent": "HIGH",
-                "dropout_probability": round(score, 4),
-                "primary_root_cause": cause,
-                "secondary_root_cause": str(student.get("top_factor_2") or "none"),
-                "ai_confidence": round(max(.5, score), 4),
-                "summary": ai_summary,
-                "ai_summary": ai_summary,
+                "student_name": str(student.get("student_name") or "Student"),
+                "risk_level": risk_level,
+                "marks": str(student.get("subject_marks_summary") or student.get("latest_marks") or "Not recorded"),
+                "attendance": str(student.get("attendance_rate") or "Not recorded"),
+                "question_1_answer": answer_text("q1_semester_experience"),
+                "question_2_answer": answer_text("q2_biggest_challenge"),
+                "question_3_answer": answer_text("q3_support_need"),
+                "question_4_answer": answer_text("q4_change_wish"),
+                "ai_summary": " ".join(summary.split()),
+                "recommended_next_steps": " ".join(next_steps.split()),
             })
         output = io.StringIO(newline="")
-        writer = csv.DictWriter(output, fieldnames=fields, extrasaction="ignore")
+        writer = csv.DictWriter(output, fieldnames=fields)
         writer.writeheader()
         writer.writerows(rows)
         return Response(
             output.getvalue(),
             content_type="text/csv; charset=utf-8",
-            headers={"Content-Disposition": "attachment; filename=dropout-signal-call-follow-ups.csv"},
+            headers={"Content-Disposition": "attachment; filename=dropout-signal-at-risk-students.csv"},
         )
 
     if not any(rule.rule == "/api/operations/export.csv" for rule in app.url_map.iter_rules()):
@@ -2431,6 +2434,47 @@ def install(app, namespace):
         if rule.rule == "/whatsapp/demo":
             app.view_functions[rule.endpoint] = voice_server.whatsapp_demo
 
+    def _complete_sample_call_fields(sample, index):
+        """Give each historical walkthrough a complete, language-varied call result.
+
+        WhatsApp samples remain English by design.  Only the phone-call turns
+        rotate across the three supported spoken languages.
+        """
+        language_index = index % 3
+        language_name = ("English", "Hindi", "Kannada")[language_index]
+        tier = str(sample.get("dropout_intent") or sample.get("tier") or "MEDIUM").upper()
+        score = {"HIGH": 0.84, "MEDIUM": 0.56, "LOW": 0.22}.get(tier, 0.56)
+        sample.update({
+            "language_name": language_name,
+            "ml_risk_score": float(sample.get("ml_risk_score") or sample.get("ml_score") or score),
+            "voice_risk_score": score,
+            "ai_confidence": 0.86,
+            "fused_risk_score": score,
+            "dropout_intent": tier,
+        })
+        if language_index == 0:
+            return sample
+        hindi = [
+            ("Asha AI", "ai", "यह सेमेस्टर आपके लिए अब तक कैसा रहा है?"),
+            ("Student", "student", "कुछ समय-सीमाएँ कठिन रही हैं, इसलिए मुझे योजना बनाने में सहायता चाहिए।"),
+            ("Asha AI", "ai", "हाल में कॉलेज जीवन का सबसे चुनौतीपूर्ण हिस्सा क्या रहा है?"),
+            ("Student", "student", "कक्षाओं और असाइनमेंट को संतुलित करना कभी-कभी मुश्किल रहा है।"),
+        ]
+        kannada = [
+            ("Asha AI", "ai", "ಈ ಸೆಮಿಸ್ಟರ್ ನಿಮಗೆ ಇದುವರೆಗೆ ಹೇಗಿದೆ?"),
+            ("Student", "student", "ಕೆಲವು ಗಡುವುಗಳು ಕಷ್ಟವಾಗಿವೆ; ಯೋಜನೆ ಮಾಡಲು ಸಹಾಯ ಬೇಕಾಗಿದೆ."),
+            ("Asha AI", "ai", "ಇತ್ತೀಚೆಗೆ ಕಾಲೇಜಿನ ಯಾವ ಭಾಗ ಹೆಚ್ಚು ಸವಾಲಾಗಿತ್ತು?"),
+            ("Student", "student", "ತರಗತಿಗಳು ಮತ್ತು ಅಸೈನ್‌ಮೆಂಟ್‌ಗಳನ್ನು ಸಮತೋಲನಗೊಳಿಸುವುದು ಕೆಲವೊಮ್ಮೆ ಕಷ್ಟವಾಗಿದೆ."),
+        ]
+        template = hindi if language_index == 1 else kannada
+        source_turns = list(sample.get("call") or [])
+        if source_turns:
+            sample["call"] = [
+                {**turn, "speaker": template[position % len(template)][0], "side": template[position % len(template)][1], "text": template[position % len(template)][2]}
+                for position, turn in enumerate(source_turns)
+            ]
+        return sample
+
     def dataset_experience():
         """Combine real webhook activity with synchronized active demo streams."""
         payload = namespace["_dataset_experience_payload"]()
@@ -2481,6 +2525,7 @@ def install(app, namespace):
                 if str(student.get("student_id")) in real_ids:
                     continue
                 sample = namespace["_experience_conversation"](student, index)
+                sample = _complete_sample_call_fields(sample, index)
                 sample["is_sample"] = True
                 sample["status"] = "active" if index < 7 else "completed"
                 sample["student_name"] = student.get("student_name") or "Student"

@@ -299,7 +299,7 @@ class UnifiedDashboardTests(VoiceTranscriptTests):
             self.assertIn("runtimeToggleBound", template)
             self.assertIn("4 Models Ensembled", template)
             self.assertIn("professional-risk-workspace", template)
-            self.assertIn("Reading earlier messages deliberately pauses", template)
+            self.assertIn("always follows the", template)
             self.assertIn("student-summary-profile", template)
             self.assertIn("starting a student check-in", template)
             self.assertIn("Uploaded Dataset Training Evidence", template)
@@ -314,7 +314,7 @@ class UnifiedDashboardTests(VoiceTranscriptTests):
         client = self.unified.app.test_client()
         empty = client.get("/api/operations/export.csv")
         self.assertEqual(empty.status_code, 400)
-        self.assertIn("No completed analyzed call", empty.get_json()["error"])
+        self.assertIn("Analyze at least one completed call", empty.get_json()["error"])
 
         voice_server.analyzed_results.append({
             "student_id": "STU-ACHAL", "student_name": "Achal Sangami",
@@ -327,22 +327,26 @@ class UnifiedDashboardTests(VoiceTranscriptTests):
             "profile": {"student_id": "STU-ACHAL", "student_name": "Achal Sangami", "primary_root_cause": "academic", "call_summary": "Call identified coursework pressure."},
         }
         cohort = pd.DataFrame([
+            {"student_id": "STU-ACHAL", "student_name": "Achal Sangami", "final_risk_tier": "HIGH", "ml_risk_score": .91, "latest_marks": 48, "attendance_rate": 62, "final_action": "Academic recovery plan"},
             {"student_id": "H-1", "student_name": "One", "final_risk_tier": "HIGH", "ml_risk_score": .99, "top_factor_1": "Attendance", "final_action": "Attendance plan"},
             {"student_id": "H-2", "student_name": "Two", "final_risk_tier": "HIGH", "ml_risk_score": .92, "top_factor_1": "Coursework", "final_action": "Tutor"},
-            {"student_id": "H-3", "student_name": "Three", "final_risk_tier": "HIGH", "ml_risk_score": .88, "top_factor_1": "Fees", "final_action": "Financial aid"},
+            {"student_id": "M-1", "student_name": "Three", "final_risk_tier": "MEDIUM", "ml_risk_score": .58, "top_factor_1": "Fees", "final_action": "Financial aid"},
             {"student_id": "L-1", "student_name": "Low", "final_risk_tier": "LOW", "ml_risk_score": .10},
         ])
         with patch.object(app_overrides, "active_records", return_value=cohort):
             response = client.get("/api/operations/export.csv")
         self.assertEqual(response.status_code, 200)
         rows = list(csv.DictReader(io.StringIO(response.get_data(as_text=True))))
-        self.assertEqual(len(rows), 3)
-        self.assertEqual(rows[0]["student_name"], "Achal Sangami")
-        self.assertIn("WhatsApp", rows[0]["summary"])
-        self.assertEqual(rows[0]["ai_summary"], rows[0]["summary"])
-        self.assertEqual(len({row["summary"] for row in rows}), 3)
+        self.assertEqual(len(rows), 4)
+        achal = next(row for row in rows if row["student_id"] == "STU-ACHAL")
+        self.assertEqual(achal["student_name"], "Achal Sangami")
+        self.assertIn("Call identified coursework pressure", achal["ai_summary"])
+        self.assertEqual(set(achal), {"student_id", "student_name", "risk_level", "marks", "attendance", "question_1_answer", "question_2_answer", "question_3_answer", "question_4_answer", "ai_summary", "recommended_next_steps"})
+        self.assertEqual(achal["marks"], "48.0")
+        self.assertEqual(achal["attendance"], "62.0")
+        self.assertEqual({row["risk_level"] for row in rows}, {"HIGH", "MEDIUM"})
+        self.assertTrue(all(row["recommended_next_steps"] for row in rows))
         self.assertTrue(all(row["ai_summary"] for row in rows))
-        self.assertTrue(all(row["dropout_intent"] == "HIGH" for row in rows))
 
 
 if __name__ == "__main__":

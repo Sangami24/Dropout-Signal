@@ -158,7 +158,7 @@ console.log('PASS responsive widths, swapped Distribution/Prediction positions, 
 
 const emptyExport = await fetch(baseUrl + '/api/operations/export.csv', {cache:'no-store'});
 const initialExportText = await emptyExport.text();
-assert(emptyExport.status === 400 && /no (completed analyzed )?call/i.test(initialExportText), {status:emptyExport.status, body:initialExportText});
+assert(emptyExport.status === 400 && /analyze at least one completed call/i.test(initialExportText), {status:emptyExport.status, body:initialExportText});
 
 await devtools.evaluate("window.activateWorkspacePage('transcript')");
 const sampleState = await waitFor(
@@ -170,6 +170,10 @@ const sampleState = await waitFor(
   }))()`),
   value => value.samples.length >= 2,
 );
+const sampleLanguages = await (await fetch(baseUrl + '/api/dataset/experience', {cache:'no-store'})).json();
+const sampleCalls = (sampleLanguages.conversations || []).filter(item => item.is_sample && item.call?.length);
+assert(['English','Hindi','Kannada'].every(language => sampleCalls.some(item => item.language_name === language)), sampleCalls.map(item => item.language_name));
+assert(sampleCalls.some(item => /[\u0900-\u097F\u0C80-\u0CFF]/.test(item.call.map(turn => turn.text).join(' '))), 'Sample calls did not contain Hindi or Kannada text');
 const samples = [...sampleState.samples].sort((a,b) => (a.status === 'ACTIVE' ? 0 : 1) - (b.status === 'ACTIVE' ? 0 : 1) || a.count - b.count);
 const beforeCounts = Object.fromEntries(samples.map(item => [item.key, item.count]));
 const selectedKey = samples[0].key;
@@ -204,15 +208,14 @@ console.log('PASS selected sample starts midway, advances one alternating turn e
 const pausedAt = await devtools.evaluate(`(() => {const row=document.querySelector('#full-transcript-panel [data-conversation-key='+CSS.escape(${selectedLiteral})+']');const thread=row?.querySelector('.dataset-thread');if(!thread)return null;thread.style.maxHeight='110px';thread.style.height='110px';thread.scrollTop=0;thread.dispatchEvent(new Event('scroll'));return {count:+row.dataset.messageCount,top:thread.scrollTop,max:thread.scrollHeight-thread.clientHeight};})()`);
 assert(pausedAt && pausedAt.max > 0, pausedAt);
 await waitFor(
-  'new turn while transcript follow is paused',
+  'new turn while transcript auto-follow is active',
   () => devtools.evaluate(`+document.querySelector('#full-transcript-panel [data-conversation-key='+CSS.escape(${selectedLiteral})+']')?.dataset.messageCount||0`),
   value => value > pausedAt.count,
   3500,
 );
-const pausedAfterTurn = await devtools.evaluate(`(() => {const thread=document.querySelector('#full-transcript-panel [data-conversation-key='+CSS.escape(${selectedLiteral})+'] .dataset-thread');return {top:thread?.scrollTop||0,max:(thread?.scrollHeight||0)-(thread?.clientHeight||0)};})()`);
-assert(pausedAfterTurn.top <= 2 && pausedAfterTurn.max > 0, pausedAfterTurn);
-await devtools.evaluate(`(() => {const thread=document.querySelector('#full-transcript-panel [data-conversation-key='+CSS.escape(${selectedLiteral})+'] .dataset-thread');thread.scrollTop=thread.scrollHeight;thread.dispatchEvent(new Event('scroll'));})()`);
-console.log('PASS manual upward scrolling pauses auto-follow until the selected transcript returns to the bottom', pausedAfterTurn);
+const autoFollowAfterTurn = await devtools.evaluate(`(() => {const thread=document.querySelector('#full-transcript-panel [data-conversation-key='+CSS.escape(${selectedLiteral})+'] .dataset-thread');return {top:thread?.scrollTop||0,max:(thread?.scrollHeight||0)-(thread?.clientHeight||0)};})()`);
+assert(autoFollowAfterTurn.max > 0 && autoFollowAfterTurn.top >= autoFollowAfterTurn.max - 2, autoFollowAfterTurn);
+console.log('PASS live transcript automatically follows its newest turn', autoFollowAfterTurn);
 
 await devtools.evaluate("window.activateWorkspacePage('dashboard')");
 await new Promise(resolve => setTimeout(resolve, 2500));
@@ -289,7 +292,7 @@ const callRows = await waitFor(
   'Achal live call workspace',
   () => devtools.evaluate(`(() => ({page:document.querySelector('.page.active')?.id||'',rows:[...document.querySelectorAll('#full-transcript-panel details')].map(r=>({name:r.querySelector('summary strong')?.textContent.trim(),status:r.querySelector('summary span')?.textContent.trim()}))}))()`),
   value => value.page.includes('transcript') && value.rows[0]?.name === 'Achal Sangami',
-  7000,
+  9500,
 );
 const statuses = callRows.rows.map(row => row.status);
 assert(statuses.slice(1).includes('ACTIVE'), callRows);
@@ -339,9 +342,9 @@ await waitFor(
 );
 const centeredFlag = await waitFor(
   'centered high-risk handoff',
-  () => devtools.evaluate(`(() => {const modal=document.getElementById('operation-action-modal');if(!modal||!/flagged Achal Sangami as high risk/i.test(modal.innerText))return window.__lastRiskHandoff||{debug:window.__achalHandoffDebug||null,modal:modal?.innerText||'',page:document.querySelector('.page.active')?.id||''};const r=modal.querySelector('.operation-modal').getBoundingClientRect();return {dx:Math.abs((r.left+r.right)/2-innerWidth/2),dy:Math.abs((r.top+r.bottom)/2-innerHeight/2),debug:window.__achalHandoffDebug};})()`),
+  () => devtools.evaluate(`(() => {const modal=document.getElementById('operation-action-modal');if(!modal||!/Asha AI result: Achal Sangami is HIGH risk/i.test(modal.innerText))return window.__lastRiskHandoff||{debug:window.__achalHandoffDebug||null,modal:modal?.innerText||'',page:document.querySelector('.page.active')?.id||''};const r=modal.querySelector('.operation-modal').getBoundingClientRect();return {dx:Math.abs((r.left+r.right)/2-innerWidth/2),dy:Math.abs((r.top+r.bottom)/2-innerHeight/2),debug:window.__achalHandoffDebug};})()`),
   value => value && value.dx < 10 && value.dy < 10,
-  5000,
+  9000,
 );
 const handoff = await waitFor(
   'automatic open WhatsApp handoff',
@@ -413,10 +416,11 @@ await devtools.evaluate("document.getElementById('operation-action-modal')?.remo
 const exportResponse = await fetch(baseUrl + '/api/operations/export.csv', {cache:'no-store'});
 const exportText = await exportResponse.text();
 const datasetStatus = await (await fetch(baseUrl + '/api/dataset/status', {cache:'no-store'})).json();
-const highRiskCount = Number((datasetStatus.tier_breakdown||[]).find(row=>String(row.final_risk_tier).toUpperCase()==='HIGH')?.cnt||0);
+const atRiskCount = (datasetStatus.tier_breakdown||[]).filter(row=>['HIGH','MEDIUM'].includes(String(row.final_risk_tier).toUpperCase())).reduce((sum,row)=>sum+Number(row.cnt||0),0);
 const exportLines = exportText.trim().split(/\r?\n/);
-assert(exportResponse.ok && exportLines.length === highRiskCount + 1 && exportLines[1].includes('Achal Sangami'), {status:exportResponse.status,lines:exportLines.length,highRiskCount,first:exportLines[1]});
-assert(exportLines[0].includes('ai_summary') && exportLines.slice(1).every(line => /flagged|Call:/i.test(line)), 'Every exported high-risk row must include an AI summary');
+assert(exportResponse.ok && exportLines.length === atRiskCount + 1, {status:exportResponse.status,lines:exportLines.length,atRiskCount});
+assert(exportLines[0] === 'student_id,student_name,risk_level,marks,attendance,question_1_answer,question_2_answer,question_3_answer,question_4_answer,ai_summary,recommended_next_steps', exportLines[0]);
+assert(exportLines.slice(1).every(line => /Call:|No completed call analysis/i.test(line)), 'Every exported at-risk row must include an AI summary');
 
 // Re-run the operational path through the administrator workspace. This is a
 // behavior check, not a static button-presence check: the admin must receive
@@ -459,7 +463,7 @@ await new Promise(resolve => setTimeout(resolve, 1300));
 assert(await devtools.evaluate(`(() => {const row=[...document.querySelectorAll('#admin-transcript-panel details')].find(item=>item.querySelector('summary strong')?.textContent.trim()==='Achal Sangami');return !!row?.open;})()`), 'Administrator completed Achal transcript auto-closed');
 
 await devtools.evaluate("window.activateWorkspacePage('model-evidence')");
-const fairness = await waitFor('stable administrator fairness audit', () => devtools.evaluate(`(() => {const body=document.getElementById('fairness-runtime-rows');const wrap=body?.closest('.fairness-table');return body?{rows:body.querySelectorAll('tr').length,statuses:body.querySelectorAll('.fairness-status').length,note:!!wrap?.previousElementSibling?.classList.contains('fairness-audit-note'),width:document.documentElement.scrollWidth,viewport:innerWidth}:null;})()`), value => value?.rows > 0 && value.statuses > 0 && value.note, 8000);
+const fairness = await waitFor('stable administrator fairness audit', () => devtools.evaluate(`(() => {const body=document.getElementById('fairness-runtime-rows');const wrap=body?.closest('.fairness-table');return body?{rows:body.querySelectorAll('tr').length,statuses:body.querySelectorAll('.fairness-status').length,note:!!wrap?.parentElement?.querySelector('.fairness-audit-note'),confidence:wrap?.parentElement?.querySelector('.overall-ai-confidence')?.innerText||'',width:document.documentElement.scrollWidth,viewport:innerWidth}:null;})()`), value => value?.rows > 0 && value.statuses > 0 && value.note && /Overall AI confidence/i.test(value.confidence), 8000);
 assert(fairness.width <= fairness.viewport + 1, fairness);
 
 await fetch(baseUrl + '/api/reset', {method:'POST', headers:{'X-Operations-Reset':'explicit'}});
@@ -486,7 +490,7 @@ const adminHandoff = await waitFor(
   'administrator automatic WhatsApp handoff',
   () => devtools.evaluate(`(() => {const wa=[...document.querySelectorAll('#admin-wa-panel details')].find(row=>row.querySelector('summary strong')?.textContent.trim()==='Achal Sangami');const call=[...document.querySelectorAll('#admin-transcript-panel details')].find(row=>row.querySelector('summary strong')?.textContent.trim()==='Achal Sangami');return {page:document.querySelector('.page.active')?.id||'',waOpen:!!wa?.open,waName:wa?.querySelector('summary strong')?.textContent.trim(),callSummary:call?.querySelector('.dataset-contact-summary')?.textContent||''};})()`),
   value => value.page === 'page-admin-whatsapp' && value.waOpen && value.waName === 'Achal Sangami' && value.callSummary.includes('High dropout risk flagged'),
-  8000,
+  11000,
 );
 console.log('PASS administrator parity: layout, controls, call history, live Achal transcript, risk summary, and WhatsApp handoff', adminLayout, adminHistory, adminLive, adminHandoff);
 
