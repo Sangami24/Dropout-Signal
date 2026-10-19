@@ -242,6 +242,16 @@ async function validateBrowserUpload(devtools) {
 async function validateModelEvidence(devtools) {
   const pageId = await activateContaining(devtools, '#page-model-evidence');
   assert(pageId, 'Model evidence page was not found');
+  await devtools.evaluate("window.renderDatasetEvidence?.()");
+  await waitFor('single completed model evidence view', () => devtools.evaluate(`(() => {
+    const page=document.getElementById('page-model-evidence');
+    return {
+      modelBodies:page?.querySelectorAll(':scope > .model-runtime-body').length || 0,
+      fairnessTables:page?.querySelectorAll('.model-runtime-body .fairness-table').length || 0,
+      featureSchemas:page?.querySelectorAll('.model-runtime-body .feature-groups').length || 0,
+      loading:/loading model evidence/i.test(page?.innerText || ''),
+    };
+  })()`), value => value?.modelBodies === 1 && value.fairnessTables === 1 && value.featureSchemas === 1 && !value.loading);
   await devtools.evaluate("window.selectDataLayer?.('model')");
   const evidence = await waitFor('training evidence charts', () => devtools.evaluate(`(() => {const panel=document.getElementById('runtime-training-evidence');return panel?{text:panel.innerText,charts:panel.querySelectorAll('svg').length,lines:panel.querySelectorAll('polyline').length}:null;})()`), value => value?.charts === 2 && value.lines === 4);
   assert(/Ensemble accuracy/i.test(evidence.text) && /Model Accuracy/i.test(evidence.text) && /Model Loss/i.test(evidence.text) && /Quality gate\s*Passed/i.test(evidence.text), evidence);
@@ -253,8 +263,49 @@ async function validateModelEvidence(devtools) {
     return {count:panels.length, ownerOnly:panels.length===1 && panels[0].parentElement===owner, leakedPages:panels.filter(panel=>panel.parentElement!==owner).map(panel=>panel.parentElement?.id||'detached')};
   })()`);
   assert(evidenceOwnership.ownerOnly && !evidenceOwnership.leakedPages.length, evidenceOwnership);
+  const singleModelSections = await devtools.evaluate(`(() => {
+    const page=document.getElementById('page-model-evidence');
+    return {
+      fairnessTables:page?.querySelectorAll('.model-runtime-body .fairness-table').length || 0,
+      featureSchemas:page?.querySelectorAll('.model-runtime-body .feature-groups').length || 0,
+      modelBodies:page?.querySelectorAll(':scope > .model-runtime-body').length || 0,
+    };
+  })()`);
+  assert(
+    singleModelSections.fairnessTables === 1 &&
+      singleModelSections.featureSchemas === 1 &&
+      singleModelSections.modelBodies === 1,
+    singleModelSections,
+  );
   console.log('PASS real per-dataset accuracy/loss evidence rendered', {charts:evidence.charts, lines:evidence.lines});
   console.log('PASS ML evidence is mounted exclusively in Model SHAP', evidenceOwnership);
+  console.log('PASS Model SHAP contains one fairness audit and one feature schema', singleModelSections);
+}
+
+async function validateModelEvidenceIsolation(devtools) {
+  const isolation = await devtools.evaluate(`(() => {
+    const students=document.getElementById('page-students');
+    const model=document.getElementById('page-model-evidence');
+    if(!students || !model) return null;
+    document.querySelectorAll('.page.active').forEach(page=>page.classList.remove('active'));
+    students.classList.add('active');
+    const visible=node=>{const style=getComputedStyle(node);return style.display!=='none'&&style.visibility!=='hidden'&&node.getClientRects().length>0;};
+    return {
+      activePages:[...document.querySelectorAll('.page.active')].map(page=>page.id),
+      modelDisplay:getComputedStyle(model).display,
+      modelVisible:visible(model),
+      evidenceVisible:visible(model.querySelector('#runtime-training-evidence')),
+    };
+  })()`);
+  assert(
+    isolation?.activePages.length === 1 &&
+      isolation.activePages[0] === 'page-students' &&
+      isolation.modelDisplay === 'none' &&
+      !isolation.modelVisible &&
+      !isolation.evidenceVisible,
+    isolation,
+  );
+  console.log('PASS Model SHAP is hidden outside its own tab', isolation);
 }
 
 async function simulateLanguage(callSid, name, languageSpeech, expectedCode) {
@@ -361,6 +412,7 @@ async function main() {
   await screenshot(devtools, 'admin-student-summary-cards.png');
   await validateModelEvidence(devtools);
   await screenshot(devtools, 'admin-model-evidence.png');
+  await validateModelEvidenceIsolation(devtools);
   await validateAllPages(devtools, 'admin');
 
   await validateVoiceFlow();

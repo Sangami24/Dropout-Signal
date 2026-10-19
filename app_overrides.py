@@ -66,7 +66,10 @@ LIVE_UI_SCRIPT = r'''
   /* The recovered evidence view had nested fixed-size containers.  Make each
      model/fairness section shrink with the page rather than creating a blank
      oversized canvas beneath the schema. */
-  #page-model-evidence { display:grid!important; grid-template-columns:minmax(0,1fr); align-content:start; gap:14px; min-height:0!important; overflow:visible!important; }
+  /* Keep the model page hidden whenever another workspace tab is selected.
+     The previous selector forced it to display even without `.active`, so it
+     appeared underneath Students, At-Risk, and transcript screens. */
+  #page-model-evidence.active { display:grid!important; grid-template-columns:minmax(0,1fr); align-content:start; gap:14px; min-height:0!important; overflow:visible!important; }
   #page-model-evidence > *,#page-model-evidence .fairness-table,#page-model-evidence .data-layers,#page-model-evidence #layer-detail { min-width:0; max-width:100%; }
   #page-model-evidence .fairness-table { overflow-x:auto; overflow-y:visible; }
   #page-model-evidence .fairness-table table { width:100%; min-width:620px; table-layout:fixed; }
@@ -240,7 +243,10 @@ LIVE_UI_SCRIPT = r'''
   // This is intentionally a time-based visual indicator, not a sequence of
   // backend phases.  It moves at one constant rate until the real job ends,
   // avoiding the old jumps and long frozen model-stage percentages.
-  const SMOOTH_UPLOAD_PERCENT_PER_SECOND = 0.70;
+  // A typical four-model run completes in well under a minute.  This pace
+  // keeps the visual progress moving evenly instead of lingering at 54–70%
+  // after the server has already finished the job.
+  const SMOOTH_UPLOAD_PERCENT_PER_SECOND = 2.00;
   let _pollTimer = null;
   let _pollGeneration = 0;
   let _pollInFlight = false;
@@ -1555,22 +1561,25 @@ FINAL_UI_SCRIPT = r'''
 
   async function augmentModelEvidence() {
     const page = document.getElementById('page-model-evidence');
-    if (!page) return;
     // Runtime evidence belongs to Model SHAP only.  Remove any panel left by
-    // an older dashboard bundle before considering a fresh render.
+    // an older dashboard bundle before considering a fresh render.  Perform
+    // this cleanup even if the model page has not been installed yet.
     document.querySelectorAll('#runtime-training-evidence').forEach(panel => {
       if (panel.parentElement !== page) panel.remove();
     });
+    if (!page) return;
     if (!page.classList.contains('active')) return;
     try {
       const payload = await fetch('/api/model-metrics', {cache:'no-store'}).then(response => response.ok ? response.json() : {});
       if (!payload.dataset_loaded) { page.querySelector('#runtime-training-evidence')?.remove(); return; }
+      // `renderEvidence` owns the model cards, fairness audit, and UCI/Silver
+      // schema.  Do not replace or delete its loading container: wait until
+      // that one renderer has completed, then add the measured curves once.
+      const modelBody = page.querySelector(':scope > .model-runtime-body');
+      if (!modelBody || /loading model evidence/i.test(modelBody.textContent || '')) return;
       const history = payload.training_history || {};
       const points = history.points || [];
       if (!points.length) return;
-      [...page.children].forEach(child => {
-        if (child.id !== 'runtime-training-evidence' && /loading model evidence/i.test(child.textContent || '')) child.remove();
-      });
       const ensemble = payload.ensemble || {}, metrics = ensemble.metrics || {};
       const signature = `${payload.run_id}:${JSON.stringify(points)}`;
       let panel = page.querySelector(':scope > #runtime-training-evidence');
@@ -2071,7 +2080,7 @@ def _background_upload_snapshot(job):
         # A linear server-side estimate mirrors the smooth client indicator.
         # It remains below completion until the original upload route confirms
         # that activation really succeeded.
-        estimated = 0.70 * elapsed
+        estimated = 2.00 * elapsed
         snapshot["progress"] = min(99.9, max(float(snapshot.get("progress") or 0.0), estimated))
     return snapshot
 
