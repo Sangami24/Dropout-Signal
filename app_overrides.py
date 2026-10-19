@@ -26,7 +26,7 @@ import voice_server
 def _visible_model_name(value):
     """Keep historical runs and new runs on the same concise UI label."""
     text = str(value or "").strip()
-    return "4-Model Validation" if "4-Model Validation" in text else (text or "4-Model Validation")
+    return "4-Model Equal-Weight Ensemble" if "4-Model" in text else (text or "4-Model Equal-Weight Ensemble")
 
 
 LIVE_UI_SCRIPT = r'''
@@ -672,7 +672,6 @@ FINAL_UI_SCRIPT = r'''
   // other thread in both workspaces.
   let openedConversationKey = null;
   const visibleMessageCounts = new Map();
-  let pendingSelectedCallFocus = false;
   let selectedHandoffCompleted = false;
   let activeCallStudentId = null;
   let workspaceSwitchUntil = 0;
@@ -955,15 +954,16 @@ FINAL_UI_SCRIPT = r'''
     window.__callHandoffDebug = {
       ready: Boolean(calledStudentResultReady),
       whatsappReady: Boolean(calledStudentWhatsAppReady),
-      pending: pendingSelectedCallFocus,
       completed: selectedHandoffCompleted,
       studentId: activeCallStudentId,
       callStatus: calledStudent?.call_status || '',
       whatsappStatus: calledStudent?.whatsapp_status || '',
       whatsappMessages: calledStudent?.whatsapp?.length || 0,
     };
-    if (calledStudentResultReady && pendingSelectedCallFocus && !selectedHandoffCompleted) {
-      pendingSelectedCallFocus = false;
+    // A completed server-side call is the source of truth.  Do not require a
+    // transient click flag here: it can be cleared while a real call is still
+    // finishing, which previously suppressed the LOW-risk result dialog.
+    if (calledStudentResultReady && !selectedHandoffCompleted) {
       selectedHandoffCompleted = true;
       const riskMessage = calledStudent.call_summary || calledStudent.summary || 'The completed call has been scored for counselor review.';
       const resultTier = String(calledStudent.dropout_intent || calledStudent.tier || 'MEDIUM').toUpperCase();
@@ -971,7 +971,7 @@ FINAL_UI_SCRIPT = r'''
         ? 'Asha AI has flagged this student as high dropout risk. A WhatsApp support follow-up is being sent.'
         : resultTier === 'MEDIUM'
           ? 'Asha AI has assessed this student as medium dropout risk. A WhatsApp support follow-up is being sent as a precaution.'
-          : 'Asha AI has assessed this student as low dropout risk. No WhatsApp follow-up is needed at this time.';
+          : 'Asha AI has assessed this student as low dropout risk. Everything looks stable from this check-in, and no WhatsApp follow-up is needed at this time.';
       const riskModal = showOperationModal(`Asha AI result: ${calledStudent.student_name} is ${resultTier} risk`, `${outcomeCopy} ${riskMessage}`);
       requestAnimationFrame(() => {
         const rect = riskModal.querySelector('.operation-modal')?.getBoundingClientRect();
@@ -1475,40 +1475,48 @@ FINAL_UI_SCRIPT = r'''
   function normalizeModelPresentation() {
     // The interface describes validation evidence, not a single winning
     // "champion".  Keep labels short and consistent across both roles.
-    document.querySelectorAll('h1,h2,h3,h4,p,span,div,strong,li').forEach(node => {
+    const modelPage = document.getElementById('page-model-evidence');
+    if (!modelPage) return;
+    modelPage.querySelectorAll('h1,h2,h3,h4,p,span,div,strong,li').forEach(node => {
       if (node.children.length) return;
       const value = String(node.textContent || '').trim();
-      if (value === 'Champion Model') node.textContent = '4-Model Validation';
-      else if (value === '4-Model Validation-Weighted Ensemble') node.textContent = '4-Model Validation';
+      if (value === 'Champion Model') node.textContent = '4-Model Equal-Weight Ensemble';
+      else if (value === '4-Model Validation-Weighted Ensemble') node.textContent = '4-Model Equal-Weight Ensemble';
       else if (/^Logistic Regression and XGBoost train on an 80% stratified split\./.test(value)) {
-        node.textContent = 'Logistic Regression, XGBoost, Random Forest, and HistGradientBoosting use a stratified 70/15/15 train, validation, and untouched-test split. Validation tunes the blend; the test partition reports final accuracy.';
+        node.textContent = 'All four models use a stratified development/test split. Each model is refit on the 85% development cohort; the fixed equal-weight ensemble is reported once on the untouched 15% test partition.';
       } else if (/both candidate models/i.test(value)) node.textContent = value.replace(/both candidate models/ig, 'all four candidate models');
       else if (/two candidates/i.test(value)) node.textContent = value.replace(/two candidates/ig, 'four candidate models');
       else if (/both trained models/i.test(value)) node.textContent = value.replace(/both trained models/ig, 'all four trained models');
-      else if (/registered champion/i.test(value)) node.textContent = value.replace(/registered champion/ig, 'combined 4-Model Validation result');
-      else if (/champion ML/i.test(value)) node.textContent = value.replace(/champion ML/ig, '4-Model Validation');
+      else if (/registered champion/i.test(value)) node.textContent = value.replace(/registered champion/ig, 'combined 4-Model Equal-Weight Ensemble result');
+      else if (/champion ML/i.test(value)) node.textContent = value.replace(/champion ML/ig, '4-Model Equal-Weight Ensemble');
     });
-    const detail = document.getElementById('layer-detail');
-    const modelSelected = Boolean(document.querySelector('.data-layer-card.selected[data-layer="model"]'));
+    const detail = modelPage.querySelector('#layer-detail');
+    const modelSelected = Boolean(modelPage.querySelector('.data-layer-card.selected[data-layer="model"]'));
     if (detail && modelSelected && detail.dataset.runtimeFourModel !== 'true') {
       detail.dataset.runtimeFourModel = 'true';
-      detail.innerHTML = `<div class="layer-expanded model"><div><span class="layer-expanded-kicker">Held-out ML validation and explainability</span><h2>4-Model Validation</h2><p>All four models use a stratified 70/15/15 train, validation, and untouched-test split. The blend and threshold are chosen on validation data, then reported once on the test partition.</p><div class="overall-ai-confidence" data-model-confidence>Overall AI confidence <b>Loading…</b><span>held-out ensemble accuracy</span></div></div><ul><li>Accuracy, precision, recall, F1, and ROC-AUC are recorded for all four models.</li><li>The ensemble activates only when test accuracy is at least 88% and exceeds every individual model.</li><li>SHAP provides global feature importance and student-level contributing factors.</li><li>Gender and socioeconomic fairness checks measure demographic parity, equal opportunity, and predictive parity.</li></ul></div>`;
+      detail.innerHTML = `<div class="layer-expanded model"><div><span class="layer-expanded-kicker">Held-out ML evaluation and explainability</span><h2>4-Model Equal-Weight Ensemble</h2><p>All four models are refit on the stratified 85% development cohort. Each contributes 25% to the fused probability; the fixed decision rule is reported once on the untouched 15% test partition.</p><div class="overall-ai-confidence" data-model-confidence>Overall AI confidence <b>Loading…</b><span>held-out ensemble accuracy</span></div></div><ul><li>Accuracy, precision, recall, F1, and ROC-AUC are recorded for all four models.</li><li>The ensemble activates only when test accuracy is at least 90% and is strictly higher than every individual model.</li><li>SHAP provides global feature importance and student-level contributing factors.</li><li>Gender and socioeconomic fairness checks measure demographic parity, equal opportunity, and predictive parity.</li></ul></div>`;
       fetch('/api/model-metrics', {cache:'no-store'}).then(response => response.ok ? response.json() : {}).then(payload => {
         const confidence = Number(payload.overall_ai_confidence ?? payload.ensemble?.metrics?.accuracy);
         const node = detail.querySelector('[data-model-confidence] b');
         if (node) node.textContent = Number.isFinite(confidence) ? `${(confidence * 100).toFixed(1)}%` : 'Awaiting validation';
       }).catch(() => {});
       const label = document.getElementById('layer-detail-label');
-      if (label) label.textContent = '4-Model Validation';
+      if (label) label.textContent = '4-Model Equal-Weight Ensemble';
     }
   }
 
   async function augmentModelEvidence() {
     const page = document.getElementById('page-model-evidence');
     if (!page) return;
+    // Runtime evidence belongs to Model SHAP only.  Remove any panel left by
+    // an older dashboard bundle before considering a fresh render.
+    document.querySelectorAll('#runtime-training-evidence').forEach(panel => {
+      if (panel.parentElement !== page) panel.remove();
+    });
+    if (!page.classList.contains('active')) return;
     try {
       const payload = await fetch('/api/model-metrics', {cache:'no-store'}).then(response => response.ok ? response.json() : {});
-      if (!payload.dataset_loaded) { document.getElementById('runtime-training-evidence')?.remove(); return; }
+      if (!payload.dataset_loaded) { page.querySelector('#runtime-training-evidence')?.remove(); return; }
       const history = payload.training_history || {};
       const points = history.points || [];
       if (!points.length) return;
@@ -1517,7 +1525,7 @@ FINAL_UI_SCRIPT = r'''
       });
       const ensemble = payload.ensemble || {}, metrics = ensemble.metrics || {};
       const signature = `${payload.run_id}:${JSON.stringify(points)}`;
-      let panel = document.getElementById('runtime-training-evidence');
+      let panel = page.querySelector(':scope > #runtime-training-evidence');
       if (panel?.dataset.signature === signature) return;
       if (!panel) { panel = document.createElement('section'); panel.id = 'runtime-training-evidence'; panel.className = 'runtime-training-evidence'; page.appendChild(panel); }
       panel.dataset.signature = signature;
@@ -1625,7 +1633,6 @@ FINAL_UI_SCRIPT = r'''
       // The live call hand-off should take priority even if the counselor had
       // previously browsed another conversation.
       openedConversationKey = null;
-      pendingSelectedCallFocus = true;
       setTimeout(refreshOperations, 350);
       setTimeout(refreshOperations, 1100);
       setTimeout(refreshOperations, 3200);
@@ -1646,7 +1653,6 @@ FINAL_UI_SCRIPT = r'''
     // The server webhook session is the source of truth for the randomly
     // selected student's row.
     openedConversationKey = null;
-    pendingSelectedCallFocus = true;
     selectedHandoffCompleted = false;
     const callingModal = showOperationModal('Asha AI starting a student check-in', 'Selecting a student from the active dataset and starting the language prompt plus four-question call.');
     try {
@@ -1662,13 +1668,6 @@ FINAL_UI_SCRIPT = r'''
       setTimeout(() => callingModal.remove(), 1200);
       return payload;
     } catch (error) {
-      setTimeout(async () => {
-        try {
-          const payload = await fetch('/api/transcripts', {cache:'no-store'}).then(response => response.json());
-          const activeCall = Object.values(payload.sessions || {}).some(session => (!activeCallStudentId || String(session.student_id || '') === activeCallStudentId) && !['completed','failed','canceled','interrupted'].includes(String(session.status || '').toLowerCase()));
-          if (!activeCall) pendingSelectedCallFocus = false;
-        } catch (_) { pendingSelectedCallFocus = false; }
-      }, 1800);
       callingModal.querySelector('h2').textContent = 'Call could not start';
       callingModal.querySelector('p').textContent = error.message || 'The call could not be started.';
       return null;
@@ -2151,8 +2150,8 @@ def install(app, namespace):
             models = payload.get("models")
             if isinstance(models, dict):
                 for name in list(models):
-                    if "4-Model Validation" in str(name) and name != "4-Model Validation":
-                        models["4-Model Validation"] = models.pop(name)
+                    if "4-Model" in str(name) and name != "4-Model Equal-Weight Ensemble":
+                        models["4-Model Equal-Weight Ensemble"] = models.pop(name)
             return jsonify(payload), response.status_code
 
         app.view_functions[metrics_rule.endpoint] = enriched_model_metrics

@@ -168,7 +168,10 @@ async function validateApi(devtools) {
   const status = result.find(item => item.path === '/api/dataset/status').body;
   const metrics = result.find(item => item.path === '/api/model-metrics').body;
   assert(status.dataset_loaded && Number(status.record_count) === 4424, status);
-  assert(metrics.dataset_loaded && metrics.ensemble?.quality_gate?.passed && Number(metrics.ensemble?.metrics?.accuracy) >= .88 && (metrics.training_history?.points || []).length === 10, metrics);
+  const baseAccuracies = Object.entries(metrics.models || {})
+    .filter(([name]) => name !== metrics.champion_model)
+    .map(([, model]) => Number(model?.metrics?.accuracy));
+  assert(metrics.dataset_loaded && metrics.ensemble?.quality_gate?.passed && Number(metrics.ensemble?.metrics?.accuracy) >= .90 && baseAccuracies.length === 4 && baseAccuracies.every(accuracy => Number(metrics.ensemble.metrics.accuracy) > accuracy) && (metrics.training_history?.points || []).length === 10, metrics);
   console.log('PASS read-only API surface and active model metadata', {records: status.record_count, accuracy: metrics.ensemble.metrics.accuracy, history: metrics.training_history.points.length});
 }
 
@@ -239,7 +242,14 @@ async function validateModelEvidence(devtools) {
   assert(/Ensemble accuracy/i.test(evidence.text) && /Model Accuracy/i.test(evidence.text) && /Model Loss/i.test(evidence.text) && /Quality gate\s*Passed/i.test(evidence.text), evidence);
   const staleLoading = await devtools.evaluate("/loading model evidence/i.test(document.getElementById('page-model-evidence')?.innerText || '')");
   assert(!staleLoading, 'The completed model evidence view still contains its loading placeholder');
+  const evidenceOwnership = await devtools.evaluate(`(() => {
+    const owner=document.getElementById('page-model-evidence');
+    const panels=[...document.querySelectorAll('#runtime-training-evidence')];
+    return {count:panels.length, ownerOnly:panels.length===1 && panels[0].parentElement===owner, leakedPages:panels.filter(panel=>panel.parentElement!==owner).map(panel=>panel.parentElement?.id||'detached')};
+  })()`);
+  assert(evidenceOwnership.ownerOnly && !evidenceOwnership.leakedPages.length, evidenceOwnership);
   console.log('PASS real per-dataset accuracy/loss evidence rendered', {charts:evidence.charts, lines:evidence.lines});
+  console.log('PASS ML evidence is mounted exclusively in Model SHAP', evidenceOwnership);
 }
 
 async function simulateLanguage(callSid, name, languageSpeech, expectedCode) {

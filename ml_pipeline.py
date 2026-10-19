@@ -89,7 +89,9 @@ _ACTIVE_RECORD_CACHE: dict[str, Any] = {"run_id": None, "frame": None}
 
 TARGET_COLUMN = "Target"
 STUDENT_NAME_COLUMN = "Student Name"
-MINIMUM_ACCEPTABLE_ACCURACY = 0.88
+# A dataset is activated only when the genuinely held-out four-model result
+# clears 90% and is strictly better than every individual candidate.
+MINIMUM_ACCEPTABLE_ACCURACY = 0.90
 
 # Rich institutional fields are retained for counselor context and adaptive
 # calls. They are deliberately not fed into the model unless represented by
@@ -359,35 +361,6 @@ def _metric_bundle(y_true: pd.Series | np.ndarray, probability: np.ndarray, thre
         "auc_roc": round(float(roc_auc_score(y_true, probability)), 4),
         "decision_threshold": round(float(threshold), 4),
     }
-
-
-def _optimise_ensemble(
-    y_validation: pd.Series,
-    validation_scores: dict[str, np.ndarray],
-) -> tuple[dict[str, float], float, dict[str, float]]:
-    """Select four-model blend weights and a threshold on validation only."""
-    names = list(validation_scores)
-    matrix = np.column_stack([validation_scores[name] for name in names])
-    best: tuple[tuple[float, float, float], np.ndarray, float, dict[str, float]] | None = None
-    # A deterministic simplex search keeps all four models represented while
-    # allowing materially stronger models to contribute more.
-    for a in range(1, 8):
-        for b in range(1, 10 - a):
-            for c in range(1, 11 - a - b):
-                d = 10 - a - b - c
-                if d < 1:
-                    continue
-                weights = np.array([a, b, c, d], dtype=float) / 10.0
-                probability = matrix @ weights
-                for threshold in np.arange(0.35, 0.651, 0.01):
-                    metrics = _metric_bundle(y_validation, probability, float(threshold))
-                    objective = (metrics["accuracy"], metrics["f1_score"], metrics["auc_roc"])
-                    if best is None or objective > best[0]:
-                        best = (objective, weights, float(threshold), metrics)
-    if best is None:
-        raise DatasetValidationError("Unable to optimise the four-model ensemble.")
-    _, weights, threshold, metrics = best
-    return ({name: round(float(weight), 6) for name, weight in zip(names, weights)}, threshold, metrics)
 
 
 def _xgb_training_history(
@@ -691,7 +664,7 @@ def _log_mlflow_run(
             **{f"random_forest_{key}": value for key, value in RANDOM_FOREST_PARAMS.items()},
             **{f"hist_gradient_boosting_{key}": value for key, value in HIST_GRADIENT_BOOSTING_PARAMS.items()},
             **{f"ensemble_weight_{_slug(name)}": value for name, value in ensemble_weights.items()},
-            "train_validation_test_split": "70/15/15 stratified, random_state=42",
+            "train_validation_test_split": "70/15/15 diagnostic split; final models refit on 85% development data and evaluated on untouched 15% test data, random_state=42",
         })
         mlflow.log_metrics({
             **{f"{_slug(name)}_{key}": float(value) for name, metrics in model_metrics.items() for key, value in metrics.items()},
@@ -771,7 +744,7 @@ def _log_mlflow_run(
 
 
 def train_and_score(source_path: str | Path, activate: bool = True, source_label: str | None = None) -> dict[str, Any]:
-    """Train four complementary models and score with their weighted ensemble."""
+    """Train four complementary models and score their fixed equal-weight ensemble."""
     _ensure_dirs()
     source = read_dataset(source_path)
     signature = hashlib.sha256(Path(source_path).read_bytes()).hexdigest()
@@ -779,43 +752,55 @@ def train_and_score(source_path: str | Path, activate: bool = True, source_label
     y = silver["is_dropout"].astype(int)
     feature_columns = list(FEATURE_COLUMNS)
     x = silver[feature_columns].astype(float)
-    x_train, x_holdout, y_train, y_holdout = train_test_split(x, y, test_size=0.30, random_state=42, stratify=y)
-    x_validation, x_test, y_validation, y_test = train_test_split(
-        x_holdout, y_holdout, test_size=0.50, random_state=42, stratify=y_holdout,
+    # Choose the untouched 15% test cohort first.  Splitting the remaining
+    # 85% creates a separate 70/15 diagnostic train/validation pair for the
+    # real learning curves without changing which students belong to test.
+    x_development, x_test, y_development, y_test = train_test_split(
+        x, y, test_size=0.15, random_state=42, stratify=y,
+    )
+    x_train, x_validation, y_train, y_validation = train_test_split(
+        x_development, y_development, test_size=(15 / 85), random_state=42, stratify=y_development,
     )
 
+    # The validation partition is reserved for the displayed, real XGBoost
+    # learning curves.  The ensemble has pre-registered equal weights and a
+    # fixed 0.50 decision rule, so all four final candidates can be refit on
+    # the full 85% development cohort without looking at the untouched test.
     scaler = StandardScaler()
-    x_train_scaled = pd.DataFrame(scaler.fit_transform(x_train), columns=x_train.columns, index=x_train.index)
-    x_validation_scaled = pd.DataFrame(scaler.transform(x_validation), columns=x_validation.columns, index=x_validation.index)
+    x_development_scaled = pd.DataFrame(scaler.fit_transform(x_development), columns=x_development.columns, index=x_development.index)
     x_test_scaled = pd.DataFrame(scaler.transform(x_test), columns=x_test.columns, index=x_test.index)
     logistic = LogisticRegression(max_iter=LOGISTIC_MAX_ITER, C=1.0, solver="lbfgs", random_state=42)
-    logistic.fit(x_train_scaled, y_train)
+    logistic.fit(x_development_scaled, y_development)
     logistic_test = logistic.predict_proba(x_test_scaled)[:, 1]
-    logistic_validation = logistic.predict_proba(x_validation_scaled)[:, 1]
     logistic_metrics = _metric_bundle(y_test, logistic_test)
 
+    # A distinct diagnostic fit supplies truthful training/validation curves
+    # for the dashboard; it is never used for the final held-out score.
+    xgb_history_model = XGBClassifier(
+        eval_metric="logloss",
+        random_state=42,
+        **XGB_TRAINING_PARAMS,
+    )
+    xgb_history_model.fit(x_train, y_train, eval_set=[(x_train, y_train), (x_validation, y_validation)], verbose=False)
     xgb = XGBClassifier(
         eval_metric="logloss",
         random_state=42,
         **XGB_TRAINING_PARAMS,
     )
-    xgb.fit(x_train, y_train, eval_set=[(x_train, y_train), (x_validation, y_validation)], verbose=False)
+    xgb.fit(x_development, y_development, verbose=False)
     xgb_test = xgb.predict_proba(x_test)[:, 1]
-    xgb_validation = xgb.predict_proba(x_validation)[:, 1]
     xgb_metrics = _metric_bundle(y_test, xgb_test)
 
     random_forest = RandomForestClassifier(random_state=42, **RANDOM_FOREST_PARAMS)
-    random_forest.fit(x_train, y_train)
+    random_forest.fit(x_development, y_development)
     random_forest_test = random_forest.predict_proba(x_test)[:, 1]
-    random_forest_validation = random_forest.predict_proba(x_validation)[:, 1]
     random_forest_metrics = _metric_bundle(y_test, random_forest_test)
 
     hist_gradient_boosting = HistGradientBoostingClassifier(
         random_state=42, **HIST_GRADIENT_BOOSTING_PARAMS,
     )
-    hist_gradient_boosting.fit(x_train, y_train)
+    hist_gradient_boosting.fit(x_development, y_development)
     hist_gradient_boosting_test = hist_gradient_boosting.predict_proba(x_test)[:, 1]
-    hist_gradient_boosting_validation = hist_gradient_boosting.predict_proba(x_validation)[:, 1]
     hist_gradient_boosting_metrics = _metric_bundle(y_test, hist_gradient_boosting_test)
 
     model_metrics = {
@@ -824,18 +809,12 @@ def train_and_score(source_path: str | Path, activate: bool = True, source_label
         "Random Forest": random_forest_metrics,
         "HistGradientBoosting": hist_gradient_boosting_metrics,
     }
-    validation_score_sets = {
-        "Logistic Regression": logistic_validation,
-        "XGBoost": xgb_validation,
-        "Random Forest": random_forest_validation,
-        "HistGradientBoosting": hist_gradient_boosting_validation,
-    }
-    ensemble_weights, ensemble_threshold, ensemble_validation_metrics = _optimise_ensemble(
-        y_validation, validation_score_sets,
-    )
-    # This is a four-model validation result shown consistently throughout the
-    # product; the weighting remains implementation detail in the metadata.
-    ensemble_name = "4-Model Validation"
+    ensemble_weights = {name: 0.25 for name in model_metrics}
+    ensemble_threshold = 0.50
+    # This is a true four-model ensemble: every independently fitted model
+    # contributes exactly one quarter of the probability.  Neither weights nor
+    # threshold are optimised against the held-out test data.
+    ensemble_name = "4-Model Equal-Weight Ensemble"
 
     all_scaled = pd.DataFrame(scaler.transform(x), columns=x.columns, index=x.index)
     all_logistic = logistic.predict_proba(all_scaled)[:, 1]
@@ -864,14 +843,14 @@ def train_and_score(source_path: str | Path, activate: bool = True, source_label
     accuracy_floor_passed = ensemble_metrics["accuracy"] >= MINIMUM_ACCEPTABLE_ACCURACY
     ensemble_leads_individuals = ensemble_metrics["accuracy"] > best_individual_accuracy
     competitive_quality_passed = accuracy_floor_passed and ensemble_leads_individuals
-    if not accuracy_floor_passed:
+    if not competitive_quality_passed:
         raise DatasetValidationError(
             "Model quality gate failed: the honest held-out ensemble accuracy was "
             f"{ensemble_metrics['accuracy'] * 100:.2f}% and the best individual model was "
             f"{best_individual_accuracy * 100:.2f}%. Required for activation: at least "
-            f"{MINIMUM_ACCEPTABLE_ACCURACY * 100:.0f}%."
+            f"{MINIMUM_ACCEPTABLE_ACCURACY * 100:.0f}% and strictly above every individual model."
         )
-    training_history = _xgb_training_history(xgb, x_train, y_train, x_validation, y_validation)
+    training_history = _xgb_training_history(xgb_history_model, x_train, y_train, x_validation, y_validation)
     shap_values = _shap_values(xgb, x)
     gold = _gold_table(
         silver, signature, all_logistic, all_xgb, all_random_forest,
@@ -913,7 +892,7 @@ def train_and_score(source_path: str | Path, activate: bool = True, source_label
         for name, metrics in model_metrics.items()
     ] + [{
         "model": ensemble_name,
-        "description": "Validation-optimised blend of all four candidates; evaluated once on the untouched test partition.",
+        "description": "Fixed equal-weight blend of all four independently trained candidates; evaluated once on the untouched test partition.",
         **ensemble_metrics,
         "ensemble_weight": 1.0,
     }]).to_csv(run_dir / "model_comparison.csv", index=False)
@@ -959,11 +938,11 @@ def train_and_score(source_path: str | Path, activate: bool = True, source_label
         "predicted_dropouts": int((ensemble_probability >= ensemble_threshold).sum()),
         "champion_model": ensemble_name,
         "ensemble": {
-            "strategy": "Validation-optimised mean probability across all four models",
-            "selection_rationale": "Weights and decision threshold are selected on the validation partition, then reported on a separate untouched test partition.",
+            "strategy": "Equal-weight mean probability across all four independently trained models",
+            "selection_rationale": "Each base model contributes 25% and the 0.50 decision threshold is fixed before the untouched test is scored. The final models are refit on the 85% development cohort.",
             "weights": ensemble_weights,
             "metrics": ensemble_metrics,
-            "validation_metrics": ensemble_validation_metrics,
+            "validation_metrics": None,
             "decision_threshold": round(float(ensemble_threshold), 4),
             "quality_gate": {
                 "minimum_accuracy": MINIMUM_ACCEPTABLE_ACCURACY,
@@ -971,7 +950,7 @@ def train_and_score(source_path: str | Path, activate: bool = True, source_label
                 "must_beat_every_individual_model": True,
                 "beats_every_individual_model": ensemble_leads_individuals,
                 "passed": competitive_quality_passed,
-                "activation_passed": accuracy_floor_passed,
+                "activation_passed": competitive_quality_passed,
             },
             "shap_explanation_model": "XGBoost component; its tree SHAP values supply the per-student feature evidence.",
         },
@@ -986,7 +965,7 @@ def train_and_score(source_path: str | Path, activate: bool = True, source_label
             "XGBoost": {"description": "Gradient-boosted trees for non-linear academic, engagement, and financial signals.", "parameters": XGB_TRAINING_PARAMS, "metrics": xgb_metrics, "ensemble_weight": ensemble_weights["XGBoost"]},
             "Random Forest": {"description": "Bagged decision trees that reduce variance across diverse student profiles.", "parameters": RANDOM_FOREST_PARAMS, "metrics": random_forest_metrics, "ensemble_weight": ensemble_weights["Random Forest"]},
             "HistGradientBoosting": {"description": "Histogram-based gradient boosting for efficient, smooth non-linear scoring.", "parameters": HIST_GRADIENT_BOOSTING_PARAMS, "metrics": hist_gradient_boosting_metrics, "ensemble_weight": ensemble_weights["HistGradientBoosting"]},
-            ensemble_name: {"description": "Validation-optimised blend of all four models. Activation requires at least 88% untouched-test accuracy; whether it also beats every base model is reported separately.", "parameters": {"weighting": "simplex search on validation accuracy/F1/AUC", "decision_threshold": round(float(ensemble_threshold), 4)}, "metrics": ensemble_metrics, "ensemble_weight": 1.0},
+            ensemble_name: {"description": "Equal-weight blend of all four models, evaluated once on the untouched test partition. Activation requires at least 90% test accuracy and a strict lead over every base model.", "parameters": {"weighting": "0.25 probability contribution per base model", "decision_threshold": round(float(ensemble_threshold), 4)}, "metrics": ensemble_metrics, "ensemble_weight": 1.0},
         },
         "files": {
             "bronze": bronze_path.name,
