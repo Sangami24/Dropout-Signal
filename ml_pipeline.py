@@ -649,8 +649,15 @@ def _log_mlflow_run(
     ensemble_name: str,
 ) -> dict[str, Any]:
     """Create a local, inspectable MLflow tracking and registry record."""
-    if os.environ.get("RENDER"):
-        return {"skipped": True, "reason": "MLflow disabled on Render to conserve RAM."}
+    # Upload completion must never depend on MLflow's SQLite registry or model
+    # packaging.  Those are developer diagnostics, not part of training or
+    # scoring, and can take minutes on a constrained hosted worker after the
+    # real model has already reached the evidence-saving phase.  Keep the
+    # optional local integration available only when someone explicitly asks
+    # for it; hosted uploads always save their real model artifacts directly
+    # in the run directory below.
+    if os.environ.get("DROPOUT_SIGNAL_ENABLE_MLFLOW", "").strip().lower() not in {"1", "true", "yes"}:
+        return {"skipped": True, "reason": "MLflow registry is disabled for interactive uploads."}
         
     tracking_dir = RUNTIME_DIR / "mlflow"
     tracking_dir.mkdir(parents=True, exist_ok=True)

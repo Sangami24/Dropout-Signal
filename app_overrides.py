@@ -676,6 +676,11 @@ FINAL_UI_SCRIPT = r'''
   .fairness-status { font-size:11px; font-weight:600; }
   .fairness-status.ok { color:var(--green); } .fairness-status.review { color:var(--amber); }
   .operation-modal-backdrop { position:fixed; inset:0; z-index:10050; display:grid; place-items:center; padding:20px; background:rgba(0,0,0,.66); backdrop-filter:blur(5px); }
+  /* Keep the dashboard readable during a background upload.  The earlier
+     full-page blur made live counts and charts look corrupted behind the
+     progress card even though the data itself was fine. */
+  #dataset-training-overlay { backdrop-filter:none!important; }
+  #dataset-training-overlay .dataset-training-card { background:rgb(18,18,27)!important; isolation:isolate; }
   .operation-modal { width:min(500px,100%); padding:24px; border:1px solid var(--border); border-radius:14px; background:var(--surface2,#15151d); box-shadow:0 24px 70px rgba(0,0,0,.5); }
   .operation-modal h2 { margin:0 0 9px; font-size:18px; } .operation-modal p { margin:0; color:var(--text2); line-height:1.55; }
   .operation-modal-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:20px; }
