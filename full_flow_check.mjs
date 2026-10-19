@@ -266,11 +266,20 @@ async function validateBrowserUpload(devtools) {
 }
 
 async function validateModelEvidence(devtools) {
-  const pageId = await activateContaining(devtools, '#page-model-evidence');
-  assert(pageId, 'Model evidence page was not found');
+  const routed = await devtools.evaluate(`(() => {
+    const nav=document.querySelector('[data-page="runtime-model-evidence"]');
+    if(!nav)return false;
+    nav.click();
+    return true;
+  })()`);
+  assert(routed, 'Model evidence navigation item was not found');
+  await waitFor('Model SHAP navigation activates its isolated page', () => devtools.evaluate(`(() => ({
+    active:document.getElementById('page-runtime-model-evidence')?.classList.contains('active') || false,
+    navActive:document.querySelector('[data-page="runtime-model-evidence"]')?.classList.contains('active') || false,
+  }))()`), value => value?.active && value?.navActive);
   await devtools.evaluate("window.renderDatasetEvidence?.()");
   await waitFor('single completed model evidence view', () => devtools.evaluate(`(() => {
-    const page=document.getElementById('page-model-evidence');
+    const page=document.getElementById('page-runtime-model-evidence');
     return {
       ownedViews:page?.querySelectorAll(':scope > .runtime-owned-model-evidence').length || 0,
       legacyBodies:page?.querySelectorAll(':scope > .model-runtime-body').length || 0,
@@ -282,16 +291,16 @@ async function validateModelEvidence(devtools) {
   })()`), value => value?.ownedViews === 1 && value?.legacyBodies === 0 && value?.fairnessTables === 1 && value?.featureSchemas === 1 && value?.confidence === 1 && !value?.loading);
   const evidence = await waitFor('training evidence charts', () => devtools.evaluate(`(() => {const panel=document.getElementById('runtime-training-evidence');return panel?{text:panel.innerText,charts:panel.querySelectorAll('svg').length,lines:panel.querySelectorAll('polyline').length}:null;})()`), value => value?.charts === 2 && value.lines === 4);
   assert(/Ensemble accuracy/i.test(evidence.text) && /Model Accuracy/i.test(evidence.text) && /Model Loss/i.test(evidence.text) && /Quality gate\s*Passed/i.test(evidence.text), evidence);
-  const staleLoading = await devtools.evaluate("/loading model evidence/i.test(document.getElementById('page-model-evidence')?.innerText || '')");
+  const staleLoading = await devtools.evaluate("/loading model evidence/i.test(document.getElementById('page-runtime-model-evidence')?.innerText || '')");
   assert(!staleLoading, 'The completed model evidence view still contains its loading placeholder');
   const evidenceOwnership = await devtools.evaluate(`(() => {
-    const owner=document.getElementById('page-model-evidence');
+    const owner=document.getElementById('page-runtime-model-evidence');
     const panels=[...document.querySelectorAll('#runtime-training-evidence')];
     return {count:panels.length, ownerOnly:panels.length===1 && owner.contains(panels[0]), leakedPages:panels.filter(panel=>!owner.contains(panel)).map(panel=>panel.parentElement?.id||'detached')};
   })()`);
   assert(evidenceOwnership.ownerOnly && !evidenceOwnership.leakedPages.length, evidenceOwnership);
   const singleModelSections = await devtools.evaluate(`(() => {
-    const page=document.getElementById('page-model-evidence');
+    const page=document.getElementById('page-runtime-model-evidence');
     return {
       fairnessTables:page?.querySelectorAll('.runtime-audit-table').length || 0,
       featureSchemas:page?.querySelectorAll('.runtime-feature-schema').length || 0,
@@ -310,7 +319,7 @@ async function validateModelEvidence(devtools) {
   await devtools.evaluate("Promise.all([window.renderEvidence?.(), window.renderDatasetEvidence?.(), window.renderEvidence?.()])");
   await new Promise(resolve => setTimeout(resolve, 1200));
   const legacyAuditLeak = await devtools.evaluate(`(() => {
-    const page=document.getElementById('page-model-evidence');
+    const page=document.getElementById('page-runtime-model-evidence');
     return {
       ownedViews:page?.querySelectorAll(':scope > .runtime-owned-model-evidence').length || 0,
       legacyBodies:page?.querySelectorAll(':scope > .model-runtime-body').length || 0,
@@ -318,19 +327,41 @@ async function validateModelEvidence(devtools) {
       legacySchema:page?.querySelectorAll('.feature-groups:not(.runtime-feature-schema)').length || 0,
       runtimeFairness:page?.querySelectorAll('.runtime-audit-card .runtime-audit-table').length || 0,
       runtimeSchema:page?.querySelectorAll('.runtime-schema-card .runtime-feature-schema').length || 0,
+      legacyPages:document.querySelectorAll('#page-model-evidence').length,
     };
   })()`);
-  assert(legacyAuditLeak.ownedViews === 1 && legacyAuditLeak.legacyBodies === 0 && legacyAuditLeak.legacyFairness === 0 && legacyAuditLeak.legacySchema === 0 && legacyAuditLeak.runtimeFairness === 1 && legacyAuditLeak.runtimeSchema === 1, legacyAuditLeak);
+  assert(legacyAuditLeak.ownedViews === 1 && legacyAuditLeak.legacyBodies === 0 && legacyAuditLeak.legacyFairness === 0 && legacyAuditLeak.legacySchema === 0 && legacyAuditLeak.runtimeFairness === 1 && legacyAuditLeak.runtimeSchema === 1 && legacyAuditLeak.legacyPages === 0, legacyAuditLeak);
+  await devtools.evaluate(`(() => {
+    const obsolete=document.createElement('div');
+    obsolete.id='page-model-evidence';
+    obsolete.className='page active';
+    obsolete.innerHTML='<div class="page-hdr"><h1>ML Evidence</h1></div><div class="model-runtime-body">Loading model evidence...</div>';
+    document.querySelector('.main').appendChild(obsolete);
+  })()`);
+  await new Promise(resolve => setTimeout(resolve, 750));
+  const delayedLegacyOverwrite = await devtools.evaluate(`(() => {
+    const page=document.getElementById('page-runtime-model-evidence');
+    return {
+      legacyPages:document.querySelectorAll('#page-model-evidence').length,
+      runtimePages:document.querySelectorAll('#page-runtime-model-evidence').length,
+      ownedViews:page?.querySelectorAll(':scope > .runtime-owned-model-evidence').length || 0,
+      title:page?.querySelector(':scope > .page-hdr h1')?.textContent || '',
+      auditCount:page?.querySelectorAll('.runtime-audit-card').length || 0,
+      schemaCount:page?.querySelectorAll('.runtime-schema-card').length || 0,
+    };
+  })()`);
+  assert(delayedLegacyOverwrite.legacyPages === 0 && delayedLegacyOverwrite.runtimePages === 1 && delayedLegacyOverwrite.ownedViews === 1 && delayedLegacyOverwrite.title === 'Model, SHAP & Fairness' && delayedLegacyOverwrite.auditCount === 1 && delayedLegacyOverwrite.schemaCount === 1, delayedLegacyOverwrite);
   console.log('PASS real per-dataset accuracy/loss evidence rendered', {charts:evidence.charts, lines:evidence.lines});
   console.log('PASS ML evidence is mounted exclusively in Model SHAP', evidenceOwnership);
   console.log('PASS Model SHAP contains one fairness audit and one feature schema', singleModelSections);
   console.log('PASS repeated legacy model renders cannot restore a second Fairness Audit or schema', legacyAuditLeak);
+  console.log('PASS delayed legacy page reinsertion cannot blank or replace Model SHAP', delayedLegacyOverwrite);
 }
 
 async function validateModelEvidenceIsolation(devtools) {
   const isolation = await devtools.evaluate(`(() => {
     const students=document.getElementById('page-students');
-    const model=document.getElementById('page-model-evidence');
+    const model=document.getElementById('page-runtime-model-evidence');
     if(!students || !model) return null;
     document.querySelectorAll('.page.active').forEach(page=>page.classList.remove('active'));
     students.classList.add('active');
@@ -458,7 +489,7 @@ async function main() {
   await validateModelEvidence(devtools);
   await screenshot(devtools, 'admin-model-evidence.png');
   const stableAudit = await waitFor('visible stabilized fairness audit', () => devtools.evaluate(`(() => {
-    const page=document.getElementById('page-model-evidence');
+    const page=document.getElementById('page-runtime-model-evidence');
     const owned=page?.querySelector(':scope > .runtime-owned-model-evidence');
     const card=owned?.querySelector('.runtime-audit-card');
     return card && owned ? {
@@ -474,7 +505,7 @@ async function main() {
   })()`), value => /Overall AI confidence/i.test(value?.confidence || '') && /Ratios near 1\.000/i.test(value?.note || '') && value?.legacyRows === 0 && value?.tableRows > 0 && value?.ownedViews === 1 && value?.legacyBodies === 0 && value?.legacyAuditTables === 0 && value?.legacySchemas === 0);
   await new Promise(resolve => setTimeout(resolve, 3500));
   const auditStillStable = await devtools.evaluate(`(() => {
-    const page=document.getElementById('page-model-evidence');
+    const page=document.getElementById('page-runtime-model-evidence');
     const owned=page?.querySelector(':scope > .runtime-owned-model-evidence');
     return {
       ownedViews:page?.querySelectorAll(':scope > .runtime-owned-model-evidence').length || 0,

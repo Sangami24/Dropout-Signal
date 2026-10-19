@@ -70,8 +70,9 @@ LIVE_UI_SCRIPT = r'''
   /* Keep the model page hidden whenever another workspace tab is selected.
      The previous selector forced it to display even without `.active`, so it
      appeared underneath Students, At-Risk, and transcript screens. */
-  #page-model-evidence.active { display:grid!important; grid-template-columns:minmax(0,1fr); align-content:start; gap:14px; min-height:0!important; overflow:visible!important; }
-  #page-model-evidence > *,#page-model-evidence .fairness-table,#page-model-evidence .data-layers,#page-model-evidence #layer-detail { min-width:0; max-width:100%; }
+  #page-runtime-model-evidence.active { display:grid!important; grid-template-columns:minmax(0,1fr); align-content:start; gap:14px; min-height:0!important; overflow:visible!important; }
+  #page-runtime-model-evidence > * { min-width:0; max-width:100%; }
+  #page-model-evidence { display:none!important; }
   #page-model-evidence .fairness-table { overflow-x:auto; overflow-y:visible; }
   #page-model-evidence .fairness-table table { width:100%; min-width:620px; table-layout:fixed; }
   #page-model-evidence .layer-expanded,#page-model-evidence #layer-detail { height:auto!important; min-height:0!important; }
@@ -79,22 +80,21 @@ LIVE_UI_SCRIPT = r'''
   .overall-ai-confidence b { color:var(--purple); font:600 12px var(--mono); }
   /* One stable owner for the Fairness Audit and Feature Schema area.  These
      replace the legacy table's unstyled in-place mutations after it loads. */
-  #page-model-evidence .runtime-audit-card .card-h,
-  #page-model-evidence .runtime-schema-card .card-h { display:flex; align-items:center; justify-content:space-between; gap:14px; }
-  #page-model-evidence .runtime-audit-card .overall-ai-confidence { margin:0; white-space:nowrap; }
+  #page-runtime-model-evidence .runtime-audit-card .card-h,
+  #page-runtime-model-evidence .runtime-schema-card .card-h { display:flex; align-items:center; justify-content:space-between; gap:14px; }
+  #page-runtime-model-evidence .runtime-audit-card .overall-ai-confidence { margin:0; white-space:nowrap; }
   /* The recovered dashboard briefly rebuilds this body with its old blank
      fairness table.  Keep that intermediate DOM out of view; it becomes
      visible only after the single runtime audit/schema renderer completes. */
   /* The legacy model body is no longer a renderer.  The runtime-owned view
      below is the only model page allowed to be visible. */
-  #page-model-evidence .model-runtime-body { display:none!important; }
-  #page-model-evidence .runtime-owned-model-evidence { display:grid; gap:14px; min-width:0; }
-  #page-model-evidence .runtime-model-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
-  #page-model-evidence .runtime-model-card .card-b { padding:14px 16px; }
-  #page-model-evidence .runtime-model-card .model-table { width:100%; border-collapse:collapse; }
-  #page-model-evidence .runtime-model-card .model-table td { padding:8px 0; border-top:1px solid var(--border); font-size:12px; }
-  #page-model-evidence .runtime-model-card .model-table td:last-child { text-align:right; color:var(--green); font-family:var(--mono); }
-  #page-model-evidence .runtime-model-card .model-params { margin:0 0 12px; color:var(--text3); font:10px var(--mono); line-height:1.55; overflow-wrap:anywhere; }
+  #page-runtime-model-evidence .runtime-owned-model-evidence { display:grid; gap:14px; min-width:0; }
+  #page-runtime-model-evidence .runtime-model-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+  #page-runtime-model-evidence .runtime-model-card .card-b { padding:14px 16px; }
+  #page-runtime-model-evidence .runtime-model-card .model-table { width:100%; border-collapse:collapse; }
+  #page-runtime-model-evidence .runtime-model-card .model-table td { padding:8px 0; border-top:1px solid var(--border); font-size:12px; }
+  #page-runtime-model-evidence .runtime-model-card .model-table td:last-child { text-align:right; color:var(--green); font-family:var(--mono); }
+  #page-runtime-model-evidence .runtime-model-card .model-params { margin:0 0 12px; color:var(--text3); font:10px var(--mono); line-height:1.55; overflow-wrap:anywhere; }
   .runtime-audit-note { margin:0 0 15px; padding:11px 13px; border-left:3px solid var(--purple); border-radius:0 8px 8px 0; background:rgba(188,140,255,.09); color:var(--text2); font-size:12px; line-height:1.55; }
   .runtime-audit-table { overflow-x:auto; border:1px solid var(--border); border-radius:9px; }
   .runtime-audit-table table { width:100%; min-width:720px; border-collapse:collapse; }
@@ -105,7 +105,7 @@ LIVE_UI_SCRIPT = r'''
   .fairness-status { display:inline-block; margin-left:7px; font-size:10px!important; font-weight:700; white-space:nowrap; }
   .fairness-status.ok { color:var(--green)!important; }
   .fairness-status.review { color:var(--yellow)!important; }
-  #page-model-evidence .runtime-schema-card .card-b { padding:17px 18px; }
+  #page-runtime-model-evidence .runtime-schema-card .card-b { padding:17px 18px; }
   .runtime-schema-intro { margin:0 0 13px; color:var(--text2); font-size:12px; line-height:1.6; }
   .runtime-feature-schema details { border-top:1px solid var(--border); }
   .runtime-feature-schema summary { padding:12px 0; cursor:pointer; color:var(--text); font-weight:650; }
@@ -1648,8 +1648,43 @@ FINAL_UI_SCRIPT = r'''
   }
 
   let _ownedModelEvidenceRequest = 0;
+  function ensureOwnedModelEvidencePage() {
+    // Permanently remove the recovered page that its private renderer owns.
+    // The runtime page uses a different id, so that renderer cannot locate or
+    // overwrite the visible content after an asynchronous request completes.
+    document.getElementById('page-model-evidence')?.remove();
+    let page = document.getElementById('page-runtime-model-evidence');
+    if (!page) {
+      page = document.createElement('div');
+      page.id = 'page-runtime-model-evidence';
+      page.className = 'page';
+      page.innerHTML = '<div class="page-hdr"><h1>Model, SHAP &amp; Fairness</h1><p>Loading measured model evidence…</p></div>';
+      document.querySelector('.main')?.appendChild(page);
+    }
+    document.querySelectorAll('[data-page="model-evidence"],[data-page="runtime-model-evidence"]').forEach(item => {
+      item.dataset.page = 'runtime-model-evidence';
+    });
+    return page;
+  }
+
+  function guardOwnedModelEvidencePage() {
+    const main = document.querySelector('.main');
+    if (!main || main.dataset.runtimeModelPageGuard === 'true') return;
+    main.dataset.runtimeModelPageGuard = 'true';
+    new MutationObserver(() => {
+      // A delayed callback in the recovered bundle may try to put its former
+      // page back.  It must never coexist with the runtime-owned page because
+      // both would otherwise compete for the active tab and cause the blank /
+      // populated flicker reported in production.
+      document.querySelectorAll('#page-model-evidence').forEach(page => page.remove());
+      document.querySelectorAll('[data-page="model-evidence"]').forEach(item => {
+        item.dataset.page = 'runtime-model-evidence';
+      });
+    }).observe(main, {childList:true, subtree:false});
+  }
+
   async function renderOwnedModelEvidence() {
-    const page = document.getElementById('page-model-evidence');
+    const page = ensureOwnedModelEvidencePage();
     if (!page || !page.classList.contains('active')) return;
     const requestId = ++_ownedModelEvidenceRequest;
     try {
@@ -1761,25 +1796,21 @@ FINAL_UI_SCRIPT = r'''
   // still allowed its asynchronous DOM writes to race the current page.
   window.renderEvidence = renderOwnedModelEvidence;
   window.renderDatasetEvidence = renderOwnedModelEvidence;
-  function keepModelEvidenceNormalized() {
-    const page = document.getElementById('page-model-evidence');
-    if (!page || page.dataset.runtimeEvidenceObserver === 'true') return;
-    page.dataset.runtimeEvidenceObserver = 'true';
-    let scheduled = null;
-    const observer = new MutationObserver(() => {
-      if (!page.classList.contains('active')) return;
-      const legacyMarkup = page.querySelector('.model-runtime-body');
-      if (!legacyMarkup) return;
-      if (scheduled) clearTimeout(scheduled);
-      scheduled = setTimeout(() => { scheduled = null; renderOwnedModelEvidence(); }, 0);
-    });
-    observer.observe(page, {childList:true, subtree:true});
-  }
+  ensureOwnedModelEvidencePage();
+  guardOwnedModelEvidencePage();
   document.addEventListener('click', event => {
-    if (!event.target.closest('[data-page="model-evidence"]')) return;
-    [0, 300, 1000, 2200].forEach(delay => setTimeout(() => { augmentModelEvidence(); }, delay));
+    if (!event.target.closest('[data-page="runtime-model-evidence"]')) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    ensureOwnedModelEvidencePage();
+    window.activateWorkspacePage?.('runtime-model-evidence');
+    renderOwnedModelEvidence();
   }, true);
-  document.addEventListener('DOMContentLoaded', keepModelEvidenceNormalized);
+  document.addEventListener('DOMContentLoaded', () => {
+    ensureOwnedModelEvidencePage();
+    guardOwnedModelEvidencePage();
+    if (document.getElementById('page-runtime-model-evidence')?.classList.contains('active')) renderOwnedModelEvidence();
+  });
 
   function showOperationModal(title, message, actionLabel, actionHref) {
     document.getElementById('operation-action-modal')?.remove();
