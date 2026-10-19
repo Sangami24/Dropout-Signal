@@ -207,9 +207,13 @@ async function validateBrowserUpload(devtools) {
   })()`), value => value?.id && ['queued', 'processing', 'uploading'].includes(value.state), 30000);
   const liveOverlay = await waitFor('server-authoritative upload overlay', () => devtools.evaluate(`(() => {
     const overlay = document.getElementById('dataset-training-overlay');
-    return overlay ? {owned: overlay.dataset.backgroundUpload, text: overlay.innerText} : null;
+    const text=overlay?.querySelector('.dataset-progress-ring span')?.textContent || '';
+    return overlay ? {owned: overlay.dataset.backgroundUpload, text: overlay.innerText, progress:Number(text.replace('%',''))} : null;
   })()`), value => value?.owned === 'true');
   assert(!/Training Logistic Regression/i.test(liveOverlay.text), liveOverlay);
+  await new Promise(resolve => setTimeout(resolve, 650));
+  const smoothOverlay = await devtools.evaluate(`(() => Number((document.querySelector('#dataset-training-overlay .dataset-progress-ring span')?.textContent || '0').replace('%','')))()`);
+  assert(smoothOverlay > liveOverlay.progress, {liveOverlay, smoothOverlay});
   const terminal = await waitFor('browser upload training completion', () => devtools.evaluate(`(async () => {
     const response = await fetch('/api/dataset/upload-status?job_id=${encodeURIComponent(job.id)}', {cache:'no-store'});
     if (!response.ok) return {status: response.status};
@@ -219,6 +223,7 @@ async function validateBrowserUpload(devtools) {
   await waitFor('activated browser dataset', () => devtools.evaluate("fetch('/api/dataset/status').then(response => response.json())"), value => value?.dataset_loaded && value.record_count === 4424, 30000);
   const overlay = await devtools.evaluate("document.getElementById('dataset-training-overlay')?.innerText || ''");
   assert(!/failed|canceled/i.test(overlay), {terminal, overlay});
+  await waitFor('smooth upload indicator reaches completion before closing', () => devtools.evaluate(`(() => ({count:document.querySelectorAll('#dataset-training-overlay').length,progress:document.querySelector('#dataset-training-overlay .dataset-progress-ring span')?.textContent || ''}))()`), value => value.count === 0, 60000);
   await devtools.evaluate("window.__fullFlowPreReloadDocument = true");
   await devtools.call('Page.reload', {ignoreCache:true});
   await waitFor('new dashboard document after browser refresh', () => devtools.evaluate("typeof window.__fullFlowPreReloadDocument === 'undefined' && document.readyState === 'complete' && !!document.querySelector('.page')"));

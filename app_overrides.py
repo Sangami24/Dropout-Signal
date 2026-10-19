@@ -237,17 +237,68 @@ LIVE_UI_SCRIPT = r'''
   //  UPLOAD CONTROLLER — single, race-free implementation
   // ═══════════════════════════════════════════════════════════════════
   const BACKGROUND_UPLOAD_KEY = 'dropout-signal-background-upload';
+  // This is intentionally a time-based visual indicator, not a sequence of
+  // backend phases.  It moves at one constant rate until the real job ends,
+  // avoiding the old jumps and long frozen model-stage percentages.
+  const SMOOTH_UPLOAD_PERCENT_PER_SECOND = 0.70;
   let _pollTimer = null;
   let _pollGeneration = 0;
   let _pollInFlight = false;
+  let _uploadVisualFrame = null;
+  let _uploadVisualCompletion = null;
+  let _resolveUploadVisualCompletion = null;
+
+  function setUploadRingProgress(overlay, progress) {
+    const ring = overlay?.querySelector('.dataset-progress-ring');
+    const pct = ring?.querySelector('span');
+    const bounded = Math.max(0, Math.min(100, progress));
+    if (ring) ring.style.setProperty('--dataset-progress', `${bounded * 3.6}deg`);
+    if (pct) pct.textContent = `${bounded.toFixed(1)}%`;
+    if (overlay) overlay.dataset.visualProgress = String(bounded);
+  }
+
+  function stopUploadProgressAnimation() {
+    if (_uploadVisualFrame) cancelAnimationFrame(_uploadVisualFrame);
+    _uploadVisualFrame = null;
+    _uploadVisualCompletion = null;
+    _resolveUploadVisualCompletion = null;
+  }
+
+  function animateUploadProgress(job) {
+    const overlay = document.getElementById('dataset-training-overlay');
+    if (!overlay) return Promise.resolve();
+    const startedAt = Number(job.created_at_ms || overlay.dataset.uploadStartedAt || Date.now());
+    overlay.dataset.uploadStartedAt = String(startedAt);
+    overlay.dataset.uploadComplete = job.state === 'complete' ? 'true' : 'false';
+    if (_uploadVisualFrame || _uploadVisualCompletion) return _uploadVisualCompletion || Promise.resolve();
+    _uploadVisualCompletion = new Promise(resolve => { _resolveUploadVisualCompletion = resolve; });
+    const tick = () => {
+      const current = document.getElementById('dataset-training-overlay');
+      if (!current) { stopUploadProgressAnimation(); return; }
+      const elapsedSeconds = Math.max(0, (Date.now() - Number(current.dataset.uploadStartedAt || Date.now())) / 1000);
+      const complete = current.dataset.uploadComplete === 'true';
+      const progress = Math.min(complete ? 100 : 99.9, elapsedSeconds * SMOOTH_UPLOAD_PERCENT_PER_SECOND);
+      setUploadRingProgress(current, progress);
+      if (complete && progress >= 100) {
+        _uploadVisualFrame = null;
+        const resolve = _resolveUploadVisualCompletion;
+        _resolveUploadVisualCompletion = null;
+        resolve?.();
+        return;
+      }
+      _uploadVisualFrame = requestAnimationFrame(tick);
+    };
+    _uploadVisualFrame = requestAnimationFrame(tick);
+    return _uploadVisualCompletion;
+  }
 
   function showUploadOverlay(job) {
     document.getElementById('dataset-training-overlay')?.remove();
     const overlay = document.createElement('div');
     overlay.id = 'dataset-training-overlay';
-    const progress = Number(job.progress || 0);
     overlay.dataset.backgroundUpload = 'true';
-    overlay.innerHTML = `<section class="dataset-training-card" role="status" aria-live="polite"><div class="dataset-progress-ring"><span>${progress.toFixed(1)}%</span></div><div><b>Uploading Dataset</b><p>${escapeHtml(job.filename || 'Your dataset')} is processing on the server. You can switch dashboards or browser tabs.</p><small>${escapeHtml(job.message || 'Uploading dataset...')}</small></div><button type="button" class="btn dataset-cancel-upload">Cancel Upload</button></section>`;
+    overlay.dataset.uploadStartedAt = String(Number(job.created_at_ms || Date.now()));
+    overlay.innerHTML = `<section class="dataset-training-card" role="status" aria-live="polite"><div class="dataset-progress-ring"><span>0.0%</span></div><div><b>Uploading Dataset</b><p>${escapeHtml(job.filename || 'Your dataset')} is processing on the server. You can switch dashboards or browser tabs.</p><small>${escapeHtml(job.message || 'Uploading dataset...')}</small></div><button type="button" class="btn dataset-cancel-upload">Cancel Upload</button></section>`;
     overlay.querySelector('.dataset-cancel-upload').addEventListener('click', () => window.cancelDatasetUpload());
     document.body.appendChild(overlay);
     return overlay;
@@ -255,15 +306,11 @@ LIVE_UI_SCRIPT = r'''
 
   function updateUploadOverlay(job) {
     const overlay = document.getElementById('dataset-training-overlay') || showUploadOverlay(job);
-    const ring = overlay.querySelector('.dataset-progress-ring');
-    const pct = ring?.querySelector('span');
     const stage = overlay.querySelector('small');
     const title = overlay.querySelector('b');
     const detail = overlay.querySelector('p');
     const cancelBtn = overlay.querySelector('.dataset-cancel-upload');
-    const progress = Math.max(0, Math.min(100, Number(job.progress || 0)));
-    if (ring) ring.style.setProperty('--dataset-progress', `${progress * 3.6}deg`);
-    if (pct) pct.textContent = `${progress.toFixed(1)}%`;
+    animateUploadProgress(job);
     if (stage) stage.textContent = job.message || 'Processing on the server...';
     if (title && job.state === 'uploading') title.textContent = 'Uploading Dataset';
     if (title && job.state === 'queued') title.textContent = 'Preparing Dataset';
@@ -275,7 +322,7 @@ LIVE_UI_SCRIPT = r'''
     if (cancelBtn) cancelBtn.hidden = (job.state === 'complete');
   }
 
-  function removeOverlay() { document.getElementById('dataset-training-overlay')?.remove(); }
+  function removeOverlay() { stopUploadProgressAnimation(); document.getElementById('dataset-training-overlay')?.remove(); }
 
   function clearUploadState() {
     if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
@@ -331,7 +378,8 @@ LIVE_UI_SCRIPT = r'''
       if (serverJob.state === 'complete') {
         if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
         localStorage.removeItem(BACKGROUND_UPLOAD_KEY);
-        updateUploadOverlay({...serverJob, progress: 100, state: 'complete'});
+        updateUploadOverlay({...serverJob, state: 'complete'});
+        await animateUploadProgress({...serverJob, state: 'complete'});
         removeOverlay();
         if (typeof window.getStatus === 'function') await window.getStatus();
         if (typeof window.loadDatasetExperience === 'function') await window.loadDatasetExperience(true);
@@ -2020,11 +2068,11 @@ def _background_upload_snapshot(job):
     else:
         started = float(snapshot.get("processing_at") or snapshot.get("created_at") or time.time())
         elapsed = max(0.0, time.time() - started)
-        # Asymptotically approach 99.4 while training. The display therefore
-        # keeps advancing after a tab switch but cannot claim completion before
-        # the original upload route confirms that the dataset was activated.
-        estimated = 5.0 + 94.4 * (elapsed / (elapsed + 45.0))
-        snapshot["progress"] = min(99.4, max(float(snapshot.get("progress") or 0.0), estimated))
+        # A linear server-side estimate mirrors the smooth client indicator.
+        # It remains below completion until the original upload route confirms
+        # that activation really succeeded.
+        estimated = 0.70 * elapsed
+        snapshot["progress"] = min(99.9, max(float(snapshot.get("progress") or 0.0), estimated))
     return snapshot
 
 
