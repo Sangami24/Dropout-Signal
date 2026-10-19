@@ -15,9 +15,10 @@ import json
 import os
 import re
 import shutil
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 # SHAP imports Matplotlib. Give its cache a location writable in both local
 # development and Vercel's serverless runtime before importing SHAP.
@@ -92,6 +93,27 @@ STUDENT_NAME_COLUMN = "Student Name"
 # The quality target is reported from a genuinely held-out four-model result.
 # A valid dataset must still load so counselors can review its real outcomes.
 MINIMUM_ACCEPTABLE_ACCURACY = 0.90
+
+
+# The background upload wrapper installs this callback in its worker thread.
+# Keeping it thread-local means concurrent uploads cannot overwrite each
+# other's UI progress, while the model code remains usable independently.
+_TRAINING_PROGRESS = threading.local()
+
+
+def set_training_progress_callback(callback: Callable[[str, float], None] | None) -> None:
+    _TRAINING_PROGRESS.callback = callback
+
+
+def _report_training_progress(message: str, progress: float) -> None:
+    callback = getattr(_TRAINING_PROGRESS, "callback", None)
+    if callback is None:
+        return
+    try:
+        callback(message, float(progress))
+    except Exception:
+        # Reporting must never make a valid training run fail.
+        pass
 
 # Rich institutional fields are retained for counselor context and adaptive
 # calls. They are deliberately not fed into the model unless represented by
@@ -746,8 +768,10 @@ def _log_mlflow_run(
 def train_and_score(source_path: str | Path, activate: bool = True, source_label: str | None = None) -> dict[str, Any]:
     """Train four complementary models and score their fixed equal-weight ensemble."""
     _ensure_dirs()
+    _report_training_progress("Validating the uploaded student records…", 9)
     source = read_dataset(source_path)
     signature = hashlib.sha256(Path(source_path).read_bytes()).hexdigest()
+    _report_training_progress("Building validated academic features…", 17)
     silver = build_silver(source)
     y = silver["is_dropout"].astype(int)
     feature_columns = list(FEATURE_COLUMNS)
@@ -761,6 +785,7 @@ def train_and_score(source_path: str | Path, activate: bool = True, source_label
     x_train, x_validation, y_train, y_validation = train_test_split(
         x_development, y_development, test_size=(15 / 85), random_state=42, stratify=y_development,
     )
+    _report_training_progress("Training Logistic Regression…", 25)
 
     # The validation partition is reserved for the displayed, real XGBoost
     # learning curves.  The ensemble has pre-registered equal weights and a
@@ -773,6 +798,8 @@ def train_and_score(source_path: str | Path, activate: bool = True, source_label
     logistic.fit(x_development_scaled, y_development)
     logistic_test = logistic.predict_proba(x_test_scaled)[:, 1]
     logistic_metrics = _metric_bundle(y_test, logistic_test)
+
+    _report_training_progress("Training XGBoost and validating learning curves…", 39)
 
     # A distinct diagnostic fit supplies truthful training/validation curves
     # for the dashboard; it is never used for the final held-out score.
@@ -791,10 +818,14 @@ def train_and_score(source_path: str | Path, activate: bool = True, source_label
     xgb_test = xgb.predict_proba(x_test)[:, 1]
     xgb_metrics = _metric_bundle(y_test, xgb_test)
 
+    _report_training_progress("Training Random Forest…", 57)
+
     random_forest = RandomForestClassifier(random_state=42, **RANDOM_FOREST_PARAMS)
     random_forest.fit(x_development, y_development)
     random_forest_test = random_forest.predict_proba(x_test)[:, 1]
     random_forest_metrics = _metric_bundle(y_test, random_forest_test)
+
+    _report_training_progress("Training HistGradientBoosting…", 70)
 
     hist_gradient_boosting = HistGradientBoostingClassifier(
         random_state=42, **HIST_GRADIENT_BOOSTING_PARAMS,
@@ -802,6 +833,8 @@ def train_and_score(source_path: str | Path, activate: bool = True, source_label
     hist_gradient_boosting.fit(x_development, y_development)
     hist_gradient_boosting_test = hist_gradient_boosting.predict_proba(x_test)[:, 1]
     hist_gradient_boosting_metrics = _metric_bundle(y_test, hist_gradient_boosting_test)
+
+    _report_training_progress("Evaluating the held-out four-model ensemble…", 79)
 
     model_metrics = {
         "Logistic Regression": logistic_metrics,
@@ -848,6 +881,7 @@ def train_and_score(source_path: str | Path, activate: bool = True, source_label
     # are retained in the dashboard; fabricating a passing score or blocking
     # a counselor from the uploaded cohort would both be misleading.
     training_history = _xgb_training_history(xgb_history_model, x_train, y_train, x_validation, y_validation)
+    _report_training_progress("Generating SHAP explanations and student scores…", 85)
     shap_values = _shap_values(xgb, x)
     gold = _gold_table(
         silver, signature, all_logistic, all_xgb, all_random_forest,
@@ -857,6 +891,7 @@ def train_and_score(source_path: str | Path, activate: bool = True, source_label
     # The fairness audit is performed on the held-out test partition, matching
     # the notebook and avoiding an over-optimistic in-sample assessment.
     fairness = _fairness(silver.loc[x_test.index], y_test, ensemble_test_probability, ensemble_name)
+    _report_training_progress("Saving model evidence and fairness audit…", 91)
     mean_abs_shap = np.abs(shap_values).mean(axis=0)
     global_shap = pd.DataFrame({"feature": feature_columns, "mean_abs_shap": mean_abs_shap}).sort_values("mean_abs_shap", ascending=False)
     global_shap["rank"] = np.arange(1, len(global_shap) + 1)
@@ -983,6 +1018,7 @@ def train_and_score(source_path: str | Path, activate: bool = True, source_label
         run_id, run_dir, x_train, logistic, xgb, random_forest,
         hist_gradient_boosting, model_metrics, ensemble_weights, len(source), ensemble_name,
     )
+    _report_training_progress("Finalizing the active scored cohort…", 96)
     _write_json(run_dir / "metadata.json", metadata)
     if activate:
         # The runtime directory can live outside the source checkout (for

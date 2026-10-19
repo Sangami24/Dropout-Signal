@@ -19,6 +19,7 @@ from pathlib import Path
 
 from flask import Response, jsonify, request
 
+import ml_pipeline
 from ml_pipeline import active_metadata, active_records, restore_latest_run
 import voice_server
 
@@ -264,13 +265,9 @@ LIVE_UI_SCRIPT = r'''
   //  UPLOAD CONTROLLER — single, race-free implementation
   // ═══════════════════════════════════════════════════════════════════
   const BACKGROUND_UPLOAD_KEY = 'dropout-signal-background-upload';
-  // This is intentionally a time-based visual indicator, not a sequence of
-  // backend phases.  It moves at one constant rate until the real job ends,
-  // avoiding the old jumps and long frozen model-stage percentages.
-  // A typical four-model run completes in well under a minute.  This pace
-  // keeps the visual progress moving evenly instead of lingering at 54–70%
-  // after the server has already finished the job.
-  const SMOOTH_UPLOAD_PERCENT_PER_SECOND = 2.00;
+  // Upload progress is supplied by real validation/training milestones.  Do
+  // not manufacture 99.9% while work is still running: that was the source
+  // of the apparent "stuck at 99%" completion state.
   let _pollTimer = null;
   let _pollGeneration = 0;
   let _pollInFlight = false;
@@ -297,19 +294,25 @@ LIVE_UI_SCRIPT = r'''
   function animateUploadProgress(job) {
     const overlay = document.getElementById('dataset-training-overlay');
     if (!overlay) return Promise.resolve();
-    const startedAt = Number(job.created_at_ms || overlay.dataset.uploadStartedAt || Date.now());
-    overlay.dataset.uploadStartedAt = String(startedAt);
+    const requestedProgress = Number(job.progress);
+    const targetProgress = job.state === 'complete' ? 100 : Math.min(96, Math.max(0, Number.isFinite(requestedProgress) ? requestedProgress : 0));
+    overlay.dataset.targetProgress = String(targetProgress);
     overlay.dataset.uploadComplete = job.state === 'complete' ? 'true' : 'false';
     if (_uploadVisualFrame || _uploadVisualCompletion) return _uploadVisualCompletion || Promise.resolve();
     _uploadVisualCompletion = new Promise(resolve => { _resolveUploadVisualCompletion = resolve; });
     const tick = () => {
       const current = document.getElementById('dataset-training-overlay');
       if (!current) { stopUploadProgressAnimation(); return; }
-      const elapsedSeconds = Math.max(0, (Date.now() - Number(current.dataset.uploadStartedAt || Date.now())) / 1000);
       const complete = current.dataset.uploadComplete === 'true';
-      const progress = Math.min(complete ? 100 : 99.9, elapsedSeconds * SMOOTH_UPLOAD_PERCENT_PER_SECOND);
+      const target = complete ? 100 : Number(current.dataset.targetProgress || 0);
+      const displayed = Number(current.dataset.visualProgress || 0);
+      // Ease each server-confirmed milestone into view.  The completion path
+      // is deliberately short, so a verified success always reaches 100%.
+      const gap = target - displayed;
+      const progress = Math.abs(gap) < 0.08 ? target : displayed + (gap * (complete ? 0.28 : 0.16));
       setUploadRingProgress(current, progress);
-      if (complete && progress >= 100) {
+      if (complete && progress >= 99.92) {
+        setUploadRingProgress(current, 100);
         _uploadVisualFrame = null;
         const resolve = _resolveUploadVisualCompletion;
         _resolveUploadVisualCompletion = null;
@@ -413,7 +416,8 @@ LIVE_UI_SCRIPT = r'''
         removeOverlay();
         if (typeof window.getStatus === 'function') await window.getStatus();
         if (typeof window.loadDatasetExperience === 'function') await window.loadDatasetExperience(true);
-        if (typeof window.renderEvidence === 'function') await window.renderEvidence();
+        if (typeof window.renderDatasetEvidence === 'function') await window.renderDatasetEvidence();
+        else if (typeof window.renderEvidence === 'function') await window.renderEvidence();
         await refreshDatasetInsights();
         toast('Dataset trained, scored, and activated.', 'ok');
         return 'complete';
@@ -1514,6 +1518,11 @@ FINAL_UI_SCRIPT = r'''
   }
 
   async function refreshFairness() {
+    // The old in-place renderer is deliberately retired.  The model tab has
+    // exactly one owner now: renderStableModelAudit below.  Leaving this
+    // function as a no-op keeps historical callers harmless without allowing
+    // them to repaint a second, incompatible Fairness Audit.
+    return;
     const body = document.getElementById('fairness-runtime-rows'); if (!body) return;
     const tableWrap = body.closest('.fairness-table');
     if (tableWrap && !tableWrap.previousElementSibling?.classList.contains('fairness-audit-note')) {
@@ -1676,13 +1685,18 @@ FINAL_UI_SCRIPT = r'''
   // The historical dashboard owns the first asynchronous model render.  Wrap
   // its public entry point and also revisit the dynamic navigation item so the
   // completed view is normalized immediately rather than waiting for a poll.
-  const legacyDatasetEvidenceRenderer = window.renderDatasetEvidence;
-  if (typeof legacyDatasetEvidenceRenderer === 'function') {
-    window.renderDatasetEvidence = async (...args) => {
-      const result = await legacyDatasetEvidenceRenderer(...args);
+  const legacyEvidenceRenderer = window.renderEvidence;
+  const normalizeLegacyEvidence = async (renderer, args) => {
+      const result = await renderer(...args);
       await augmentModelEvidence();
       return result;
-    };
+  };
+  if (typeof legacyEvidenceRenderer === 'function') {
+    window.renderEvidence = async (...args) => normalizeLegacyEvidence(legacyEvidenceRenderer, args);
+  }
+  const legacyDatasetEvidenceRenderer = window.renderDatasetEvidence;
+  if (typeof legacyDatasetEvidenceRenderer === 'function') {
+    window.renderDatasetEvidence = async (...args) => normalizeLegacyEvidence(legacyDatasetEvidenceRenderer, args);
   }
   function keepModelEvidenceNormalized() {
     const page = document.getElementById('page-model-evidence');
@@ -1691,8 +1705,14 @@ FINAL_UI_SCRIPT = r'''
     let scheduled = null;
     const observer = new MutationObserver(() => {
       if (!page.classList.contains('active')) return;
+      const modelBody = page.querySelector(':scope > .model-runtime-body');
+      // `renderEvidence` preserves the body element and replaces only its
+      // children.  Remove the ready marker before the browser can paint that
+      // legacy DOM, then normalize it in the next microtask.
+      const legacyMarkup = modelBody?.querySelector('.fairness-table, #fairness-runtime-rows, .feature-groups:not(.runtime-feature-schema)');
+      if (legacyMarkup) delete modelBody.dataset.runtimeAuditReady;
       if (scheduled) clearTimeout(scheduled);
-      scheduled = setTimeout(() => { scheduled = null; augmentModelEvidence(); }, 80);
+      scheduled = setTimeout(() => { scheduled = null; augmentModelEvidence(); }, 0);
     });
     observer.observe(page, {childList:true, subtree:true});
   }
@@ -2161,7 +2181,7 @@ def _update_job(job_id: str, updates: dict) -> None:
 
 
 def _background_upload_snapshot(job):
-    """Return a job with monotonic progress that reaches 100 only on success."""
+    """Return the real training milestone; only verified success is 100%."""
     snapshot = dict(job)
     state = snapshot.get("state")
     if state == "complete":
@@ -2171,13 +2191,9 @@ def _background_upload_snapshot(job):
     elif state == "queued":
         snapshot["progress"] = max(2.0, float(snapshot.get("progress") or 0.0))
     else:
-        started = float(snapshot.get("processing_at") or snapshot.get("created_at") or time.time())
-        elapsed = max(0.0, time.time() - started)
-        # A linear server-side estimate mirrors the smooth client indicator.
-        # It remains below completion until the original upload route confirms
-        # that activation really succeeded.
-        estimated = 2.00 * elapsed
-        snapshot["progress"] = min(99.9, max(float(snapshot.get("progress") or 0.0), estimated))
+        # Progress is updated from the pipeline's actual completed stages.
+        # Holding at a fake 99.9% made a live job look failed.
+        snapshot["progress"] = min(96.0, max(5.0, float(snapshot.get("progress") or 0.0)))
     return snapshot
 
 
@@ -2342,7 +2358,17 @@ def install(app, namespace):
                     "progress": 5.0,
                     "message": "Training and scoring in the background\u2026",
                 })
+                def report_training_progress(message, progress):
+                    job = _get_job(job_id) or {}
+                    if job.get("state") == "canceled":
+                        return
+                    _update_job(job_id, {
+                        "state": "processing",
+                        "progress": min(96.0, max(float(job.get("progress") or 5.0), float(progress))),
+                        "message": message,
+                    })
                 try:
+                    ml_pipeline.set_training_progress_callback(report_training_progress)
                     with app.test_request_context(
                         "/api/dataset/upload",
                         method="POST",
@@ -2378,6 +2404,8 @@ def install(app, namespace):
                         "message": "Background dataset processing failed.",
                         "completed_at": time.time(),
                     })
+                finally:
+                    ml_pipeline.set_training_progress_callback(None)
 
             threading.Thread(target=run_upload_job, name=f"dataset-upload-{job_id[:8]}", daemon=True).start()
             return jsonify({

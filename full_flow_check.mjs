@@ -177,6 +177,7 @@ async function validateApi(devtools) {
 
 async function validateBrowserUpload(devtools) {
   assert(uploadCsvPath, 'DROPOUT_SIGNAL_UPLOAD_CSV is required for browser upload testing');
+  console.log('CHECK browser upload: reset control');
   const resetControl = await devtools.evaluate(`(() => {
     const button=[...document.querySelectorAll('button')].find(node => /^reset dataset$/i.test(node.textContent.trim()));
     if (!button) return null;
@@ -185,12 +186,14 @@ async function validateBrowserUpload(devtools) {
     return {owned:button.dataset.explicitResetOwned||'', disabled:button.disabled};
   })()`);
   assert(resetControl?.owned === 'true', resetControl);
+  console.log('CHECK browser upload: empty state');
   await waitFor('empty dataset dashboard state', () => devtools.evaluate("fetch('/api/dataset/status',{cache:'no-store'}).then(response=>response.json())"), value => value && !value.dataset_loaded);
   const emptyPresentation = await waitFor('clean empty dashboard presentation', () => devtools.evaluate(`(() => ({
     hasBrokenBadge: /[–-]\\s*predicted dropouts/i.test(document.body.innerText),
     visibleBadges: [...document.querySelectorAll('.risk-fixed-badge')].filter(node => !node.hidden && getComputedStyle(node).display !== 'none').map(node => node.textContent),
   }))()`), value => !value.hasBrokenBadge && !value.visibleBadges.length);
   assert(!emptyPresentation.hasBrokenBadge && !emptyPresentation.visibleBadges.length, emptyPresentation);
+  console.log('CHECK browser upload: file input');
   await waitFor('dataset upload input', () => devtools.evaluate("!!document.getElementById('dataset-file-input')"));
   const ownedInput = await devtools.evaluate("document.getElementById('dataset-file-input')?.dataset.backgroundOwned || ''");
   assert(ownedInput === 'true', 'The retired synchronous upload listener still owns the dataset input');
@@ -201,25 +204,35 @@ async function validateBrowserUpload(devtools) {
   const objectId = remote.result?.objectId;
   assert(objectId, 'Could not resolve the live dataset upload input');
   await devtools.call('DOM.setFileInputFiles', {files: [uploadCsvPath], objectId});
+  console.log('CHECK browser upload: waiting for accepted job');
   const job = await waitFor('browser upload accepted', () => devtools.evaluate(`(() => {
     try { return JSON.parse(localStorage.getItem('dropout-signal-background-upload') || 'null'); }
     catch (_) { return null; }
   })()`), value => value?.id && ['queued', 'processing', 'uploading'].includes(value.state), 30000);
+  console.log('CHECK browser upload: job accepted', job.id);
   const liveOverlay = await waitFor('server-authoritative upload overlay', () => devtools.evaluate(`(() => {
     const overlay = document.getElementById('dataset-training-overlay');
     const text=overlay?.querySelector('.dataset-progress-ring span')?.textContent || '';
     return overlay ? {owned: overlay.dataset.backgroundUpload, text: overlay.innerText, progress:Number(text.replace('%',''))} : null;
   })()`), value => value?.owned === 'true');
+  console.log('CHECK browser upload: overlay displayed');
   assert(!/Training Logistic Regression/i.test(liveOverlay.text), liveOverlay);
   await new Promise(resolve => setTimeout(resolve, 650));
   const smoothOverlay = await devtools.evaluate(`(() => Number((document.querySelector('#dataset-training-overlay .dataset-progress-ring span')?.textContent || '0').replace('%','')))()`);
+  console.log('CHECK browser upload: milestone movement observed');
   assert(smoothOverlay > liveOverlay.progress, {liveOverlay, smoothOverlay});
+  const uploadTimeline = [];
   const terminal = await waitFor('browser upload training completion', () => devtools.evaluate(`(async () => {
     const response = await fetch('/api/dataset/upload-status?job_id=${encodeURIComponent(job.id)}', {cache:'no-store'});
     if (!response.ok) return {status: response.status};
     return response.json();
-  })()`), value => value?.state === 'complete' || value?.state === 'failed' || value?.state === 'canceled', 420000);
+  })()`), value => {
+    uploadTimeline.push({state:value?.state,progress:Number(value?.progress),message:value?.message||''});
+    return value?.state === 'complete' || value?.state === 'failed' || value?.state === 'canceled';
+  }, 420000);
   assert(terminal.state === 'complete' && terminal.status?.dataset_loaded, terminal);
+  const incompleteProgress = uploadTimeline.filter(item => item.state !== 'complete').map(item => item.progress);
+  assert(incompleteProgress.every(progress => Number.isFinite(progress) && progress <= 96), {uploadTimeline});
   await waitFor('activated browser dataset', () => devtools.evaluate("fetch('/api/dataset/status').then(response => response.json())"), value => value?.dataset_loaded && value.record_count === 4424, 30000);
   const overlay = await devtools.evaluate("document.getElementById('dataset-training-overlay')?.innerText || ''");
   assert(!/failed|canceled/i.test(overlay), {terminal, overlay});
@@ -236,6 +249,7 @@ async function validateBrowserUpload(devtools) {
   }))()`);
   assert(!refreshedUi.brokenBadge && refreshedUi.ownedInput === 'true' && refreshedUi.overlayCount === 0, {persisted, refreshedUi});
   console.log('PASS real browser CSV upload, background four-model training, and cohort activation', {job: job.id, records: terminal.status.record_count});
+  console.log('PASS upload progress uses actual training milestones and never stalls at a fake 99%', {milestones:[...new Set(incompleteProgress)]});
   console.log('PASS active dataset survives browser refresh with no stale progress or broken risk badge');
 }
 
@@ -280,9 +294,23 @@ async function validateModelEvidence(devtools) {
       singleModelSections.confidence === 1,
     singleModelSections,
   );
+  await devtools.evaluate("Promise.all([window.renderEvidence?.(), window.renderDatasetEvidence?.(), window.renderEvidence?.()])");
+  await new Promise(resolve => setTimeout(resolve, 1200));
+  const legacyAuditLeak = await devtools.evaluate(`(() => {
+    const body=document.querySelector('#page-model-evidence > .model-runtime-body');
+    return {
+      ready:body?.dataset.runtimeAuditReady || '',
+      legacyFairness:body?.querySelectorAll('.fairness-table,#fairness-runtime-rows').length || 0,
+      legacySchema:body?.querySelectorAll('.feature-groups:not(.runtime-feature-schema)').length || 0,
+      runtimeFairness:body?.querySelectorAll('.runtime-audit-card .runtime-audit-table').length || 0,
+      runtimeSchema:body?.querySelectorAll('.runtime-schema-card .runtime-feature-schema').length || 0,
+    };
+  })()`);
+  assert(legacyAuditLeak.ready === 'true' && legacyAuditLeak.legacyFairness === 0 && legacyAuditLeak.legacySchema === 0 && legacyAuditLeak.runtimeFairness === 1 && legacyAuditLeak.runtimeSchema === 1, legacyAuditLeak);
   console.log('PASS real per-dataset accuracy/loss evidence rendered', {charts:evidence.charts, lines:evidence.lines});
   console.log('PASS ML evidence is mounted exclusively in Model SHAP', evidenceOwnership);
   console.log('PASS Model SHAP contains one fairness audit and one feature schema', singleModelSections);
+  console.log('PASS repeated legacy model renders cannot restore a second Fairness Audit or schema', legacyAuditLeak);
 }
 
 async function validateModelEvidenceIsolation(devtools) {
