@@ -85,7 +85,16 @@ LIVE_UI_SCRIPT = r'''
   /* The recovered dashboard briefly rebuilds this body with its old blank
      fairness table.  Keep that intermediate DOM out of view; it becomes
      visible only after the single runtime audit/schema renderer completes. */
-  #page-model-evidence.active .model-runtime-body:not([data-runtime-audit-ready="true"]) { display:none!important; }
+  /* The legacy model body is no longer a renderer.  The runtime-owned view
+     below is the only model page allowed to be visible. */
+  #page-model-evidence .model-runtime-body { display:none!important; }
+  #page-model-evidence .runtime-owned-model-evidence { display:grid; gap:14px; min-width:0; }
+  #page-model-evidence .runtime-model-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+  #page-model-evidence .runtime-model-card .card-b { padding:14px 16px; }
+  #page-model-evidence .runtime-model-card .model-table { width:100%; border-collapse:collapse; }
+  #page-model-evidence .runtime-model-card .model-table td { padding:8px 0; border-top:1px solid var(--border); font-size:12px; }
+  #page-model-evidence .runtime-model-card .model-table td:last-child { text-align:right; color:var(--green); font-family:var(--mono); }
+  #page-model-evidence .runtime-model-card .model-params { margin:0 0 12px; color:var(--text3); font:10px var(--mono); line-height:1.55; overflow-wrap:anywhere; }
   .runtime-audit-note { margin:0 0 15px; padding:11px 13px; border-left:3px solid var(--purple); border-radius:0 8px 8px 0; background:rgba(188,140,255,.09); color:var(--text2); font-size:12px; line-height:1.55; }
   .runtime-audit-table { overflow-x:auto; border:1px solid var(--border); border-radius:9px; }
   .runtime-audit-table table { width:100%; min-width:720px; border-collapse:collapse; }
@@ -101,7 +110,8 @@ LIVE_UI_SCRIPT = r'''
   .runtime-feature-schema details { border-top:1px solid var(--border); }
   .runtime-feature-schema summary { padding:12px 0; cursor:pointer; color:var(--text); font-weight:650; }
   .runtime-feature-schema details > *:not(summary) { margin:0 0 13px; color:var(--text2); font-size:12px; line-height:1.55; }
-  @media (max-width:800px) { .live-score-strip,.runtime-training-kpis,.runtime-training-charts { grid-template-columns:1fr 1fr; } }
+  @media (max-width:800px) { .live-score-strip,.runtime-training-kpis,.runtime-training-charts,.runtime-model-grid { grid-template-columns:1fr 1fr; } }
+  @media (max-width:560px) { .runtime-model-grid { grid-template-columns:1fr; } }
 </style>
 <script>
 (() => {
@@ -274,6 +284,8 @@ LIVE_UI_SCRIPT = r'''
   let _uploadVisualFrame = null;
   let _uploadVisualCompletion = null;
   let _resolveUploadVisualCompletion = null;
+  let _uploadVisualLastTick = 0;
+  const SMOOTH_UPLOAD_PERCENT_PER_SECOND = 1.85;
 
   function setUploadRingProgress(overlay, progress) {
     const ring = overlay?.querySelector('.dataset-progress-ring');
@@ -289,6 +301,7 @@ LIVE_UI_SCRIPT = r'''
     _uploadVisualFrame = null;
     _uploadVisualCompletion = null;
     _resolveUploadVisualCompletion = null;
+    _uploadVisualLastTick = 0;
   }
 
   function animateUploadProgress(job) {
@@ -300,18 +313,19 @@ LIVE_UI_SCRIPT = r'''
     overlay.dataset.uploadComplete = job.state === 'complete' ? 'true' : 'false';
     if (_uploadVisualFrame || _uploadVisualCompletion) return _uploadVisualCompletion || Promise.resolve();
     _uploadVisualCompletion = new Promise(resolve => { _resolveUploadVisualCompletion = resolve; });
-    const tick = () => {
+    const tick = timestamp => {
       const current = document.getElementById('dataset-training-overlay');
       if (!current) { stopUploadProgressAnimation(); return; }
+      const elapsedSeconds = _uploadVisualLastTick ? Math.max(0, (timestamp - _uploadVisualLastTick) / 1000) : 0;
+      _uploadVisualLastTick = timestamp;
       const complete = current.dataset.uploadComplete === 'true';
       const target = complete ? 100 : Number(current.dataset.targetProgress || 0);
       const displayed = Number(current.dataset.visualProgress || 0);
-      // Ease each server-confirmed milestone into view.  The completion path
-      // is deliberately short, so a verified success always reaches 100%.
-      const gap = target - displayed;
-      const progress = Math.abs(gap) < 0.08 ? target : displayed + (gap * (complete ? 0.28 : 0.16));
+      // Never jump to a backend milestone.  The ring travels at one fixed
+      // rate through every confirmed stage, including the final 100%.
+      const progress = displayed >= target ? displayed : Math.min(target, displayed + (SMOOTH_UPLOAD_PERCENT_PER_SECOND * elapsedSeconds));
       setUploadRingProgress(current, progress);
-      if (complete && progress >= 99.92) {
+      if (complete && progress >= 99.98) {
         setUploadRingProgress(current, 100);
         _uploadVisualFrame = null;
         const resolve = _resolveUploadVisualCompletion;
@@ -348,10 +362,10 @@ LIVE_UI_SCRIPT = r'''
     if (title && job.state === 'uploading') title.textContent = 'Uploading Dataset';
     if (title && job.state === 'queued') title.textContent = 'Preparing Dataset';
     if (title && job.state === 'processing') title.textContent = 'Training AI Models';
-    if (title && job.state === 'complete') title.textContent = 'Dataset processing complete';
+    if (title && job.state === 'complete') title.textContent = 'Finalizing Dataset';
     if (detail && job.state === 'queued') detail.textContent = 'The CSV is safely received and queued for validation.';
     if (detail && job.state === 'processing') detail.textContent = 'Training, validating, and scoring the uploaded cohort. Safe to switch dashboards or browser tabs.';
-    if (detail && job.state === 'complete') detail.textContent = 'The scored cohort is active. Refreshing this dashboard...';
+    if (detail && job.state === 'complete') detail.textContent = 'The scored cohort is active. Completing the dashboard safely...';
     if (cancelBtn) cancelBtn.hidden = (job.state === 'complete');
   }
 
@@ -1633,7 +1647,65 @@ FINAL_UI_SCRIPT = r'''
     }
   }
 
+  let _ownedModelEvidenceRequest = 0;
+  async function renderOwnedModelEvidence() {
+    const page = document.getElementById('page-model-evidence');
+    if (!page || !page.classList.contains('active')) return;
+    const requestId = ++_ownedModelEvidenceRequest;
+    try {
+      const [metricsResponse, fairnessResponse] = await Promise.all([
+        fetch('/api/model-metrics', {cache:'no-store'}),
+        fetch('/api/fairness', {cache:'no-store'}),
+      ]);
+      const payload = metricsResponse.ok ? await metricsResponse.json() : {};
+      const fairnessPayload = fairnessResponse.ok ? await fairnessResponse.json() : {};
+      if (requestId !== _ownedModelEvidenceRequest || !page.classList.contains('active')) return;
+      if (!payload.dataset_loaded) {
+        page.innerHTML = '<div class="page-hdr"><h1>Model, SHAP &amp; Fairness</h1><p>Measured model evidence for the active dataset.</p></div><section class="card"><div class="dataset-empty"><h2>No active dataset</h2><p>Upload a valid CSV to train and review the scored cohort.</p></div></section>';
+        return;
+      }
+      const ensemble = payload.ensemble || {}, ensembleMetrics = ensemble.metrics || {};
+      const runKey = String(payload.run_id || 'active-run');
+      const signature = `${runKey}:${JSON.stringify(ensembleMetrics)}:${JSON.stringify(fairnessPayload.fairness || [])}`;
+      if (page.dataset.runtimeOwnedSignature === signature && page.querySelector(':scope > .runtime-owned-model-evidence')) return;
+      const pct = value => Number.isFinite(Number(value)) ? `${(Number(value) * 100).toFixed(2)}%` : '—';
+      const metric = value => Number.isFinite(Number(value)) ? Number(value).toFixed(3) : '—';
+      const status = value => String(value || '').toUpperCase() === 'YES'
+        ? '<span class="fairness-status ok">Within range</span>'
+        : '<span class="fairness-status review">Review</span>';
+      const cards = Object.entries(payload.models || {}).map(([name, detail]) => {
+        const parameters = Object.entries(detail?.parameters || {}).map(([key, value]) => `${escapeHtml(key)}: ${escapeHtml(String(value))}`).join(' · ') || 'Measured held-out evaluation';
+        const rows = Object.entries(detail?.metrics || {}).map(([key, value]) => `<tr><td>${escapeHtml(String(key).replaceAll('_', ' '))}</td><td>${pct(value)}</td></tr>`).join('');
+        return `<section class="card runtime-model-card"><div class="card-h"><span class="t">${escapeHtml(name)}${name === payload.champion_model ? ' · Ensemble' : ''}</span></div><div class="card-b"><p class="model-params">${parameters}</p><table class="model-table"><tbody>${rows}</tbody></table></div></section>`;
+      }).join('');
+      const shapRows = (payload.shap || []).map(row => `<div class="shap-row"><span>${escapeHtml(String(row.rank))}. ${escapeHtml(row.feature || 'Feature')}</span><b>${Number(row.mean_abs_shap || 0).toFixed(4)}</b></div>`).join('') || '<p>No SHAP values were generated.</p>';
+      const groups = Object.entries(payload.feature_groups || {}).map(([group, features]) => `<details><summary>${escapeHtml(group)} (${Array.isArray(features) ? features.length : 0})</summary><p>${escapeHtml((features || []).join(' · '))}</p></details>`).join('') || '<p>No feature groups were supplied for this dataset.</p>';
+      const fairnessRows = (fairnessPayload.fairness || []).map(row => `<tr><td><strong>${escapeHtml(row.protected_attribute || 'Group')}</strong><br><span>${escapeHtml(row.group_a || 'Group A')} vs ${escapeHtml(row.group_b || 'Group B')}</span></td><td><span class="mono">${metric(row.demographic_parity_ratio)}</span>${status(row.dp_is_fair)}</td><td><span class="mono">${metric(row.equal_opportunity_ratio)}</span>${status(row.eo_is_fair)}</td><td><span class="mono">${metric(row.predictive_parity_ratio)}</span>${status(row.pp_is_fair)}</td></tr>`).join('') || '<tr><td colspan="4">No comparison was available for this dataset.</td></tr>';
+      const points = payload.training_history?.points || [];
+      const chart = (title, trainKey, validationKey, axisLabel) => {
+        if (!points.length) return '';
+        const width=640, height=330, left=58, right=18, top=28, bottom=48;
+        const values=points.flatMap(point=>[Number(point[trainKey]),Number(point[validationKey])]).filter(Number.isFinite);
+        if (!values.length) return '';
+        const minValue=title.includes('Accuracy')?Math.max(0,Math.min(...values)-.05):0;
+        const maxValue=title.includes('Accuracy')?1:Math.max(...values)*1.08;
+        const x=index=>left+index*(width-left-right)/Math.max(1,points.length-1);
+        const y=value=>top+(maxValue-value)*(height-top-bottom)/Math.max(.0001,maxValue-minValue);
+        const line=key=>points.map((point,index)=>`${x(index).toFixed(1)},${y(Number(point[key])).toFixed(1)}`).join(' ');
+        const ticks=[0,.25,.5,.75,1].map(frac=>{const value=minValue+(maxValue-minValue)*frac,py=y(value);return `<line x1="${left}" y1="${py}" x2="${width-right}" y2="${py}" stroke="#2c2c38"/><text x="${left-8}" y="${py+4}" fill="#8e8e9c" text-anchor="end" font-size="11">${value.toFixed(2)}</text>`;}).join('');
+        const xTicks=points.map((point,index)=>`<text x="${x(index)}" y="${height-20}" fill="#8e8e9c" text-anchor="middle" font-size="10">${escapeHtml(String(point.epoch))}</text>`).join('');
+        return `<section class="runtime-training-chart"><h3>${escapeHtml(title)}</h3><p>${escapeHtml(axisLabel)}</p><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(title)} for this dataset">${ticks}<line x1="${left}" y1="${top}" x2="${left}" y2="${height-bottom}" stroke="#77778a"/><line x1="${left}" y1="${height-bottom}" x2="${width-right}" y2="${height-bottom}" stroke="#77778a"/><polyline points="${line(trainKey)}" fill="none" stroke="#56b6c2" stroke-width="3"/><polyline points="${line(validationKey)}" fill="none" stroke="#bc8cff" stroke-width="3"/>${xTicks}<text x="${width/2}" y="${height-3}" fill="#a9a9b6" text-anchor="middle" font-size="11">boosting round</text></svg><div class="chart-legend"><span><i style="background:#56b6c2"></i>Train</span><span><i style="background:#bc8cff"></i>Validation</span></div></section>`;
+      };
+      const confidence = Number(payload.overall_ai_confidence ?? ensembleMetrics.accuracy);
+      const confidenceText = Number.isFinite(confidence) ? `${(confidence * 100).toFixed(1)}%` : 'Awaiting validation';
+      const gate = ensemble.quality_gate || {};
+      page.innerHTML = `<div class="page-hdr"><h1>Model, SHAP &amp; Fairness</h1><p>Reproducible training, scoring, explainability, and fairness evidence for the active dataset.</p></div><div class="runtime-owned-model-evidence"><section class="card model-provenance"><div class="card-b"><span class="mono">ACTIVE MODEL RUN</span><strong>${escapeHtml(payload.champion_model || '4-Model Equal-Weight Ensemble')}</strong><p>${escapeHtml(payload.dataset_name || 'Uploaded dataset')} · ${Number(payload.record_count || 0).toLocaleString()} student records · run ${escapeHtml(runKey.slice(0, 18))}</p></div></section><div class="runtime-model-grid">${cards}</div><section class="card"><div class="card-h"><span class="t">Global SHAP feature importance</span></div><div class="card-b shap-list">${shapRows}</div></section><section class="card runtime-audit-card"><div class="card-h"><span class="t">Fairness Audit</span><div class="overall-ai-confidence">Overall AI confidence <b>${escapeHtml(confidenceText)}</b><span>held-out ensemble accuracy</span></div></div><div class="card-b"><p class="runtime-audit-note">Ratios near 1.000 indicate comparable outcomes between the displayed groups. “Review” is evidence for a human reviewer; it never changes a student's risk level automatically.</p><div class="runtime-audit-table"><table><thead><tr><th>Comparison</th><th>Demographic parity</th><th>Equal opportunity</th><th>Predictive parity</th></tr></thead><tbody>${fairnessRows}</tbody></table></div></div></section><section class="card runtime-schema-card"><div class="card-h"><span class="t">Feature Schema</span><span class="mono" style="color:var(--text3)">43 model inputs</span></div><div class="card-b"><p class="runtime-schema-intro">The model uses the 36 validated UCI predictors and seven derived Silver signals. Student name is interface-only metadata and is never a model input.</p><div class="feature-groups runtime-feature-schema">${groups}</div></div></section><section id="runtime-training-evidence" class="runtime-training-evidence"><h2>Uploaded Dataset Training Evidence</h2><p>Real measurements for <strong>${escapeHtml(payload.dataset_name || 'active dataset')}</strong>. These curves come from the XGBoost component during this run and are not illustrative values.</p><div class="runtime-training-kpis"><article><span>Ensemble accuracy</span><strong>${pct(ensembleMetrics.accuracy)}</strong></article><article><span>Overall AI confidence</span><strong>${pct(confidence)}</strong></article><article><span>ROC-AUC</span><strong>${pct(ensembleMetrics.auc_roc)}</strong></article><article><span>Decision threshold</span><strong>${pct(ensemble.decision_threshold)}</strong></article><article><span>Quality gate</span><strong>${gate.passed ? 'Passed' : 'Review required'}</strong></article></div><div class="runtime-training-charts">${chart('Model Accuracy','train_accuracy','validation_accuracy','Accuracy by boosting round')}${chart('Model Loss','train_loss','validation_loss','Log loss by boosting round')}</div></section></div>`;
+      page.dataset.runtimeOwnedSignature = signature;
+    } catch (_) {}
+  }
+
   async function augmentModelEvidence() {
+    return renderOwnedModelEvidence();
     const page = document.getElementById('page-model-evidence');
     // Runtime evidence belongs to Model SHAP only.  Remove any panel left by
     // an older dashboard bundle before considering a fresh render.  Perform
@@ -1685,19 +1757,10 @@ FINAL_UI_SCRIPT = r'''
   // The historical dashboard owns the first asynchronous model render.  Wrap
   // its public entry point and also revisit the dynamic navigation item so the
   // completed view is normalized immediately rather than waiting for a poll.
-  const legacyEvidenceRenderer = window.renderEvidence;
-  const normalizeLegacyEvidence = async (renderer, args) => {
-      const result = await renderer(...args);
-      await augmentModelEvidence();
-      return result;
-  };
-  if (typeof legacyEvidenceRenderer === 'function') {
-    window.renderEvidence = async (...args) => normalizeLegacyEvidence(legacyEvidenceRenderer, args);
-  }
-  const legacyDatasetEvidenceRenderer = window.renderDatasetEvidence;
-  if (typeof legacyDatasetEvidenceRenderer === 'function') {
-    window.renderDatasetEvidence = async (...args) => normalizeLegacyEvidence(legacyDatasetEvidenceRenderer, args);
-  }
+  // Replace the historical model renderer rather than wrapping it.  A wrapper
+  // still allowed its asynchronous DOM writes to race the current page.
+  window.renderEvidence = renderOwnedModelEvidence;
+  window.renderDatasetEvidence = renderOwnedModelEvidence;
   function keepModelEvidenceNormalized() {
     const page = document.getElementById('page-model-evidence');
     if (!page || page.dataset.runtimeEvidenceObserver === 'true') return;
@@ -1705,14 +1768,10 @@ FINAL_UI_SCRIPT = r'''
     let scheduled = null;
     const observer = new MutationObserver(() => {
       if (!page.classList.contains('active')) return;
-      const modelBody = page.querySelector(':scope > .model-runtime-body');
-      // `renderEvidence` preserves the body element and replaces only its
-      // children.  Remove the ready marker before the browser can paint that
-      // legacy DOM, then normalize it in the next microtask.
-      const legacyMarkup = modelBody?.querySelector('.fairness-table, #fairness-runtime-rows, .feature-groups:not(.runtime-feature-schema)');
-      if (legacyMarkup) delete modelBody.dataset.runtimeAuditReady;
+      const legacyMarkup = page.querySelector('.model-runtime-body');
+      if (!legacyMarkup) return;
       if (scheduled) clearTimeout(scheduled);
-      scheduled = setTimeout(() => { scheduled = null; augmentModelEvidence(); }, 0);
+      scheduled = setTimeout(() => { scheduled = null; renderOwnedModelEvidence(); }, 0);
     });
     observer.observe(page, {childList:true, subtree:true});
   }

@@ -221,6 +221,17 @@ async function validateBrowserUpload(devtools) {
   const smoothOverlay = await devtools.evaluate(`(() => Number((document.querySelector('#dataset-training-overlay .dataset-progress-ring span')?.textContent || '0').replace('%','')))()`);
   console.log('CHECK browser upload: milestone movement observed');
   assert(smoothOverlay > liveOverlay.progress, {liveOverlay, smoothOverlay});
+  await screenshot(devtools, 'upload-progress.png');
+  const smoothTrace = await devtools.evaluate(`(async()=>{
+    const values=[];
+    for(let index=0;index<22;index++){
+      values.push(Number((document.querySelector('#dataset-training-overlay .dataset-progress-ring span')?.textContent||'0').replace('%','')));
+      await new Promise(resolve=>setTimeout(resolve,100));
+    }
+    return values;
+  })()`);
+  const smoothDeltas = smoothTrace.slice(1).map((value,index)=>Number((value-smoothTrace[index]).toFixed(2)));
+  assert(smoothTrace.every(Number.isFinite) && smoothDeltas.every(delta => delta > 0 && delta <= .35), {smoothTrace, smoothDeltas});
   const uploadTimeline = [];
   const terminal = await waitFor('browser upload training completion', () => devtools.evaluate(`(async () => {
     const response = await fetch('/api/dataset/upload-status?job_id=${encodeURIComponent(job.id)}', {cache:'no-store'});
@@ -250,6 +261,7 @@ async function validateBrowserUpload(devtools) {
   assert(!refreshedUi.brokenBadge && refreshedUi.ownedInput === 'true' && refreshedUi.overlayCount === 0, {persisted, refreshedUi});
   console.log('PASS real browser CSV upload, background four-model training, and cohort activation', {job: job.id, records: terminal.status.record_count});
   console.log('PASS upload progress uses actual training milestones and never stalls at a fake 99%', {milestones:[...new Set(incompleteProgress)]});
+  console.log('PASS upload ring advances in small, continuous increments', {start:smoothTrace[0], end:smoothTrace.at(-1), maxStep:Math.max(...smoothDeltas)});
   console.log('PASS active dataset survives browser refresh with no stale progress or broken risk badge');
 }
 
@@ -260,14 +272,14 @@ async function validateModelEvidence(devtools) {
   await waitFor('single completed model evidence view', () => devtools.evaluate(`(() => {
     const page=document.getElementById('page-model-evidence');
     return {
-      modelBodies:page?.querySelectorAll(':scope > .model-runtime-body').length || 0,
-      fairnessTables:page?.querySelectorAll('.model-runtime-body .runtime-audit-table').length || 0,
-      featureSchemas:page?.querySelectorAll('.model-runtime-body .runtime-feature-schema').length || 0,
+      ownedViews:page?.querySelectorAll(':scope > .runtime-owned-model-evidence').length || 0,
+      legacyBodies:page?.querySelectorAll(':scope > .model-runtime-body').length || 0,
+      fairnessTables:page?.querySelectorAll('.runtime-audit-table').length || 0,
+      featureSchemas:page?.querySelectorAll('.runtime-feature-schema').length || 0,
       confidence:page?.querySelectorAll('.runtime-audit-card .overall-ai-confidence').length || 0,
       loading:/loading model evidence/i.test(page?.innerText || ''),
     };
-  })()`), value => value?.modelBodies === 1 && value.fairnessTables === 1 && value.featureSchemas === 1 && value.confidence === 1 && !value.loading);
-  await devtools.evaluate("window.selectDataLayer?.('model')");
+  })()`), value => value?.ownedViews === 1 && value?.legacyBodies === 0 && value?.fairnessTables === 1 && value?.featureSchemas === 1 && value?.confidence === 1 && !value?.loading);
   const evidence = await waitFor('training evidence charts', () => devtools.evaluate(`(() => {const panel=document.getElementById('runtime-training-evidence');return panel?{text:panel.innerText,charts:panel.querySelectorAll('svg').length,lines:panel.querySelectorAll('polyline').length}:null;})()`), value => value?.charts === 2 && value.lines === 4);
   assert(/Ensemble accuracy/i.test(evidence.text) && /Model Accuracy/i.test(evidence.text) && /Model Loss/i.test(evidence.text) && /Quality gate\s*Passed/i.test(evidence.text), evidence);
   const staleLoading = await devtools.evaluate("/loading model evidence/i.test(document.getElementById('page-model-evidence')?.innerText || '')");
@@ -275,38 +287,40 @@ async function validateModelEvidence(devtools) {
   const evidenceOwnership = await devtools.evaluate(`(() => {
     const owner=document.getElementById('page-model-evidence');
     const panels=[...document.querySelectorAll('#runtime-training-evidence')];
-    return {count:panels.length, ownerOnly:panels.length===1 && panels[0].parentElement===owner, leakedPages:panels.filter(panel=>panel.parentElement!==owner).map(panel=>panel.parentElement?.id||'detached')};
+    return {count:panels.length, ownerOnly:panels.length===1 && owner.contains(panels[0]), leakedPages:panels.filter(panel=>!owner.contains(panel)).map(panel=>panel.parentElement?.id||'detached')};
   })()`);
   assert(evidenceOwnership.ownerOnly && !evidenceOwnership.leakedPages.length, evidenceOwnership);
   const singleModelSections = await devtools.evaluate(`(() => {
     const page=document.getElementById('page-model-evidence');
     return {
-      fairnessTables:page?.querySelectorAll('.model-runtime-body .runtime-audit-table').length || 0,
-      featureSchemas:page?.querySelectorAll('.model-runtime-body .runtime-feature-schema').length || 0,
-      modelBodies:page?.querySelectorAll(':scope > .model-runtime-body').length || 0,
+      fairnessTables:page?.querySelectorAll('.runtime-audit-table').length || 0,
+      featureSchemas:page?.querySelectorAll('.runtime-feature-schema').length || 0,
+      ownedViews:page?.querySelectorAll(':scope > .runtime-owned-model-evidence').length || 0,
+      legacyBodies:page?.querySelectorAll(':scope > .model-runtime-body').length || 0,
       confidence:page?.querySelectorAll('.runtime-audit-card .overall-ai-confidence').length || 0,
     };
   })()`);
   assert(
       singleModelSections.fairnessTables === 1 &&
       singleModelSections.featureSchemas === 1 &&
-      singleModelSections.modelBodies === 1 &&
+      singleModelSections.ownedViews === 1 && singleModelSections.legacyBodies === 0 &&
       singleModelSections.confidence === 1,
     singleModelSections,
   );
   await devtools.evaluate("Promise.all([window.renderEvidence?.(), window.renderDatasetEvidence?.(), window.renderEvidence?.()])");
   await new Promise(resolve => setTimeout(resolve, 1200));
   const legacyAuditLeak = await devtools.evaluate(`(() => {
-    const body=document.querySelector('#page-model-evidence > .model-runtime-body');
+    const page=document.getElementById('page-model-evidence');
     return {
-      ready:body?.dataset.runtimeAuditReady || '',
-      legacyFairness:body?.querySelectorAll('.fairness-table,#fairness-runtime-rows').length || 0,
-      legacySchema:body?.querySelectorAll('.feature-groups:not(.runtime-feature-schema)').length || 0,
-      runtimeFairness:body?.querySelectorAll('.runtime-audit-card .runtime-audit-table').length || 0,
-      runtimeSchema:body?.querySelectorAll('.runtime-schema-card .runtime-feature-schema').length || 0,
+      ownedViews:page?.querySelectorAll(':scope > .runtime-owned-model-evidence').length || 0,
+      legacyBodies:page?.querySelectorAll(':scope > .model-runtime-body').length || 0,
+      legacyFairness:page?.querySelectorAll('.fairness-table,#fairness-runtime-rows').length || 0,
+      legacySchema:page?.querySelectorAll('.feature-groups:not(.runtime-feature-schema)').length || 0,
+      runtimeFairness:page?.querySelectorAll('.runtime-audit-card .runtime-audit-table').length || 0,
+      runtimeSchema:page?.querySelectorAll('.runtime-schema-card .runtime-feature-schema').length || 0,
     };
   })()`);
-  assert(legacyAuditLeak.ready === 'true' && legacyAuditLeak.legacyFairness === 0 && legacyAuditLeak.legacySchema === 0 && legacyAuditLeak.runtimeFairness === 1 && legacyAuditLeak.runtimeSchema === 1, legacyAuditLeak);
+  assert(legacyAuditLeak.ownedViews === 1 && legacyAuditLeak.legacyBodies === 0 && legacyAuditLeak.legacyFairness === 0 && legacyAuditLeak.legacySchema === 0 && legacyAuditLeak.runtimeFairness === 1 && legacyAuditLeak.runtimeSchema === 1, legacyAuditLeak);
   console.log('PASS real per-dataset accuracy/loss evidence rendered', {charts:evidence.charts, lines:evidence.lines});
   console.log('PASS ML evidence is mounted exclusively in Model SHAP', evidenceOwnership);
   console.log('PASS Model SHAP contains one fairness audit and one feature schema', singleModelSections);
@@ -445,32 +459,35 @@ async function main() {
   await screenshot(devtools, 'admin-model-evidence.png');
   const stableAudit = await waitFor('visible stabilized fairness audit', () => devtools.evaluate(`(() => {
     const page=document.getElementById('page-model-evidence');
-    const body=page?.querySelector(':scope > .model-runtime-body');
-    const card=body?.querySelector('.runtime-audit-card');
-    return card && body ? {
+    const owned=page?.querySelector(':scope > .runtime-owned-model-evidence');
+    const card=owned?.querySelector('.runtime-audit-card');
+    return card && owned ? {
       confidence:card.querySelector('.overall-ai-confidence')?.innerText || '',
       note:card.querySelector('.runtime-audit-note')?.innerText || '',
       legacyRows:card.querySelectorAll('#fairness-runtime-rows').length,
       tableRows:card.querySelectorAll('.runtime-audit-table tbody tr').length,
-      ready:body.dataset.runtimeAuditReady || '',
-      legacyAuditTables:body.querySelectorAll('.fairness-table').length,
-      legacySchemas:body.querySelectorAll('.feature-groups:not(.runtime-feature-schema)').length,
+      ownedViews:page.querySelectorAll(':scope > .runtime-owned-model-evidence').length,
+      legacyBodies:page.querySelectorAll(':scope > .model-runtime-body').length,
+      legacyAuditTables:owned.querySelectorAll('.fairness-table').length,
+      legacySchemas:owned.querySelectorAll('.feature-groups:not(.runtime-feature-schema)').length,
     } : null;
-  })()`), value => /Overall AI confidence/i.test(value?.confidence || '') && /Ratios near 1\.000/i.test(value?.note || '') && value?.legacyRows === 0 && value?.tableRows > 0 && value?.ready === 'true' && value?.legacyAuditTables === 0 && value?.legacySchemas === 0);
+  })()`), value => /Overall AI confidence/i.test(value?.confidence || '') && /Ratios near 1\.000/i.test(value?.note || '') && value?.legacyRows === 0 && value?.tableRows > 0 && value?.ownedViews === 1 && value?.legacyBodies === 0 && value?.legacyAuditTables === 0 && value?.legacySchemas === 0);
   await new Promise(resolve => setTimeout(resolve, 3500));
   const auditStillStable = await devtools.evaluate(`(() => {
-    const body=document.querySelector('#page-model-evidence > .model-runtime-body');
+    const page=document.getElementById('page-model-evidence');
+    const owned=page?.querySelector(':scope > .runtime-owned-model-evidence');
     return {
-      ready:body?.dataset.runtimeAuditReady || '',
-      audits:body?.querySelectorAll('.runtime-audit-card').length || 0,
-      schemas:body?.querySelectorAll('.runtime-schema-card').length || 0,
-      legacyAuditTables:body?.querySelectorAll('.fairness-table').length || 0,
-      legacySchemas:body?.querySelectorAll('.feature-groups:not(.runtime-feature-schema)').length || 0,
-      visible:body ? getComputedStyle(body).display !== 'none' : false,
+      ownedViews:page?.querySelectorAll(':scope > .runtime-owned-model-evidence').length || 0,
+      legacyBodies:page?.querySelectorAll(':scope > .model-runtime-body').length || 0,
+      audits:owned?.querySelectorAll('.runtime-audit-card').length || 0,
+      schemas:owned?.querySelectorAll('.runtime-schema-card').length || 0,
+      legacyAuditTables:owned?.querySelectorAll('.fairness-table').length || 0,
+      legacySchemas:owned?.querySelectorAll('.feature-groups:not(.runtime-feature-schema)').length || 0,
+      visible:owned ? getComputedStyle(owned).display !== 'none' : false,
     };
   })()`);
   assert(
-    auditStillStable.ready === 'true' && auditStillStable.audits === 1 &&
+    auditStillStable.ownedViews === 1 && auditStillStable.legacyBodies === 0 && auditStillStable.audits === 1 &&
       auditStillStable.schemas === 1 && auditStillStable.legacyAuditTables === 0 &&
       auditStillStable.legacySchemas === 0 && auditStillStable.visible,
     {stableAudit, auditStillStable},
