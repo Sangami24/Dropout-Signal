@@ -1,0 +1,20 @@
+{
+  "bronze": {
+    "description": "Immutable source upload retained for lineage and audit; no model scores are applied.",
+    "model_role": "Raw model input record."
+  },
+  "silver": {
+    "description": "Validated and derived feature layer used by all four candidate models.",
+    "model_role": "Shared feature schema for Logistic Regression, XGBoost, Random Forest, and HistGradientBoosting."
+  },
+  "gold": {
+    "description": "Operational scored cohort with individual probabilities, model provenance, and a validation-weighted ensemble score.",
+    "model_role": "4-Model Validation",
+    "ensemble_weights": {
+      "Logistic Regression": 0.1,
+      "XGBoost": 0.3,
+      "Random Forest": 0.2,
+      "HistGradientBoosting": 0.4
+    }
+  }
+}

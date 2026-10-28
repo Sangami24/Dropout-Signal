@@ -1,0 +1,255 @@
+{
+  "run_id": "20261018T180707Z-comprehensive-student-academic-dataset-275adf10",
+  "dataset_name": "comprehensive_student_academic_dataset.csv",
+  "source_file_name": "comprehensive_student_academic_dataset.csv",
+  "source_label": "comprehensive_student_academic_dataset",
+  "created_at": "2026-10-18T18:07:08.949100+00:00",
+  "dataset_sha256": "275adf103a3b2d6af315541b6b7afec412ee7b102226f69018d298406de3a971",
+  "record_count": 4424,
+  "feature_count": 43,
+  "target_column": "Target",
+  "dropout_count": 1421,
+  "dropout_rate": 0.3212,
+  "tier_breakdown": [
+    {
+      "final_risk_tier": "HIGH",
+      "cnt": 1103
+    },
+    {
+      "final_risk_tier": "MEDIUM",
+      "cnt": 331
+    },
+    {
+      "final_risk_tier": "LOW",
+      "cnt": 2990
+    }
+  ],
+  "predicted_dropouts": 1404,
+  "champion_model": "4-Model Validation",
+  "ensemble": {
+    "strategy": "Validation-optimised mean probability across all four models",
+    "selection_rationale": "Weights and decision threshold are selected on the validation partition, then reported on a separate untouched test partition.",
+    "weights": {
+      "Logistic Regression": 0.1,
+      "XGBoost": 0.3,
+      "Random Forest": 0.2,
+      "HistGradientBoosting": 0.4
+    },
+    "metrics": {
+      "accuracy": 0.8916,
+      "precision": 0.831,
+      "recall": 0.831,
+      "f1_score": 0.831,
+      "auc_roc": 0.9461,
+      "decision_threshold": 0.42
+    },
+    "validation_metrics": {
+      "accuracy": 0.8991,
+      "precision": 0.8551,
+      "recall": 0.8271,
+      "f1_score": 0.8409,
+      "auc_roc": 0.939,
+      "decision_threshold": 0.42
+    },
+    "decision_threshold": 0.42,
+    "quality_gate": {
+      "minimum_accuracy": 0.88,
+      "must_beat_every_individual_model": true,
+      "passed": true
+    },
+    "shap_explanation_model": "XGBoost component; its tree SHAP values supply the per-student feature evidence."
+  },
+  "training_history": {
+    "model": "XGBoost component",
+    "x_axis": "boosting round",
+    "note": "Measured during training on this uploaded dataset; validation data is never used to fit a tree.",
+    "points": [
+      {
+        "epoch": 1,
+        "train_accuracy": 0.6789,
+        "validation_accuracy": 0.6777,
+        "train_loss": 0.5678,
+        "validation_loss": 0.5697
+      },
+      {
+        "epoch": 14,
+        "train_accuracy": 0.8902,
+        "validation_accuracy": 0.8705,
+        "train_loss": 0.3261,
+        "validation_loss": 0.3385
+      },
+      {
+        "epoch": 27,
+        "train_accuracy": 0.8999,
+        "validation_accuracy": 0.8795,
+        "train_loss": 0.2776,
+        "validation_loss": 0.3054
+      },
+      {
+        "epoch": 40,
+        "train_accuracy": 0.9067,
+        "validation_accuracy": 0.8795,
+        "train_loss": 0.2522,
+        "validation_loss": 0.2961
+      },
+      {
+        "epoch": 53,
+        "train_accuracy": 0.9118,
+        "validation_accuracy": 0.8855,
+        "train_loss": 0.2343,
+        "validation_loss": 0.2971
+      },
+      {
+        "epoch": 67,
+        "train_accuracy": 0.9209,
+        "validation_accuracy": 0.887,
+        "train_loss": 0.2175,
+        "validation_loss": 0.297
+      },
+      {
+        "epoch": 80,
+        "train_accuracy": 0.9276,
+        "validation_accuracy": 0.887,
+        "train_loss": 0.2024,
+        "validation_loss": 0.2969
+      },
+      {
+        "epoch": 93,
+        "train_accuracy": 0.9322,
+        "validation_accuracy": 0.8886,
+        "train_loss": 0.1869,
+        "validation_loss": 0.2967
+      },
+      {
+        "epoch": 106,
+        "train_accuracy": 0.9357,
+        "validation_accuracy": 0.884,
+        "train_loss": 0.176,
+        "validation_loss": 0.2957
+      },
+      {
+        "epoch": 120,
+        "train_accuracy": 0.939,
+        "validation_accuracy": 0.8795,
+        "train_loss": 0.1654,
+        "validation_loss": 0.2962
+      }
+    ]
+  },
+  "pipeline_layers": {
+    "Bronze": "Raw, immutable uploaded records for lineage and audit.",
+    "Silver": "Validated inputs plus derived features consumed by every candidate model.",
+    "Gold": "Per-student four-model probabilities, ensemble score, tier, and intervention action."
+  },
+  "models": {
+    "Logistic Regression": {
+      "description": "Transparent linear baseline that calibrates broad risk patterns.",
+      "parameters": {
+        "C": 1.0,
+        "penalty": "l2",
+        "max_iter": 400,
+        "solver": "lbfgs"
+      },
+      "metrics": {
+        "accuracy": 0.887,
+        "precision": 0.871,
+        "recall": 0.7606,
+        "f1_score": 0.812,
+        "auc_roc": 0.9373,
+        "decision_threshold": 0.5
+      },
+      "ensemble_weight": 0.1
+    },
+    "XGBoost": {
+      "description": "Gradient-boosted trees for non-linear academic, engagement, and financial signals.",
+      "parameters": {
+        "n_estimators": 120,
+        "max_depth": 4,
+        "learning_rate": 0.12,
+        "subsample": 0.85,
+        "colsample_bytree": 0.85,
+        "tree_method": "hist",
+        "n_jobs": 1
+      },
+      "metrics": {
+        "accuracy": 0.881,
+        "precision": 0.8384,
+        "recall": 0.7793,
+        "f1_score": 0.8078,
+        "auc_roc": 0.9414,
+        "decision_threshold": 0.5
+      },
+      "ensemble_weight": 0.3
+    },
+    "Random Forest": {
+      "description": "Bagged decision trees that reduce variance across diverse student profiles.",
+      "parameters": {
+        "n_estimators": 240,
+        "max_depth": 12,
+        "min_samples_leaf": 3,
+        "class_weight": "balanced",
+        "n_jobs": 1
+      },
+      "metrics": {
+        "accuracy": 0.8765,
+        "precision": 0.7835,
+        "recall": 0.8498,
+        "f1_score": 0.8153,
+        "auc_roc": 0.9411,
+        "decision_threshold": 0.5
+      },
+      "ensemble_weight": 0.2
+    },
+    "HistGradientBoosting": {
+      "description": "Histogram-based gradient boosting for efficient, smooth non-linear scoring.",
+      "parameters": {
+        "max_iter": 180,
+        "learning_rate": 0.08,
+        "max_leaf_nodes": 20,
+        "l2_regularization": 0.1
+      },
+      "metrics": {
+        "accuracy": 0.881,
+        "precision": 0.849,
+        "recall": 0.7653,
+        "f1_score": 0.8049,
+        "auc_roc": 0.9455,
+        "decision_threshold": 0.5
+      },
+      "ensemble_weight": 0.4
+    },
+    "4-Model Validation": {
+      "description": "Validation-optimised blend of all four models, accepted only after passing the untouched-test quality gate.",
+      "parameters": {
+        "weighting": "simplex search on validation accuracy/F1/AUC",
+        "decision_threshold": 0.42
+      },
+      "metrics": {
+        "accuracy": 0.8916,
+        "precision": 0.831,
+        "recall": 0.831,
+        "f1_score": 0.831,
+        "auc_roc": 0.9461,
+        "decision_threshold": 0.42
+      },
+      "ensemble_weight": 1.0
+    }
+  },
+  "files": {
+    "bronze": "bronze_raw.csv",
+    "silver": "silver_features.csv",
+    "gold": "gold_scored_students.csv",
+    "global_shap": "shap_global_importance.csv",
+    "fairness": "fairness_audit.csv",
+    "model_comparison": "model_comparison.csv",
+    "layer_manifest": "layer_manifest.json",
+    "logistic_model": "logistic_regression.joblib",
+    "xgboost_model": "xgboost_model.joblib",
+    "random_forest_model": "random_forest_model.joblib",
+    "hist_gradient_boosting_model": "hist_gradient_boosting_model.joblib"
+  },
+  "mlflow": {
+    "skipped": true,
+    "reason": "MLflow disabled on Render to conserve RAM."
+  }
+}

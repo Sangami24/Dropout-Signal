@@ -1,6 +1,15 @@
 # Ignore Markdown and PDF files
 *.md
 !README.md
+!docs/**/*.md
+!frontend/**/*.md
+!backend/**/*.md
+!data/**/*.md
+!notebooks/**/*.md
+!scripts/**/*.md
+!tests/**/*.md
+!archive/**/*.md
+!artifacts/**/*.md
 *.pdf
 
 # Ignore Floramind related files
@@ -24,3 +33,4 @@ _temp_pages/
 *.html
 runtime_data/
 .matplotlib_cache/
+var/
