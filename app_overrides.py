@@ -116,6 +116,17 @@ LIVE_UI_SCRIPT = r'''
 <script>
 (() => {
   const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
+  // A browser reload starts a deliberately fresh dashboard session. Role
+  // switching is a normal navigation (not a reload), so the same uploaded
+  // cohort remains available when a counselor signs into the admin view.
+  const navigation = performance.getEntriesByType?.('navigation')?.[0];
+  const isBrowserReload = navigation?.type === 'reload' || (performance.navigation && performance.navigation.type === 1);
+  window.__dropoutSignalRefreshReset = isBrowserReload
+    ? Promise.all([
+        fetch('/api/dataset/reset', {method:'POST', headers:{'X-Dataset-Reset':'explicit'}, cache:'no-store'}),
+        fetch('/api/reset', {method:'POST', headers:{'X-Operations-Reset':'explicit'}, cache:'no-store'}),
+      ]).catch(() => [])
+    : Promise.resolve([]);
   const transcriptMarkup = events => events.map(event => {
     const student = event.side === 'student';
     return `<article class="dataset-message ${student ? 'student' : 'asha'}"><span>${escapeHtml(event.speaker)}</span><p>${escapeHtml(event.text)}</p></article>`;
@@ -726,7 +737,8 @@ FINAL_UI_SCRIPT = r'''
   .student-summary-facts div { min-width:0; padding:10px; border:1px solid var(--border); border-radius:8px; background:var(--bg); }
   .student-summary-facts span { display:block; margin-bottom:4px; color:var(--text3); font:9px var(--mono); letter-spacing:.07em; text-transform:uppercase; }
   .student-summary-facts strong { display:block; color:var(--text); font-size:12px; overflow-wrap:anywhere; }
-  #summary-students,#admin-summary-grid { display:grid!important; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; align-items:stretch; }
+  /* The AI Summary is an auditable roster, not a sample card wall. */
+  #summary-students,#admin-summary-grid { display:grid!important; grid-template-columns:1fr; gap:8px; align-items:stretch; }
   .summary-person { position:relative; display:flex; align-items:center; min-width:0; min-height:66px; padding:14px 16px 14px 20px; overflow:hidden; border:1px solid #3a3a48!important; border-radius:10px; background:linear-gradient(145deg,rgba(255,255,255,.035),rgba(255,255,255,.012)); box-shadow:0 5px 18px rgba(0,0,0,.16); cursor:pointer; transition:border-color .16s ease,transform .16s ease,box-shadow .16s ease; }
   .summary-person::before { content:""; position:absolute; inset:0 auto 0 0; width:4px; background:linear-gradient(180deg,var(--red),var(--purple)); }
   .summary-person h3 { min-width:0; color:var(--text); font-size:13px; line-height:1.35; overflow-wrap:anywhere; }
@@ -760,6 +772,7 @@ FINAL_UI_SCRIPT = r'''
   const notify = (message, tone) => { if (typeof window.toast === 'function') window.toast(message, tone); };
   let operationalSignature = '';
   let operationsRequest = 0;
+  let datasetSummaryRequest = 0;
   let operationsInFlight = false;
   let fairnessRequest = 0;
   let predictionRequest = 0;
@@ -1048,7 +1061,6 @@ FINAL_UI_SCRIPT = r'''
       if (isActive(a) !== isActive(b)) return isActive(a) ? -1 : 1;
       return String(b.started_at || '').localeCompare(String(a.started_at || ''));
     });
-    renderUnifiedSummaryCards(items);
     const calledStudent = items.find(item => String(item.student_id || '') === String(activeCallStudentId || ''));
     const calledStudentResultReady = calledStudent && String(calledStudent.call_status || '').toLowerCase() === 'completed' && Number.isFinite(Number(calledStudent.ai_confidence));
     const calledStudentWhatsAppReady = calledStudentResultReady && String(calledStudent.whatsapp_status || '').toLowerCase() === 'active' && calledStudent.whatsapp?.length;
@@ -1251,6 +1263,7 @@ FINAL_UI_SCRIPT = r'''
     });
     const activeCalls = items.filter(item => item.call?.length && !['completed', 'failed', 'canceled', 'interrupted'].includes(String(effectiveChannelStatus(item, 'call') || '').toLowerCase())).length;
     [['ts-count', `${activeCalls} active`], ['admin-ts-count', `${activeCalls} active`], ['wa-count-badge', `${items.filter(i => i.whatsapp.length).length} conversations`], ['admin-wa-badge', `${items.filter(i => i.whatsapp.length).length} conversations`]].forEach(([id, value]) => { const node = document.getElementById(id); if (node) node.textContent = value; });
+    return items;
   }
 
   async function refreshOperations() {
@@ -1268,11 +1281,48 @@ FINAL_UI_SCRIPT = r'''
         fetch('/api/dataset/experience', { cache: 'no-store' }).then(response => response.ok ? response.json() : { conversations: [] }),
       ]);
       if (requestId !== operationsRequest) return;
-      renderOperations(calls, whatsapp, experience);
+      const operationalItems = renderOperations(calls, whatsapp, experience) || [];
+      await refreshDatasetSummaries(operationalItems);
     } catch (error) {
       console.error('Live transcript refresh failed', error);
     } finally {
       operationsInFlight = false;
+    }
+  }
+
+  function datasetBackedSummary(student) {
+    const tier = String(student.final_risk_tier || 'MEDIUM').toUpperCase();
+    const factor = String(student.primary_root_cause || student.top_factor_1 || 'the model evidence').replaceAll('_', ' ');
+    const action = student.final_action || 'Schedule counselor follow-up';
+    return {
+      ...student,
+      tier,
+      dropout_intent: tier,
+      academic_profile: student,
+      factor,
+      action,
+      summary: `${tier} model-priority review. The leading scored signal is ${factor}; recommended action: ${action}.`,
+    };
+  }
+
+  async function refreshDatasetSummaries(operationalItems = []) {
+    const requestId = ++datasetSummaryRequest;
+    try {
+      const response = await fetch('/api/students?limit=6000&at_risk=1', {cache:'no-store'});
+      const payload = response.ok ? await response.json() : {students: []};
+      if (requestId !== datasetSummaryRequest) return;
+      const operationalById = new Map((operationalItems || []).map(item => [String(item.student_id || ''), item]));
+      const roster = (payload.students || [])
+        .filter(student => ['HIGH', 'MEDIUM'].includes(String(student.final_risk_tier || '').toUpperCase()))
+        .map(student => ({...datasetBackedSummary(student), ...(operationalById.get(String(student.student_id || '')) || {})}));
+      // Calls or WhatsApp records can exist after a dataset was reset; retain
+      // those live records without manufacturing any sample conversations.
+      (operationalItems || []).forEach(item => {
+        if (!roster.some(entry => String(entry.student_id || '') === String(item.student_id || ''))) roster.push(item);
+      });
+      renderUnifiedSummaryCards(roster);
+    } catch (_) {
+      renderUnifiedSummaryCards(operationalItems || []);
     }
   }
 
@@ -1521,18 +1571,17 @@ FINAL_UI_SCRIPT = r'''
     const input = document.getElementById(admin ? 'admin-risk-search' : 'risk-search');
     const query = String(input?.value || '').trim().toLowerCase();
     try {
-      // The full cohort can contain thousands of records.  The directory only
-      // renders 100 rows, so fetch that useful page while taking the accurate
-      // risk total from the lightweight shared dataset status.
+      // Keep the roster complete: counselors can search every high- and
+      // medium-risk student, not just a preview page.
       const [payload, status] = await Promise.all([
-        fetch('/api/students?limit=160&at_risk=1', {cache: 'no-store'}).then(r => r.json()),
+        fetch('/api/students?limit=6000&at_risk=1', {cache: 'no-store'}).then(r => r.json()),
         fetch('/api/dataset/status', {cache: 'no-store'}).then(r => r.json()),
       ]);
       const records = (payload.students || []).filter(student => ['HIGH', 'MEDIUM'].includes(String(student.final_risk_tier || '').toUpperCase())).filter(student => !query || `${student.student_name || ''} ${student.student_id || ''} ${student.top_factor_1 || ''}`.toLowerCase().includes(query));
       const tiers = Object.fromEntries((status.tier_breakdown || []).map(row => [String(row.final_risk_tier || '').toUpperCase(), Number(row.cnt || 0)]));
       const total = (tiers.HIGH || 0) + (tiers.MEDIUM || 0);
       const badge = document.getElementById(admin ? 'admin-risk-badge' : 'risk-count-badge'); if (badge) badge.textContent = `${total.toLocaleString()} students`;
-      tbody.innerHTML = records.length ? records.slice(0, 100).map(student => `<tr><td><strong>${escapeHtml(student.student_name || 'Student')}</strong> <span class="mono" style="color:var(--text3)">(${escapeHtml(student.student_id || '')})</span></td><td><span class="mono">${Number(student.ml_risk_score || 0).toFixed(3)}</span></td><td><span class="tag ${String(student.final_risk_tier).toUpperCase() === 'HIGH' ? 'tag-t1' : 'tag-t2'}">${escapeHtml(student.final_risk_tier || 'MEDIUM')}</span></td><td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(student.primary_root_cause || student.top_factor_1 || 'Engagement review')}</td><td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(student.final_action || 'Schedule counselor follow-up')}</td><td></td></tr>`).join('') : '<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text3)">No at-risk students found</td></tr>';
+      tbody.innerHTML = records.length ? records.map(student => `<tr><td><strong>${escapeHtml(student.student_name || 'Student')}</strong> <span class="mono" style="color:var(--text3)">(${escapeHtml(student.student_id || '')})</span></td><td><span class="mono">${Number(student.ml_risk_score || 0).toFixed(3)}</span></td><td><span class="tag ${String(student.final_risk_tier).toUpperCase() === 'HIGH' ? 'tag-t1' : 'tag-t2'}">${escapeHtml(student.final_risk_tier || 'MEDIUM')}</span></td><td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(student.primary_root_cause || student.top_factor_1 || 'Engagement review')}</td><td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(student.final_action || 'Schedule counselor follow-up')}</td><td></td></tr>`).join('') : '<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text3)">No at-risk students found</td></tr>';
     } catch (_) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--red)">Unable to load students.</td></tr>'; }
   }
 
@@ -2791,20 +2840,8 @@ def install(app, namespace):
                 by_student[str(target["student_id"])] = target
             target["student_name"] = student_name
             target["whatsapp"] = messages
-        # Keep the operational views populated for a walkthrough, but make
-        # these explicitly separate sample records. They never replace a
-        # webhook-backed selected-student call.
-        if payload.get("dataset_loaded"):
-            real_ids = {str(item.get("student_id")) for item in real_calls}
-            for index, student in enumerate(namespace["_dataset_records"](limit=14)):
-                if str(student.get("student_id")) in real_ids:
-                    continue
-                sample = namespace["_experience_conversation"](student, index)
-                sample = _complete_sample_call_fields(sample, index)
-                sample["is_sample"] = True
-                sample["status"] = "active" if index < 7 else "completed"
-                sample["student_name"] = student.get("student_name") or "Student"
-                real_calls.append(sample)
+        # A scored dataset is not a call transcript or a WhatsApp chat. Only
+        # records created by a real call or WhatsApp event appear here.
         active_states = {"active", "ringing", "in-progress", "in_progress"}
         payload["conversations"] = sorted(
             real_calls,

@@ -97,10 +97,10 @@ WHATSAPP_REPLY_DELAY_SECONDS = 2.0
 # after each question. They are hints only: they do not replace what a student
 # says or fabricate a transcript.
 QUESTION_SPEECH_HINTS = [
-    "this semester, has been going, going well, going badly, classes, stressful, workload",
-    "college life, challenging, workload, financial pressure, time management, attendance",
-    "coursework, computer networks, tutoring, study group, office hours, assignments",
-    "college experience, timetable, fees, support, classes, campus",
+    "this semester, has been going, very good, pretty bad, going well, going badly, classes, stressful, workload",
+    "college life, challenging, workload, financial pressure, time management, attendance, travel time, commute",
+    "coursework, computer networks, network management, pathology, hands-on experience, tutoring, study group, office hours, assignments, projects",
+    "college experience, timetable, fees, support, classes, campus, catch up, cope up",
     "next semester, internship, courses, graduation, looking forward",
 ]
 
@@ -378,11 +378,28 @@ def _live_voice_assessment(session):
         "good", "great", "manageable", "confident", "excited", "enjoy", "doing well", "no problem", "continue", "graduate",
         "अच्छा", "ठीक", "उत्साहित", "जारी", "ಸಂತೋಷ", "ಚೆನ್ನಾಗಿದೆ", "ನಿರ್ವಹಿಸಬಹುದು", "ಮುಂದುವರ", "ಉತ್ಸುಕ",
     )
+    # Add common, concrete academic-barrier phrases to the multilingual base
+    # vocabulary. The source text is still retained verbatim in the record.
+    risk_terms += (
+        "going bad", "pretty bad", "going poorly", "not able", "unable", "can't complete", "cannot complete", "behind", "catch up",
+        "too much time", "overwhelmed", "not sure", "everything is hard", "financial pressure", "scholarship", "travel", "commute",
+    )
     risk_hits = sum(text.count(term) for term in risk_terms + multilingual_risk_terms)
     protective_hits = sum(text.count(term) for term in protective_terms + multilingual_protective_terms)
     explicit_exit = any(term in text for term in ("drop out", "leave college", "quit college", "पढ़ाई छोड़", "कॉलेज छोड़", "ಓದು ಬಿಡ", "ಕಾಲೇಜು ಬಿಡ"))
     evidence = risk_hits - protective_hits
-    voice_probability = 0.5 + 0.38 * math.tanh(evidence / 2.2)
+    voice_probability = 0.5 + 0.42 * math.tanh(evidence / 2.0)
+    severe_academic_pattern = sum(term in text for term in (
+        "going bad", "pretty bad", "going poorly", "not able", "unable", "can't complete", "cannot complete",
+        "behind", "catch up", "too much time", "missed classes", "everything is hard",
+    ))
+    # Several concrete barriers must outweigh a low historic ML estimate. A
+    # caller reporting poor studies, access barriers, and difficulty coping
+    # needs high-priority review even without saying "drop out" verbatim.
+    if severe_academic_pattern >= 3 and risk_hits >= protective_hits + 2:
+        voice_probability = max(voice_probability, 0.82)
+    elif severe_academic_pattern >= 2 and risk_hits >= protective_hits + 1:
+        voice_probability = max(voice_probability, 0.68)
     if explicit_exit:
         voice_probability = max(voice_probability, 0.9)
     if not text.strip():
@@ -395,9 +412,18 @@ def _live_voice_assessment(session):
     # The call must be able to move a student to LOW, MEDIUM, or HIGH based on
     # what they actually say. Academic ML remains useful context, while voice
     # evidence receives the larger share in the post-call fused decision.
-    fused_probability = round((0.2 * ml_probability) + (0.8 * voice_probability), 4)
+    fused_probability = round(max((0.25 * ml_probability) + (0.75 * voice_probability), voice_probability - 0.04), 4)
     tier = "HIGH" if fused_probability >= 0.70 else "MEDIUM" if fused_probability >= 0.40 else "LOW"
     return round(voice_probability, 4), ai_confidence, fused_probability, tier
+
+
+def _fuse_call_probabilities(ml_probability, voice_probability):
+    """Apply the same evidence-first decision policy to every analysis path."""
+    ml_probability = max(0.0, min(1.0, float(ml_probability or 0)))
+    voice_probability = max(0.0, min(1.0, float(voice_probability or 0)))
+    fused = round(max((0.25 * ml_probability) + (0.75 * voice_probability), voice_probability - 0.04), 4)
+    tier = "HIGH" if fused >= 0.70 else "MEDIUM" if fused >= 0.40 else "LOW"
+    return fused, tier
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1587,22 +1613,33 @@ def _store_call_analysis(call_data, result):
                 (item for item in sessions.values() if str(item.get("student_id") or "") == student_id),
                 call_data,
             )
-        voice_probability = max(0.0, min(1.0, float(result.get("voice_dropout_probability", result.get("dropout_probability", 0.5)) or 0.5)))
+        model_voice_probability = max(0.0, min(1.0, float(result.get("voice_dropout_probability", result.get("dropout_probability", 0.5)) or 0.5)))
+        # Provider output is valuable, but it must not erase deterministic
+        # transcript evidence gathered during the call. This also ensures the
+        # score shown in the transcript and the score used for WhatsApp agree.
+        local_voice_probability, local_confidence, _, _ = _live_voice_assessment(canonical_call)
+        voice_probability = max(model_voice_probability, local_voice_probability)
+        result["ai_confidence"] = max(float(result.get("ai_confidence") or 0), local_confidence)
         ml_probability = max(0.0, min(1.0, float(result.get("ml_risk_score", call_data.get("ml_risk_score", 0)) or 0)))
-        fused_probability = round((0.2 * ml_probability) + (0.8 * voice_probability), 4)
-        intent = "HIGH" if fused_probability >= 0.70 else "MEDIUM" if fused_probability >= 0.40 else "LOW"
+        fused_probability, intent = _fuse_call_probabilities(ml_probability, voice_probability)
         result["voice_dropout_probability"] = round(voice_probability, 4)
         result["voice_risk_tier"] = "HIGH" if voice_probability >= 0.70 else "MEDIUM" if voice_probability >= 0.40 else "LOW"
         result["fused_risk_score"] = fused_probability
         result["dropout_probability"] = fused_probability
         result["dropout_intent"] = intent
+        # Prevent the visible prose from contradicting the final, evidence
+        # backed tier when a provider returned an inconsistent label.
+        summary_text = str(result.get("summary") or "").strip()
+        if intent != "LOW" and re.search(r"\blow\s+(dropout\s+)?risk\b", summary_text, flags=re.I):
+            summary_text = re.sub(r"\blow\s+(dropout\s+)?risk\b", f"{intent.lower()} dropout risk", summary_text, flags=re.I)
+        result["summary"] = summary_text or "Completed call analyzed for counselor follow-up."
         analyzed_results[:] = [
             item for item in analyzed_results
             if str(item.get("student_id") or "") != student_id
         ]
         analyzed_results.append(result)
         intent = str(result.get("dropout_intent") or "LOW").upper()
-        call_summary = str(result.get("summary") or "Completed call analyzed for counselor follow-up.")
+        call_summary = result["summary"]
         result["call_only_summary"] = call_summary
         canonical_call["call_only_summary"] = call_summary
         canonical_call["summary"] = call_summary
@@ -1805,6 +1842,8 @@ IMPORTANT RULES:
 - A student who is hesitant, mentions leaving, can't describe future plans = HIGH intent.
 - Financial stress plus a request for aid or planning support = likely financial root cause.
 - Academic struggles + low engagement = likely academic root cause.
+- Repeated concrete barriers (for example studies going badly, inability to complete work, missed or hard-to-reach classes, and uncertainty about coping) are HIGH intent when they appear together, even if no explicit dropout phrase is used.
+- Do not label the summary LOW when the returned structured assessment identifies moderate or high concern.
 - If responses are ambiguous, set ai_confidence lower (0.3-0.5).
 - "[no response]" answers should lower confidence, not assume the worst.
 - dropout_probability should reflect the VOICE data alone, not the ML score."""
