@@ -927,6 +927,7 @@ def train_and_score(source_path: str | Path, activate: bool = True, source_label
     gold.to_csv(gold_path, index=False)
     global_shap.to_csv(run_dir / "shap_global_importance.csv", index=False)
     pd.DataFrame(fairness).to_csv(run_dir / "fairness_audit.csv", index=False)
+    _report_training_progress("Persisting scored cohort and fairness evidence...", 92)
     pd.DataFrame([
         {
             "model": name,
@@ -966,6 +967,7 @@ def train_and_score(source_path: str | Path, activate: bool = True, source_label
     joblib.dump(xgb, run_dir / "xgboost_model.joblib")
     joblib.dump(random_forest, run_dir / "random_forest_model.joblib")
     joblib.dump(hist_gradient_boosting, run_dir / "hist_gradient_boosting_model.joblib")
+    _report_training_progress("Writing trained model artifacts...", 93)
 
     tiers = gold["final_risk_tier"].value_counts().reindex(["HIGH", "MEDIUM", "LOW"], fill_value=0)
     dataset_display_name = source_label or Path(source_path).name
@@ -1044,6 +1046,7 @@ def train_and_score(source_path: str | Path, activate: bool = True, source_label
         # example /tmp on a hosted service).  Storing a path relative to ROOT
         # made a successfully trained run unreadable on the next request.
         _write_json(ACTIVE_RUN_FILE, {"run_id": run_id, "run_dir": str(run_dir.relative_to(RUNTIME_DIR))})
+    _report_training_progress("Active scored cohort confirmed.", 99)
     return metadata
 
 

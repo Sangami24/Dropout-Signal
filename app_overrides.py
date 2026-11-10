@@ -18,6 +18,7 @@ from io import BytesIO
 from pathlib import Path
 
 from flask import Response, jsonify, request
+from werkzeug.datastructures import FileStorage
 
 import ml_pipeline
 from ml_pipeline import active_metadata, active_records, restore_latest_run
@@ -286,9 +287,9 @@ LIVE_UI_SCRIPT = r'''
   //  UPLOAD CONTROLLER — single, race-free implementation
   // ═══════════════════════════════════════════════════════════════════
   const BACKGROUND_UPLOAD_KEY = 'dropout-signal-background-upload';
-  // Upload progress is supplied by real validation/training milestones.  Do
-  // not manufacture 99.9% while work is still running: that was the source
-  // of the apparent "stuck at 99%" completion state.
+  // Backend milestones remain authoritative for completion. Between them the
+  // visual indicator advances gently, so a legitimate long-running artifact
+  // write never looks like a frozen upload at 88%, 91%, or 96%.
   let _pollTimer = null;
   let _pollGeneration = 0;
   let _pollInFlight = false;
@@ -297,6 +298,7 @@ LIVE_UI_SCRIPT = r'''
   let _resolveUploadVisualCompletion = null;
   let _uploadVisualLastTick = 0;
   const SMOOTH_UPLOAD_PERCENT_PER_SECOND = 1.85;
+  const UPLOAD_HEARTBEAT_PERCENT_PER_SECOND = 0.28;
 
   function setUploadRingProgress(overlay, progress) {
     const ring = overlay?.querySelector('.dataset-progress-ring');
@@ -319,7 +321,7 @@ LIVE_UI_SCRIPT = r'''
     const overlay = document.getElementById('dataset-training-overlay');
     if (!overlay) return Promise.resolve();
     const requestedProgress = Number(job.progress);
-    const targetProgress = job.state === 'complete' ? 100 : Math.min(96, Math.max(0, Number.isFinite(requestedProgress) ? requestedProgress : 0));
+    const targetProgress = job.state === 'complete' ? 100 : Math.min(99.4, Math.max(0, Number.isFinite(requestedProgress) ? requestedProgress : 0));
     overlay.dataset.targetProgress = String(targetProgress);
     overlay.dataset.uploadComplete = job.state === 'complete' ? 'true' : 'false';
     if (_uploadVisualFrame || _uploadVisualCompletion) return _uploadVisualCompletion || Promise.resolve();
@@ -330,10 +332,15 @@ LIVE_UI_SCRIPT = r'''
       const elapsedSeconds = _uploadVisualLastTick ? Math.max(0, (timestamp - _uploadVisualLastTick) / 1000) : 0;
       _uploadVisualLastTick = timestamp;
       const complete = current.dataset.uploadComplete === 'true';
-      const target = complete ? 100 : Number(current.dataset.targetProgress || 0);
+      const serverTarget = complete ? 100 : Number(current.dataset.targetProgress || 0);
+      const ageSeconds = Math.max(0, (Date.now() - Number(current.dataset.uploadStartedAt || Date.now())) / 1000);
+      // A bounded heartbeat keeps the ring moving while the server completes
+      // a real final step, but cannot report 100% before activation succeeds.
+      const heartbeatTarget = Math.min(99.4, 5 + (ageSeconds * UPLOAD_HEARTBEAT_PERCENT_PER_SECOND));
+      const target = complete ? 100 : Math.max(serverTarget, heartbeatTarget);
       const displayed = Number(current.dataset.visualProgress || 0);
-      // Never jump to a backend milestone.  The ring travels at one fixed
-      // rate through every confirmed stage, including the final 100%.
+      // Never jump to a backend milestone. The ring travels at one fixed rate
+      // through every confirmed stage, including the final 100%.
       const progress = displayed >= target ? displayed : Math.min(target, displayed + (SMOOTH_UPLOAD_PERCENT_PER_SECOND * elapsedSeconds));
       setUploadRingProgress(current, progress);
       if (complete && progress >= 99.98) {
@@ -444,6 +451,7 @@ LIVE_UI_SCRIPT = r'''
         if (typeof window.renderDatasetEvidence === 'function') await window.renderDatasetEvidence();
         else if (typeof window.renderEvidence === 'function') await window.renderEvidence();
         await refreshDatasetInsights();
+        window.showModelActivationModal?.(serverJob);
         toast('Dataset trained, scored, and activated.', 'ok');
         return 'complete';
       }
@@ -932,10 +940,10 @@ FINAL_UI_SCRIPT = r'''
     if (content) content.outerHTML = `<div class="student-summary-profile"><div class="student-summary-copy"><b>AI student summary</b><br>${escapeHtml(summary)}</div><div class="student-summary-facts">${[
       ['Student ID', item.student_id],
       ['ML dropout probability', Number.isFinite(Number(item.ml_risk_score)) ? `${(Number(item.ml_risk_score) * 100).toFixed(1)}%` : 'Not scored'],
-      ['Voice risk score', item.voice_risk_score !== undefined ? `${(Number(item.voice_risk_score) * 100).toFixed(1)}%` : 'Pending'],
-      ['AI confidence', item.ai_confidence !== undefined ? `${(Number(item.ai_confidence) * 100).toFixed(1)}%` : 'Pending'],
-      ['Fused final score', item.fused_risk_score !== undefined ? `${(Number(item.fused_risk_score) * 100).toFixed(1)}%` : 'Pending'],
-      ['Call language', item.language_name || 'Pending selection'],
+      ['Voice risk score', item.voice_risk_score !== undefined ? `${(Number(item.voice_risk_score) * 100).toFixed(1)}%` : 'No completed AI call yet'],
+      ['AI confidence', item.ai_confidence !== undefined ? `${(Number(item.ai_confidence) * 100).toFixed(1)}%` : 'Not assessed until a call completes'],
+      ['Fused final score', item.fused_risk_score !== undefined ? `${(Number(item.fused_risk_score) * 100).toFixed(1)}%` : 'ML-only until call verification'],
+      ['Call language', item.language_name || 'No language selected yet'],
       ['Latest marks', profile.latest_marks],
       ['Attendance', profile.attendance_rate],
       ['Course', profile.course],
@@ -992,7 +1000,7 @@ FINAL_UI_SCRIPT = r'''
       const summaryText = channel === 'call' ? (item.call_summary || item.summary) : (item.whatsapp_summary || item.summary);
       const resultTier = String(item.dropout_intent || item.tier || 'MEDIUM').toUpperCase();
       const riskAssessment = resultTier === 'HIGH' ? 'High dropout risk flagged' : resultTier === 'MEDIUM' ? 'Medium dropout risk flagged for precautionary follow-up' : 'Low dropout risk — no immediate follow-up required';
-      const score = value => value === undefined || value === null || value === '' ? 'Pending' : `${(Number(value) * 100).toFixed(1)}%`;
+      const score = value => value === undefined || value === null || value === '' ? 'Awaiting call outcome' : `${(Number(value) * 100).toFixed(1)}%`;
       // Completed walkthrough calls are scored demonstrations too.  Use their
       // tier-derived values only when a historical record has no persisted
       // score, so the UI never shows a completed call with blank metrics.
@@ -1876,6 +1884,19 @@ FINAL_UI_SCRIPT = r'''
     return backdrop;
   }
 
+  window.showModelActivationModal = job => {
+    const status = job?.status || {};
+    const dataset = status.dataset_name || job?.filename || 'Uploaded dataset';
+    const records = Number(status.record_count || status.students_scored || 0);
+    const cohort = records ? ` ${records.toLocaleString()} student records are now active.` : ' The scored student cohort is now active.';
+    return showOperationModal(
+      '4-Model Ensemble Dataset Uploaded',
+      `${dataset} was validated, scored, and activated by the four-model ensemble.${cohort}`,
+      'View Model Evidence',
+      '#page-runtime-model-evidence',
+    );
+  };
+
   async function analyzeCallsWithModal() {
     const modal = showOperationModal('Analyzing completed calls', 'Preparing transcript-specific AI summaries and the WhatsApp follow-up queue…');
     try {
@@ -2337,7 +2358,7 @@ def _background_upload_snapshot(job):
     else:
         # Progress is updated from the pipeline's actual completed stages.
         # Holding at a fake 99.9% made a live job look failed.
-        snapshot["progress"] = min(96.0, max(5.0, float(snapshot.get("progress") or 0.0)))
+        snapshot["progress"] = min(99.0, max(5.0, float(snapshot.get("progress") or 0.0)))
     return snapshot
 
 
@@ -2368,6 +2389,7 @@ def _manual_call_payload():
         "ml_risk_score": float(row.get("ml_risk_score") or 0),
         "risk_tier": profile_value("final_risk_tier", default="MEDIUM").upper(),
         "academic_profile": {
+            "student_name": profile_value("student_name", "Student Name", default="Student"),
             "course": profile_value("course", default="Degree program"),
             "branch": profile_value("branch"),
             "year": profile_value("year"),
@@ -2474,7 +2496,6 @@ def install(app, namespace):
     # not cancel scoring or leave an upload modal frozen in another dashboard.
     upload_rule = next((rule for rule in app.url_map.iter_rules() if rule.rule == "/api/dataset/upload"), None)
     if upload_rule:
-        original_upload = app.view_functions[upload_rule.endpoint]
         cancel_rule = next((rule for rule in app.url_map.iter_rules() if rule.rule == "/api/dataset/cancel"), None)
         original_cancel = app.view_functions[cancel_rule.endpoint] if cancel_rule else None
 
@@ -2508,24 +2529,21 @@ def install(app, namespace):
                         return
                     _update_job(job_id, {
                         "state": "processing",
-                        "progress": min(96.0, max(float(job.get("progress") or 5.0), float(progress))),
+                        "progress": min(99.0, max(float(job.get("progress") or 5.0), float(progress))),
                         "message": message,
                     })
                 try:
                     ml_pipeline.set_training_progress_callback(report_training_progress)
-                    with app.test_request_context(
-                        "/api/dataset/upload",
-                        method="POST",
-                        data={"file": (BytesIO(file_bytes), filename)},
-                        headers={"X-Dataset-Upload-Id": job_id},
-                    ):
-                        response = app.make_response(original_upload())
-                    payload = response.get_json(silent=True) or {}
-                    if response.status_code >= 400:
-                        raise RuntimeError(payload.get("error") or "Dataset analysis failed.")
-                    status = payload.get("status") or {}
-                    if not payload.get("ok") or not status.get("dataset_loaded"):
-                        raise RuntimeError("Dataset processing finished without activating the uploaded cohort.")
+                    stored_upload = FileStorage(stream=BytesIO(file_bytes), filename=filename, content_type="text/csv")
+                    source_path = ml_pipeline.copy_upload(stored_upload)
+                    metadata = ml_pipeline.train_and_score(source_path, activate=True, source_label=filename)
+                    status = {
+                        "dataset_loaded": True,
+                        "dataset_name": metadata.get("dataset_name") or filename,
+                        "record_count": int(metadata.get("record_count") or 0),
+                        "run_id": metadata.get("run_id"),
+                        "champion_model": _visible_model_name(metadata.get("champion_model")),
+                    }
                     # Check cancel before marking complete.
                     job = _get_job(job_id) or {}
                     if job.get("state") == "canceled":
@@ -2758,6 +2776,103 @@ def install(app, namespace):
         if rule.rule == "/whatsapp/demo":
             app.view_functions[rule.endpoint] = voice_server.whatsapp_demo
 
+    def _personalized_sample_conversation(student, index):
+        """Create one varied profile-led sample call and WhatsApp journey.
+
+        Samples exercise the UI, but their questions come from the exact same
+        course, attendance, marks, GPA, backlog, and weakest-subject context
+        supplied to a real call. No sample changes the student's ML result.
+        """
+        def text(*keys, default="Not recorded"):
+            for key in keys:
+                value = student.get(key)
+                if value is None:
+                    value = (student.get("academic_profile") or {}).get(key)
+                candidate = str(value or "").strip()
+                if candidate and candidate.casefold() not in {"nan", "none"}:
+                    return candidate
+            return default
+
+        def number(*keys, default=0.0):
+            try:
+                return float(text(*keys, default=str(default)).replace("%", ""))
+            except (TypeError, ValueError):
+                return float(default)
+
+        name = text("student_name", "Student Name", default="Student")
+        first_name = name.split()[0]
+        course = text("course", "branch", "Department", "Program", default="Degree program")
+        subject = text("lowest_subject", default="the current subject")
+        attendance = number("attendance_rate", "Attendance Percentage")
+        gpa = number("current_gpa", "Semester GPA")
+        mark = number("lowest_subject_marks")
+        backlogs = int(number("backlogs", "Backlogs"))
+        tier = text("final_risk_tier", default="MEDIUM").upper()
+        ml_score = max(0.0, min(1.0, number("ml_risk_score")))
+        language_code, language_name = (("en-IN", "English"), ("hi-IN", "Hindi"), ("kn-IN", "Kannada"))[index % 3]
+        profile = {
+            "student_name": name, "course": course, "branch": course,
+            "attendance_rate": attendance, "current_gpa": gpa,
+            "lowest_subject": subject, "lowest_subject_marks": mark,
+            "backlogs": backlogs, "subject_marks_summary": text("subject_marks_summary"),
+        }
+        questions = voice_server._build_adaptive_questions(profile, language_code)
+        attendance_text = f"{attendance:.0f}%" if attendance else "the attendance level"
+        mark_text = f"{mark:.0f}%" if mark else "the recent mark"
+        gpa_text = f"{gpa:.2f}" if gpa else "the current GPA"
+        backlog_text = f"{backlogs} backlog{'s' if backlogs != 1 else ''}" if backlogs else "the current module load"
+        if language_code == "hi-IN":
+            answers = [
+                f"{course} \u092e\u0947\u0902 {attendance_text} \u0939\u093e\u091c\u093f\u0930\u0940 \u0915\u0947 \u0938\u093e\u0925 \u0930\u094b\u091c \u0915\u094d\u0932\u093e\u0938 \u092a\u0939\u0941\u0902\u091a\u0928\u093e \u0915\u092d\u0940 \u0915\u092d\u0940 \u092e\u0941\u0936\u094d\u0915\u093f\u0932 \u0939\u094b\u0924\u093e \u0939\u0948\u0964",
+                f"{subject} \u092e\u0947\u0902 {mark_text} \u0905\u0902\u0915 \u0915\u0947 \u092c\u093e\u0926 \u092e\u0941\u091d\u0947 \u0906\u0927\u093e\u0930\u092d\u0942\u0924 \u0935\u093f\u0937\u092f\u094b\u0902 \u092a\u0930 \u092e\u0926\u0926 \u091a\u093e\u0939\u093f\u090f\u0964",
+                f"{gpa_text} GPA \u0914\u0930 {backlog_text} \u0915\u0947 \u0938\u093e\u0925 \u092e\u0948\u0902 \u092a\u0939\u0932\u0947 {subject} \u0915\u093e \u092f\u094b\u091c\u0928\u093e \u092c\u0928\u093e\u0928\u093e \u091a\u093e\u0939\u0924\u093e \u0939\u0942\u0902\u0964",
+                "\u092e\u0941\u091d\u0947 \u0905\u0917\u0932\u0947 \u0938\u0947\u092e\u0947\u0938\u094d\u091f\u0930 \u0915\u0947 \u0932\u093f\u090f \u091b\u094b\u091f\u0947 \u0932\u0915\u094d\u0937\u094d\u092f \u0914\u0930 \u0928\u093f\u092f\u092e\u093f\u0924 \u0938\u092a\u094b\u0930\u094d\u091f \u0915\u0940 \u091c\u0930\u0942\u0930\u0924 \u0939\u0948\u0964",
+            ]
+            wa_open = f"{first_name}, {course} \u0915\u0940 \u092a\u094d\u0930\u0917\u0924\u093f \u0915\u0947 \u0932\u093f\u090f \u0939\u092e \u0938\u093e\u0925 \u092e\u0947\u0902 \u092f\u094b\u091c\u0928\u093e \u092c\u0928\u093e\u090f\u0902\u0964"
+        elif language_code == "kn-IN":
+            answers = [
+                f"{course} \u0ca6\u0cb2\u0ccd\u0cb2\u0cbf {attendance_text} \u0cb9\u0cbe\u0c9c\u0cb0\u0cbe\u0ca4\u0cbf\u0caf\u0cc6\u0c82\u0ca6\u0cbf\u0c97\u0cc6 \u0ca4\u0cb0\u0c97\u0ca4\u0cbf\u0c97\u0cc6 \u0cac\u0cb0\u0cc1\u0cb5\u0cc1\u0ca6\u0cc1 \u0c95\u0cc6\u0cb2\u0cb5\u0cc6\u0cb8\u0cb2 \u0c95\u0cb7\u0ccd\u0c9f\u0cb5\u0cbe\u0c97\u0cc1\u0ca4\u0ccd\u0ca4\u0ca6\u0cc6\u0ccd\u0964",
+                f"{subject} \u0ca6\u0cb2\u0ccd\u0cb2\u0cbf {mark_text} \u0c85\u0c82\u0c95 \u0cb8\u0cbf\u0c95\u0ccd\u0c95\u0cbf\u0ca6 \u0ca8\u0c82\u0ca4\u0cb0 \u0cae\u0cc2\u0cb2 \u0c85\u0c82\u0cb6\u0c97\u0cb3\u0cb2\u0ccd\u0cb2\u0cbf \u0cb8\u0cb9\u0cbe\u0caf \u0cac\u0cc7\u0c95\u0cbf\u0ca6\u0cc6\u0964",
+                f"{gpa_text} GPA \u0cae\u0ca4\u0ccd\u0ca4\u0cc1 {backlog_text} \u0c87\u0ca6\u0ccd\u0ca6\u0cbe\u0c97 \u0cae\u0ca6\u0cb2\u0cc1 {subject} \u0cae\u0cc7\u0cb2\u0cc6 \u0c95\u0cc6\u0c82\u0ca6\u0ccd\u0cb0\u0cc0\u0c95\u0cb0\u0cbf\u0cb8\u0cb2\u0cc1 \u0cac\u0caf\u0cb8\u0cc1\u0ca4\u0ccd\u0ca4\u0cc7\u0ca8\u0cc6\u0964",
+                "\u0cae\u0cc1\u0c82\u0ca6\u0cbf\u0ca8 \u0cb8\u0cc6\u0cae\u0cbf\u0cb8\u0ccd\u0c9f\u0cb0\u0ccd\u0c97\u0cc6 \u0cb8\u0cbe\u0ca7\u0ccd\u0caf\u0cb5\u0cbe\u0c97\u0cc1\u0cb5 \u0cb8\u0ca3\u0ccd\u0ca3 \u0caf\u0ccb\u0c9c\u0ca8\u0cc6 \u0cae\u0ca4\u0ccd\u0ca4\u0cc1 \u0ca8\u0cbf\u0caf\u0cae\u0cbf\u0ca4 \u0cb8\u0cb9\u0cbe\u0caf \u0cac\u0cc7\u0c95\u0cc1\u0964",
+            ]
+            wa_open = f"{first_name}, {course} \u0c95\u0ccb\u0cb8\u0ccd \u0cae\u0ca4\u0ccd\u0ca4\u0cc1 \u0cb9\u0cbe\u0c9c\u0cb0\u0cbe\u0ca4\u0cbf\u0caf\u0ca8\u0ccd\u0ca8\u0cc1 \u0c86\u0ca7\u0cb0\u0cbf\u0cb8\u0cbf \u0caf\u0ccb\u0c9c\u0ca8\u0cc6 \u0cae\u0cbe\u0ca1\u0ccb\u0ca3\u0964"
+        else:
+            answers = [
+                f"In {course}, getting to class consistently with {attendance_text} attendance has been difficult lately.",
+                f"After the {mark_text} mark in {subject}, I need help rebuilding the basic concepts before the next assessment.",
+                f"With a GPA of {gpa_text} and {backlog_text}, I want to make {subject} my first realistic priority.",
+                "A short plan, regular check-in, and clear support contact would help me feel able to continue next semester.",
+            ]
+            wa_open = f"Hi {first_name}, I have prepared a support check-in around your {course} attendance, {subject} mark, and next academic step."
+
+        call = []
+        for question, answer in zip(questions, answers):
+            call.extend((
+                {"speaker": "Asha AI", "side": "ai", "text": question},
+                {"speaker": first_name, "side": "student", "text": answer},
+            ))
+        support = text("final_action", default="an academic support appointment")
+        whatsapp = [
+            {"speaker": "Asha AI", "side": "ai", "text": wa_open},
+            {"speaker": first_name, "side": "student", "text": f"Thank you. I would like to begin with support for {subject}."},
+            {"speaker": "Asha AI", "side": "ai", "text": f"I have recorded {support} and a first step for this week."},
+            {"speaker": first_name, "side": "student", "text": "That gives me a clearer plan. I will follow up after the first step."},
+        ]
+        voice_score = min(0.98, max(0.35, ml_score * 0.92 + 0.05))
+        fused_score = round((ml_score * 0.45) + (voice_score * 0.55), 4)
+        return {
+            "student_id": text("student_id", "Student ID", default=f"SAMPLE-{index}"),
+            "student_name": name, "branch": course, "tier": tier,
+            "ml_score": round(ml_score, 4), "ml_risk_score": round(ml_score, 4),
+            "voice_risk_score": round(voice_score, 4), "ai_confidence": round(0.84 + (index % 4) * 0.03, 2),
+            "ai_score": fused_score, "fused_risk_score": fused_score, "dropout_intent": tier,
+            "language_name": language_name, "academic_profile": profile,
+            "factor": text("primary_root_cause", "top_factor_1", default="Academic progression"),
+            "action": support, "call": call, "whatsapp": whatsapp,
+            "summary": f"{name}'s {course} check-in used their {attendance_text} attendance, {gpa_text} GPA, {subject} mark of {mark_text}, and {backlog_text} to agree on {support}.",
+        }
+
     def _complete_sample_call_fields(sample, index):
         """Give each historical walkthrough a complete, language-varied call result.
 
@@ -2846,15 +2961,17 @@ def install(app, namespace):
         # They are explicitly marked as samples and never change ML scores.
         if payload.get("dataset_loaded"):
             real_ids = {str(item.get("student_id")) for item in real_calls}
-            for index, student in enumerate(namespace["_dataset_records"](limit=14)):
+            sample_count = 0
+            for index, student in enumerate(namespace["_dataset_records"](limit=32)):
                 if str(student.get("student_id")) in real_ids:
                     continue
-                sample = namespace["_experience_conversation"](student, index)
-                sample = _complete_sample_call_fields(sample, index)
+                sample = _personalized_sample_conversation(student, sample_count)
                 sample["is_sample"] = True
-                sample["status"] = "active" if index < 7 else "completed"
-                sample["student_name"] = student.get("student_name") or "Student"
+                sample["status"] = "active" if sample_count < 7 else "completed"
                 real_calls.append(sample)
+                sample_count += 1
+                if sample_count == 14:
+                    break
         active_states = {"active", "ringing", "in-progress", "in_progress"}
         payload["conversations"] = sorted(
             real_calls,

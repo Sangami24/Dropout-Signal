@@ -113,7 +113,9 @@ def _speech_gather(question_index, call_sid):
     profile = session.get("academic_profile") or {}
     hints = ", ".join(filter(None, (
         str(student_name),
+        str(profile.get("course") or profile.get("branch") or ""),
         str(profile.get("lowest_subject") or ""),
+        str(profile.get("subject_marks_summary") or ""),
         QUESTION_SPEECH_HINTS[min(question_index, len(QUESTION_SPEECH_HINTS) - 1)],
     )))
     options = dict(
@@ -313,20 +315,40 @@ def _profile_number(profile, key, default=0.0):
 
 
 def _build_adaptive_questions(profile, language_code):
-    """Choose four neutral questions from the student's academic context."""
-    bank = QUESTION_BANKS.get(language_code, QUESTION_BANKS["en-IN"])
-    chooser = random.SystemRandom()
-    attendance = _profile_number(profile, "attendance_rate", 100)
-    weakest_mark = _profile_number(profile, "lowest_subject_marks", 100)
-    subject = str(profile.get("lowest_subject") or profile.get("branch") or "your coursework")
-    categories = [
-        "general",
-        "attendance" if attendance < 75 else "coursework",
-        "subject" if weakest_mark < 60 and subject else "support",
+    """Build four non-leading questions from this student's scored profile."""
+    attendance = _profile_number(profile, "attendance_rate", 0)
+    gpa = _profile_number(profile, "current_gpa", 0)
+    backlogs = int(_profile_number(profile, "backlogs", 0))
+    weakest_mark = _profile_number(profile, "lowest_subject_marks", 0)
+    course = str(profile.get("course") or profile.get("branch") or "your course").strip()
+    subject = str(profile.get("lowest_subject") or profile.get("branch") or "your coursework").strip()
+    student_label = str(profile.get("student_name") or profile.get("first_name") or "").strip()
+    prefix = f"{student_label}, " if student_label else ""
+    attendance_text = f"{attendance:.0f}%" if attendance else "the recorded attendance level"
+    mark_text = f"{weakest_mark:.0f}%" if weakest_mark else "the recent mark"
+    gpa_text = f"{gpa:.2f}" if gpa else "the current GPA"
+    backlog_text = f"{backlogs} backlog{'s' if backlogs != 1 else ''}" if backlogs else "your current module load"
+
+    if language_code == "hi-IN":
+        return [
+            f"{prefix}{course} में आपकी उपस्थिति लगभग {attendance_text} है। कक्षाओं में नियमित रूप से आना आपके लिए कैसा चल रहा है?",
+            f"{prefix}{subject} में आपका हाल का कम अंक {mark_text} है। किस विषय या कौशल में सबसे अधिक सहायता उपयोगी होगी?",
+            f"{prefix}आपका वर्तमान GPA {gpa_text} है और {backlog_text} हैं। अगले दो हफ्तों में किस काम को पहले संभालना चाहेंगे?",
+            f"{prefix}{course} में अगले सेमेस्टर के लिए ऐसी कौन-सी सहायता या योजना आपके लिए सबसे उपयोगी होगी?",
+        ]
+    if language_code == "kn-IN":
+        return [
+            f"{prefix}{course} ನಲ್ಲಿ ನಿಮ್ಮ ಹಾಜರಾತಿ ಸುಮಾರು {attendance_text} ಇದೆ. ತರಗತಿಗಳಿಗೆ ನಿಯಮಿತವಾಗಿ ಬರುವುದು ನಿಮಗೆ ಹೇಗೆ ಸಾಗುತ್ತಿದೆ?",
+            f"{prefix}{subject} ನಲ್ಲಿ ನಿಮ್ಮ ಇತ್ತೀಚಿನ ಕಡಿಮೆ ಅಂಕ {mark_text} ಆಗಿದೆ. ಯಾವ ವಿಷಯ ಅಥವಾ ಕೌಶಲ್ಯದಲ್ಲಿ ಹೆಚ್ಚು ಸಹಾಯ ಉಪಯುಕ್ತವಾಗುತ್ತದೆ?",
+            f"{prefix}ನಿಮ್ಮ ಪ್ರಸ್ತುತ GPA {gpa_text} ಮತ್ತು {backlog_text} ಇವೆ. ಮುಂದಿನ ಎರಡು ವಾರಗಳಲ್ಲಿ ಯಾವ ಕೆಲಸವನ್ನು ಮೊದಲು ನಿರ್ವಹಿಸಲು ಬಯಸುತ್ತೀರಿ?",
+            f"{prefix}{course} ನಲ್ಲಿ ಮುಂದಿನ ಸೆಮಿಸ್ಟರ್‌ಗೆ ಯಾವ ಸಹಾಯ ಅಥವಾ ಯೋಜನೆ ನಿಮಗೆ ಹೆಚ್ಚು ಉಪಯುಕ್ತವಾಗುತ್ತದೆ?",
+        ]
+    return [
+        f"{prefix}your recorded attendance in {course} is {attendance_text}. How manageable has getting to class been recently?",
+        f"{prefix}your most recent low mark is {mark_text} in {subject}. Which topic or skill would be most useful to work through together?",
+        f"{prefix}your current GPA is {gpa_text} with {backlog_text}. What would be the most realistic academic priority for the next two weeks?",
+        f"{prefix}looking toward next semester in {course}, what support or plan would help you feel more able to continue?",
     ]
-    final_choices = [category for category in ("future", "support", "coursework") if category not in categories]
-    categories.append(chooser.choice(final_choices or ["future"]))
-    return [chooser.choice(bank[category]).format(subject=subject) for category in categories]
 
 
 def _language_from_speech(text):
