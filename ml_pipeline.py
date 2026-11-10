@@ -38,7 +38,7 @@ from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassif
 from sklearn.metrics import accuracy_score, f1_score, log_loss, precision_score, recall_score, roc_auc_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-from xgboost import XGBClassifier
+from xgboost import DMatrix, XGBClassifier
 
 
 # Fast enough for an interactive upload while retaining a properly evaluated
@@ -519,8 +519,17 @@ def _name_for(index: int, signature: str) -> str:
 
 
 def _shap_values(model: XGBClassifier, features: pd.DataFrame) -> np.ndarray:
-    # Process in chunks to prevent OOM on Render
-    return _batched_shap_values(model, features)
+    """Return exact XGBoost TreeSHAP contributions without Python SHAP lag.
+
+    ``pred_contribs`` is XGBoost's native TreeSHAP implementation. It emits
+    one extra bias column, which is deliberately removed because the rest of
+    the pipeline expects one contribution per validated feature. This keeps
+    the evidence real while preventing the upload worker appearing frozen at
+    the SHAP stage.
+    """
+    matrix = DMatrix(features, feature_names=list(features.columns))
+    contributions = model.get_booster().predict(matrix, pred_contribs=True, validate_features=True)
+    return np.asarray(contributions)[:, :-1]
 
 def _batched_shap_values(model, features, chunk_size=250):
     explainer = shap.TreeExplainer(model)
@@ -890,11 +899,13 @@ def train_and_score(source_path: str | Path, activate: bool = True, source_label
     training_history = _xgb_training_history(xgb_history_model, x_train, y_train, x_validation, y_validation)
     _report_training_progress("Generating SHAP explanations and student scores…", 85)
     shap_values = _shap_values(xgb, x)
+    _report_training_progress("Building per-student explanations and intervention actions...", 88)
     gold = _gold_table(
         silver, signature, all_logistic, all_xgb, all_random_forest,
         all_hist_gradient_boosting, ensemble_probability, ensemble_name,
         ensemble_weights, shap_values, feature_columns, ensemble_threshold,
     )
+    _report_training_progress("Calculating fairness evidence for the scored cohort...", 90)
     # The fairness audit is performed on the held-out test partition, matching
     # the notebook and avoiding an over-optimistic in-sample assessment.
     fairness = _fairness(silver.loc[x_test.index], y_test, ensemble_test_probability, ensemble_name)
@@ -1021,6 +1032,7 @@ def train_and_score(source_path: str | Path, activate: bool = True, source_label
             "hist_gradient_boosting_model": "hist_gradient_boosting_model.joblib",
         },
     }
+    _report_training_progress("Recording reproducible model artifacts...", 94)
     metadata["mlflow"] = _log_mlflow_run(
         run_id, run_dir, x_train, logistic, xgb, random_forest,
         hist_gradient_boosting, model_metrics, ensemble_weights, len(source), ensemble_name,

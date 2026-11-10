@@ -37,9 +37,7 @@ def unique_name(index: int) -> str:
     first = FIRST_NAMES[index % len(FIRST_NAMES)]
     middle = MIDDLE_NAMES[(index // len(FIRST_NAMES)) % len(MIDDLE_NAMES)]
     last = LAST_NAMES[(index // (len(FIRST_NAMES) * len(MIDDLE_NAMES))) % len(LAST_NAMES)]
-    combinations = len(FIRST_NAMES) * len(MIDDLE_NAMES) * len(LAST_NAMES)
-    cycle = index // combinations
-    return f"{first} {middle} {last}" if cycle == 0 else f"{first} {middle} {last} {cycle + 1}"
+    return f"{first} {middle} {last}"
 
 
 DATASET_SPECS = (
@@ -52,9 +50,9 @@ DATASET_SPECS = (
 def _build_cohort(source: pd.DataFrame, *, row_count: int, seed: int, identity_offset: int) -> pd.DataFrame:
     """Return one reproducible, independently sampled rich student cohort.
 
-    Each file keeps exactly the comprehensive schema.  The identity fields
-    are regenerated from a non-overlapping range, so a name, ID, phone, and
-    email can never be shared by two downloadable cohorts.
+    Each file keeps exactly the comprehensive schema. Names are unique within
+    that file and always contain only first, middle, and last names. Cohorts
+    may reuse names, while student IDs, phones, and emails stay distinct.
     """
     rng = np.random.default_rng(seed)
     sample_index = rng.choice(len(source), size=row_count, replace=row_count > len(source))
@@ -77,7 +75,7 @@ def _build_cohort(source: pd.DataFrame, *, row_count: int, seed: int, identity_o
     lms_engagement = np.clip(35 + approval_ratio * 58 + rng.normal(0, 8, count), 5, 100).round(1)
 
     course_names = frame["Course"].map(lambda value: COURSE_MAP.get(int(value), f"Program {int(value)}"))
-    names = [unique_name(identity_offset + index) for index in range(count)]
+    names = [unique_name(index) for index in range(count)]
     rich = pd.DataFrame({
         "Student ID": [f"DS-2026-{identity_offset + index + 1:05d}" for index in range(count)],
         "Student Name": names,

@@ -2840,8 +2840,21 @@ def install(app, namespace):
                 by_student[str(target["student_id"])] = target
             target["student_name"] = student_name
             target["whatsapp"] = messages
-        # A scored dataset is not a call transcript or a WhatsApp chat. Only
-        # records created by a real call or WhatsApp event appear here.
+        # Keep the dashboard demonstration useful before a counselor starts a
+        # real call: seven progressing live conversations and seven completed
+        # conversations, each with matching call and WhatsApp transcripts.
+        # They are explicitly marked as samples and never change ML scores.
+        if payload.get("dataset_loaded"):
+            real_ids = {str(item.get("student_id")) for item in real_calls}
+            for index, student in enumerate(namespace["_dataset_records"](limit=14)):
+                if str(student.get("student_id")) in real_ids:
+                    continue
+                sample = namespace["_experience_conversation"](student, index)
+                sample = _complete_sample_call_fields(sample, index)
+                sample["is_sample"] = True
+                sample["status"] = "active" if index < 7 else "completed"
+                sample["student_name"] = student.get("student_name") or "Student"
+                real_calls.append(sample)
         active_states = {"active", "ringing", "in-progress", "in_progress"}
         payload["conversations"] = sorted(
             real_calls,
